@@ -235,7 +235,12 @@
       applyTheme(ctx.app?.theme || "default");
       microsoftTeams.app.registerOnThemeChangeHandler(applyTheme);
 
-      authToken = await microsoftTeams.authentication.getAuthToken();
+      try {
+        authToken = await microsoftTeams.authentication.getAuthToken();
+      } catch (e) {
+        const msg = (e && (e.message || e.errorCode || String(e))) || "unknown";
+        throw new Error(`SSO failed: ${msg}`);
+      }
 
       const [{ settings: s, hasBot: hb }, { reminders: rems }] = await Promise.all([
         api("GET", "/settings"),
@@ -249,7 +254,8 @@
       console.error("Boot failed", err);
       const banner = $("errorBanner");
       if (banner) {
-        banner.textContent = "Could not connect to the Day Reminders service. If this is your first time, your admin may need to grant consent to the bot's app registration.";
+        const detail = err.message || String(err);
+        banner.textContent = `Could not connect: ${detail}`;
         banner.hidden = false;
       }
     }
