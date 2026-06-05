@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Day Reminders</title>
+  <link rel="stylesheet" href="styles.css" />
+  <script src="https://res.cdn.office.net/teams-js/2.24.0/js/MicrosoftTeams.min.js"></script>
+</head>
+<body data-theme="default">
+  <header class="topbar">
+    <div class="brand">
+      <span class="bell">&#9200;</span>
+      <h1>Day Reminders</h1>
+    </div>
+    <button id="openSettings" class="btn ghost" title="Settings">&#9881; Settings</button>
+  </header>
+
+  <main>
+    <section class="card">
+      <form id="addForm" class="add-row" autocomplete="off">
+        <input id="title" type="text" placeholder="What do you need to remember? (e.g. Send weekly report)" aria-label="Reminder text" required />
+        <input id="time" type="time" title="Optional time" aria-label="Optional time" />
+        <button type="submit" class="btn primary">Add</button>
+      </form>
+      <p class="hint" id="permHint" hidden>
+        Notifications are blocked in this browser. <button id="enableNotif" class="link">Enable notifications</button>
+      </p>
+    </section>
+
+    <section class="card">
+      <div class="section-head">
+        <h2>Today</h2>
+        <span id="todayDate" class="muted"></span>
+      </div>
+      <ul id="todayList" class="list"></ul>
+      <p id="todayEmpty" class="empty" hidden>Nothing scheduled. Add something above.</p>
+    </section>
+
+    <section class="card">
+      <div class="section-head">
+        <h2>Anytime today</h2>
+        <span class="muted">No specific time</span>
+      </div>
+      <ul id="anytimeList" class="list"></ul>
+      <p id="anytimeEmpty" class="empty" hidden>None.</p>
+    </section>
+
+    <section class="card" id="doneCard" hidden>
+      <div class="section-head">
+        <h2>Done</h2>
+        <button id="clearDone" class="btn ghost small">Clear</button>
+      </div>
+      <ul id="doneList" class="list done"></ul>
+    </section>
+  </main>
+
+  <!-- Settings dialog -->
+  <dialog id="settingsDialog" class="dialog">
+    <form method="dialog" id="settingsForm">
+      <h2>Settings</h2>
+
+      <label class="row">
+        <span>End-of-day check-in time</span>
+        <input id="setEodTime" type="time" aria-label="End-of-day check-in time" required />
+      </label>
+      <p class="hint">You'll get an "Are you done?" prompt at this time on workdays.</p>
+
+      <label class="row">
+        <span>Remind me this many minutes before a task</span>
+        <input id="setLeadMinutes" type="number" min="0" max="240" step="1" aria-label="Lead time in minutes" required />
+      </label>
+
+      <label class="row checkbox">
+        <input id="setWeekdaysOnly" type="checkbox" aria-label="Weekdays only" />
+        <span>Weekdays only (skip Sat/Sun)</span>
+      </label>
+
+      <label class="row checkbox">
+        <input id="setNotifications" type="checkbox" aria-label="Show desktop notifications" />
+        <span>Show desktop notifications</span>
+      </label>
+
+      <label class="row checkbox">
+        <input id="setSound" type="checkbox" aria-label="Play sound" />
+        <span>Play a soft chime with notifications</span>
+      </label>
+
+      <div class="dialog-actions">
+        <button type="button" id="settingsCancel" class="btn ghost">Cancel</button>
+        <button type="submit" class="btn primary">Save</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- End-of-day check-in dialog -->
+  <dialog id="eodDialog" class="dialog">
+    <form method="dialog">
+      <h2>Wrapping up?</h2>
+      <p id="eodSummary" class="muted"></p>
+      <ul id="eodList" class="list"></ul>
+      <div class="dialog-actions">
+        <button type="button" id="eodSnooze" class="btn ghost">Remind me in 15 min</button>
+        <button type="submit" id="eodDismiss" class="btn primary">I'm done for today</button>
+      </div>
+    </form>
+  </dialog>
+
+  <script src="app.js"></script>
+</body>
+</html>

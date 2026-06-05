@@ -1,0 +1,37 @@
+{
+  "$schema": "https://developer.microsoft.com/en-us/json-schemas/teams/v1.17/MicrosoftTeams.schema.json",
+  "manifestVersion": "1.17",
+  "version": "1.0.0",
+  "id": "5a03bfa3-63c4-417c-b668-b02234ebc11b",
+  "packageName": "com.kation.dayreminders",
+  "developer": {
+    "name": "Day Reminders",
+    "websiteUrl": "https://example.com/day-reminders",
+    "privacyUrl": "https://example.com/day-reminders/privacy",
+    "termsOfUseUrl": "https://example.com/day-reminders/terms"
+  },
+  "icons": {
+    "color": "color.png",
+    "outline": "outline.png"
+  },
+  "name": {
+    "short": "Day Reminders",
+    "full": "Day Reminders — schedule and end-of-day check-in"
+  },
+  "description": {
+    "short": "Personal reminders for what you need to get done today.",
+    "full": "A simple personal tab for capturing what you need to remember today. Set a time on any item to get a notification before it's due. At your configured end-of-day time you'll get an 'Are you done?' check-in listing anything still open. End-of-day time, lead-time, weekday-only mode, notifications and chime are all configurable from the Settings dialog."
+  },
+  "accentColor": "#38AEEB",
+  "staticTabs": [
+    {
+      "entityId": "dayReminders.home",
+      "name": "Reminders",
+      "contentUrl": "https://REPLACE-ME.example.com/index.html",
+      "websiteUrl": "https://REPLACE-ME.example.com/index.html",
+      "scopes": ["personal"]
+    }
+  ],
+  "permissions": ["identity"],
+  "validDomains": ["REPLACE-ME.example.com"]
+}
