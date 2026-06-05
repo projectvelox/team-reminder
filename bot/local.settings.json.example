@@ -1,0 +1,17 @@
+{
+  "IsEncrypted": false,
+  "Values": {
+    "AzureWebJobsStorage": "UseDevelopmentStorage=true",
+    "FUNCTIONS_WORKER_RUNTIME": "node",
+    "MicrosoftAppId": "<bot-app-id>",
+    "MicrosoftAppPassword": "<bot-secret>",
+    "MicrosoftAppType": "SingleTenant",
+    "MicrosoftAppTenantId": "<kation-tenant-id>",
+    "DAYREMINDERS_STORAGE": "<storage-connection-string>",
+    "DAYREMINDERS_TENANT_ID": "<kation-tenant-id>",
+    "DAYREMINDERS_AUDIENCE": "api://botid-<bot-app-id>"
+  },
+  "Host": {
+    "CORS": "*"
+  }
+}

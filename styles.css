@@ -60,6 +60,21 @@ main {
   gap: 16px;
 }
 
+.error-banner {
+  background: #fde7e9;
+  color: #92231a;
+  border: 1px solid #f1bcb9;
+  border-radius: var(--radius);
+  padding: 10px 14px;
+  margin: 0;
+  font-size: 13px;
+}
+body[data-theme="dark"] .error-banner {
+  background: #4a1717;
+  color: #ffd1cd;
+  border-color: #6b2222;
+}
+
 .card {
   background: var(--surface);
   border: 1px solid var(--border);

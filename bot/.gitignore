@@ -1,0 +1,9 @@
+node_modules/
+bin/
+obj/
+.azure/
+.vscode/
+local.settings.json
+.funcignore.local
+*.log
+dist/

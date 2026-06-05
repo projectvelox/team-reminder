@@ -1,0 +1,70 @@
+// Adaptive Card templates for proactive messages.
+
+function reminderCard(reminder, leadMinutes) {
+  const subtitle = reminder.time
+    ? (leadMinutes > 0
+        ? `In about ${leadMinutes} min (at ${formatTime(reminder.time)})`
+        : `Now (${formatTime(reminder.time)})`)
+    : 'Just a heads-up';
+
+  return {
+    contentType: 'application/vnd.microsoft.card.adaptive',
+    content: {
+      $schema: 'http://adaptivecards.io/schemas/adaptive-card.json',
+      type: 'AdaptiveCard',
+      version: '1.4',
+      body: [
+        { type: 'TextBlock', text: 'Day Reminder', weight: 'Bolder', size: 'Small', color: 'Accent' },
+        { type: 'TextBlock', text: reminder.title, weight: 'Bolder', size: 'Medium', wrap: true },
+        { type: 'TextBlock', text: subtitle, isSubtle: true, spacing: 'None' },
+      ],
+      actions: [
+        { type: 'Action.Submit', title: "Mark done", data: { action: 'markDone', reminderId: reminder.id } },
+      ],
+    },
+  };
+}
+
+function eodCard(openReminders) {
+  const items = openReminders.slice(0, 10).map((r) => ({
+    type: 'TextBlock',
+    text: r.time ? `• ${formatTime(r.time)} — ${r.title}` : `• ${r.title}`,
+    wrap: true,
+    spacing: 'Small',
+  }));
+  const overflow = openReminders.length > 10
+    ? [{ type: 'TextBlock', text: `…and ${openReminders.length - 10} more`, isSubtle: true, spacing: 'Small' }]
+    : [];
+
+  const summary = openReminders.length === 0
+    ? "Your list is clear. Nice work — wrap up?"
+    : `You still have ${openReminders.length} item${openReminders.length === 1 ? '' : 's'} open. Want to push them to tomorrow or call it a day?`;
+
+  return {
+    contentType: 'application/vnd.microsoft.card.adaptive',
+    content: {
+      $schema: 'http://adaptivecards.io/schemas/adaptive-card.json',
+      type: 'AdaptiveCard',
+      version: '1.4',
+      body: [
+        { type: 'TextBlock', text: 'End of day', weight: 'Bolder', size: 'Small', color: 'Accent' },
+        { type: 'TextBlock', text: summary, wrap: true, spacing: 'Small' },
+        ...items,
+        ...overflow,
+      ],
+      actions: [
+        { type: 'Action.Submit', title: "I'm done for today", data: { action: 'eodDismiss' } },
+        { type: 'Action.Submit', title: 'Remind me in 15 min', data: { action: 'eodSnooze' } },
+      ],
+    },
+  };
+}
+
+function formatTime(hhmm) {
+  const [h, m] = hhmm.split(':').map(Number);
+  const d = new Date();
+  d.setHours(h, m, 0, 0);
+  return d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+}
+
+module.exports = { reminderCard, eodCard };

@@ -1,14 +1,13 @@
 {
   "$schema": "https://developer.microsoft.com/en-us/json-schemas/teams/v1.17/MicrosoftTeams.schema.json",
   "manifestVersion": "1.17",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "id": "5a03bfa3-63c4-417c-b668-b02234ebc11b",
-  "packageName": "com.kation.dayreminders",
   "developer": {
     "name": "Day Reminders",
-    "websiteUrl": "https://example.com/day-reminders",
-    "privacyUrl": "https://example.com/day-reminders/privacy",
-    "termsOfUseUrl": "https://example.com/day-reminders/terms"
+    "websiteUrl": "https://projectvelox.github.io/team-reminder/",
+    "privacyUrl": "https://projectvelox.github.io/team-reminder/",
+    "termsOfUseUrl": "https://projectvelox.github.io/team-reminder/"
   },
   "icons": {
     "color": "color.png",
@@ -16,22 +15,37 @@
   },
   "name": {
     "short": "Day Reminders",
-    "full": "Day Reminders — schedule and end-of-day check-in"
+    "full": "Day Reminders, schedule and end-of-day check-in"
   },
   "description": {
     "short": "Personal reminders for what you need to get done today.",
-    "full": "A simple personal tab for capturing what you need to remember today. Set a time on any item to get a notification before it's due. At your configured end-of-day time you'll get an 'Are you done?' check-in listing anything still open. End-of-day time, lead-time, weekday-only mode, notifications and chime are all configurable from the Settings dialog."
+    "full": "Capture what you need to remember today, with optional times. The Day Reminders bot pings you in chat before each timed item, and at your configured end-of-day time it posts an 'Are you done?' card listing anything still open. End-of-day time, lead minutes, weekday-only mode, and notifications are all configurable from the tab's Settings dialog."
   },
   "accentColor": "#38AEEB",
   "staticTabs": [
     {
       "entityId": "dayReminders.home",
       "name": "Reminders",
-      "contentUrl": "https://REPLACE-ME.example.com/index.html",
-      "websiteUrl": "https://REPLACE-ME.example.com/index.html",
+      "contentUrl": "https://projectvelox.github.io/team-reminder/index.html",
+      "websiteUrl": "https://projectvelox.github.io/team-reminder/index.html",
       "scopes": ["personal"]
     }
   ],
-  "permissions": ["identity"],
-  "validDomains": ["REPLACE-ME.example.com"]
+  "bots": [
+    {
+      "botId": "9f3711c1-c861-4da5-9664-6903bbe5bf05",
+      "scopes": ["personal"],
+      "isNotificationOnly": false,
+      "supportsFiles": false
+    }
+  ],
+  "webApplicationInfo": {
+    "id": "9f3711c1-c861-4da5-9664-6903bbe5bf05",
+    "resource": "api://botid-9f3711c1-c861-4da5-9664-6903bbe5bf05"
+  },
+  "validDomains": [
+    "projectvelox.github.io",
+    "func-day-reminders-17023.azurewebsites.net",
+    "token.botframework.com"
+  ]
 }

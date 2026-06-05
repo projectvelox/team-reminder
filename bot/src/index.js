@@ -1,0 +1,5 @@
+// Entry point — registers all functions with the v4 programming model.
+require('./functions/messages');
+require('./functions/reminders');
+require('./functions/settings');
+require('./functions/scheduler');

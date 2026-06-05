@@ -38,9 +38,11 @@ if ($BaseUrl) {
   $manifest = Get-Content $manifestPath -Raw | ConvertFrom-Json
   $manifest.staticTabs[0].contentUrl = "$base/index.html"
   $manifest.staticTabs[0].websiteUrl = "$base/index.html"
-  $manifest.validDomains = @($domain)
+  if ($manifest.validDomains -notcontains $domain) {
+    $manifest.validDomains = @($manifest.validDomains + $domain)
+  }
   $manifest | ConvertTo-Json -Depth 10 | Set-Content -Path $manifestPath -Encoding UTF8
-  Write-Host "Rewrote manifest: contentUrl=$base/index.html, validDomains=[$domain]"
+  Write-Host "Rewrote manifest: contentUrl=$base/index.html, ensured $domain in validDomains"
 }
 
 # Sanity-check the staged manifest

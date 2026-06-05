@@ -1,0 +1,19 @@
+{
+  "name": "day-reminders-bot",
+  "version": "1.0.0",
+  "description": "Day Reminders Teams bot + reminder API + scheduler (Azure Functions)",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "func start",
+    "test": "echo \"No tests yet\""
+  },
+  "dependencies": {
+    "@azure/data-tables": "^13.3.0",
+    "@azure/functions": "^4.5.1",
+    "botbuilder": "^4.23.1",
+    "jose": "^5.9.6"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  }
+}
