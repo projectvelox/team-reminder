@@ -1,7 +1,7 @@
 {
   "$schema": "https://developer.microsoft.com/en-us/json-schemas/teams/v1.17/MicrosoftTeams.schema.json",
   "manifestVersion": "1.17",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "id": "5a03bfa3-63c4-417c-b668-b02234ebc11b",
   "developer": {
     "name": "Day Reminders",
@@ -41,7 +41,7 @@
   ],
   "webApplicationInfo": {
     "id": "9f3711c1-c861-4da5-9664-6903bbe5bf05",
-    "resource": "api://botid-9f3711c1-c861-4da5-9664-6903bbe5bf05"
+    "resource": "api://projectvelox.github.io/9f3711c1-c861-4da5-9664-6903bbe5bf05"
   },
   "validDomains": [
     "projectvelox.github.io",
