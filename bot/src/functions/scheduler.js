@@ -12,6 +12,7 @@ const { MessageFactory } = require('botbuilder');
 const { adapter } = require('../lib/bot');
 const { reminderCard, eodCard } = require('../lib/cards');
 const store = require('../lib/store');
+const { sendReminderActivity } = require('../lib/graph');
 
 const TIME_ZONE = 'Asia/Manila';
 
@@ -85,6 +86,12 @@ async function processUser(appId, user, ph, context) {
       } catch (err) {
         context.error(`[scheduler] sendProactive failed for snoozed "${r.title}": ${err?.message || err}`);
       }
+      // Activity feed is best-effort: never fail the proactive flow if Graph errors.
+      try {
+        await sendReminderActivity(user.oid, r);
+      } catch (err) {
+        context.log(`[scheduler] activity feed skipped for "${r.title}": ${err?.message || err}`);
+      }
       continue;
     }
 
@@ -101,6 +108,11 @@ async function processUser(appId, user, ph, context) {
         await store.upsertReminder(user.oid, r);
       } catch (err) {
         context.error(`[scheduler] sendProactive failed for "${r.title}": ${err?.message || err}`);
+      }
+      try {
+        await sendReminderActivity(user.oid, r);
+      } catch (err) {
+        context.log(`[scheduler] activity feed skipped for "${r.title}": ${err?.message || err}`);
       }
     } else {
       context.log(`[scheduler] skip "${r.title}" target=${r.time} now=${ph.hour}:${String(ph.minute).padStart(2, '0')} fireAtMin=${fireAtMin} nowMin=${ph.minutesOfDay}`);

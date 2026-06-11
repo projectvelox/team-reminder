@@ -70,6 +70,15 @@ function snoozeLabel(data, untilIso) {
   return 'later';
 }
 
+function composeMessage(text) {
+  return {
+    composeExtension: {
+      type: 'message',
+      text,
+    },
+  };
+}
+
 function parseAddCommand(rest) {
   const tokens = rest.trim().split(/\s+/).filter(Boolean);
   if (tokens.length === 0) return null;
@@ -152,6 +161,10 @@ class ReminderBot extends TeamsActivityHandler {
       await this._handleCardAction(context, data);
       return { status: 200, body: { statusCode: 200, type: 'application/vnd.microsoft.activity.message', value: 'OK' } };
     }
+    // Compose extension command from anywhere in Teams (search bar / compose box).
+    if (context.activity.name === 'composeExtension/submitAction') {
+      return await this._handleComposeSubmit(context);
+    }
     return await super.onInvokeActivity(context);
   }
 
@@ -189,6 +202,43 @@ class ReminderBot extends TeamsActivityHandler {
       user.eodSnoozedUntil = Date.now() + 15 * 60 * 1000;
       await store.upsertUser(oid, user);
       await context.sendActivity("OK — I'll nudge you again in 15 min.");
+    }
+  }
+
+  async _handleComposeSubmit(context) {
+    const oid = context.activity.from?.aadObjectId;
+    const commandId = context.activity.value?.commandId;
+    const data = context.activity.value?.data || {};
+    if (!oid || commandId !== 'remind') {
+      return { status: 200, body: composeMessage('Sorry, this command is not recognized.') };
+    }
+    const text = String(data.text || '').trim();
+    if (!text) {
+      return { status: 200, body: composeMessage("I need at least a title. Try `5pm Send report #work`.") };
+    }
+    const parsed = parseAddCommand(text);
+    if (!parsed) {
+      return { status: 200, body: composeMessage("I couldn't parse that. Try `5pm Send report #work`.") };
+    }
+    try {
+      const id = (globalThis.crypto?.randomUUID?.()) || `id-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+      const reminder = {
+        id,
+        title: parsed.title,
+        time: parsed.time,
+        done: false,
+        firedAt: null,
+        createdDate: store.todayKey(),
+        closedAt: null,
+        tags: parsed.tags,
+        priority: 'normal',
+      };
+      await store.upsertReminder(oid, reminder);
+      const when = reminder.time ? ` at ${reminder.time}` : ' (anytime)';
+      const tagLabel = reminder.tags.length ? ` ${reminder.tags.map((t) => `#${t}`).join(' ')}` : '';
+      return { status: 200, body: composeMessage(`Added: ${reminder.title}${when}${tagLabel}`) };
+    } catch (err) {
+      return { status: 200, body: composeMessage(`Could not add: ${err?.message || err}`) };
     }
   }
 
