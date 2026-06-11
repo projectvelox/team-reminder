@@ -4,12 +4,17 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Day Reminders</title>
-  <link rel="stylesheet" href="styles.css?v=1.2.7" />
+  <link rel="stylesheet" href="styles.css?v=1.2.8" />
   <script src="https://res.cdn.office.net/teams-js/2.24.0/js/MicrosoftTeams.min.js"></script>
 </head>
 <body data-theme="default">
   <header class="topbar">
     <div class="topbar-actions">
+      <div class="search-wrap">
+        <input id="searchInput" class="search-input" type="search" placeholder="Search reminders" aria-label="Search reminders (shortcut: f)" autocomplete="off" />
+        <button id="searchClear" class="search-clear" type="button" title="Clear search" aria-label="Clear search" hidden>&times;</button>
+      </div>
+      <button id="bulkToggle" class="btn ghost" title="Select multiple reminders">Select</button>
       <button id="markAllDone" class="btn ghost" title="Mark every open reminder as done" hidden>Mark all done</button>
       <button id="groupToggle" class="btn ghost" title="Group reminders by tag (shortcut: g)" aria-pressed="false">Group by tag</button>
       <button id="openSettings" class="btn ghost" title="Settings">&#9881; Settings</button>
@@ -23,6 +28,18 @@
     <main>
       <p id="errorBanner" class="error-banner" hidden></p>
 
+      <section id="onboardingCard" class="onboarding-card" hidden>
+        <div>
+          <h3>Welcome to Day Reminders</h3>
+          <ol>
+            <li>Type a task above and press <strong>Add</strong>. Optional: pick a time.</li>
+            <li>Add <code>#tags</code> in the title (e.g. <code>Send report #work</code>) to group your day.</li>
+            <li>Open the <strong>Chat</strong> tab to get proactive nudges in Teams; type <code>/help</code> there for shortcuts.</li>
+          </ol>
+        </div>
+        <button id="dismissOnboarding" class="dismiss" type="button" aria-label="Dismiss welcome">&times;</button>
+      </section>
+
       <section class="card">
         <form id="addForm" class="add-row" autocomplete="off">
           <input id="title" type="text" placeholder="What do you need to remember? (try #tags inline, e.g. Send report #work)" aria-label="Reminder text. Press slash anywhere to focus this field." required />
@@ -32,12 +49,29 @@
         <p class="hint" id="permHint" hidden></p>
       </section>
 
+      <div id="filterPills" class="filter-pills" role="group" aria-label="Quick filters">
+        <button type="button" class="filter-pill" data-quick="all" aria-pressed="true">All</button>
+        <button type="button" class="filter-pill" data-quick="timed" aria-pressed="false" title="Open reminders with a time set">&#9200; Timed</button>
+        <button type="button" class="filter-pill" data-quick="anytime" aria-pressed="false" title="Open reminders with no time">&#9711; Anytime</button>
+        <button type="button" class="filter-pill" data-quick="high" aria-pressed="false" title="High priority only">&#9733; Priority</button>
+        <button type="button" class="filter-pill" data-quick="done" aria-pressed="false" title="Completed reminders only">&#10003; Done</button>
+        <button type="button" id="openTemplates" class="filter-pill" title="Pick from common reminder templates">+ Templates</button>
+      </div>
+
       <div id="filterBanner" class="filter-banner" hidden>
-        <span>Showing <strong id="filterTagLabel"></strong></span>
-        <button id="clearFilter" class="link" type="button">Clear filter</button>
+        <span class="crumbs" id="filterCrumbs"></span>
+        <button id="clearFilter" class="link" type="button">Clear all</button>
       </div>
 
       <div id="reminderRoot"></div>
+
+      <div id="bulkBar" class="bulk-bar" hidden>
+        <span class="count" id="bulkCount">0 selected</span>
+        <button type="button" id="bulkDone" class="btn ghost small">Mark done</button>
+        <button type="button" id="bulkDelete" class="btn ghost small">Delete</button>
+        <button type="button" id="bulkPriority" class="btn ghost small">Toggle &#9733;</button>
+        <button type="button" id="bulkCancel" class="btn ghost small">Cancel</button>
+      </div>
     </main>
 
     <aside class="guide">
@@ -50,10 +84,13 @@
           <li><strong>Edit inline:</strong> click a title or time to change it. Enter saves, Esc cancels.</li>
           <li><strong>Reorder:</strong> grab the <span class="kbd">☰</span> handle to drag items within Anytime today or tag sections.</li>
           <li><strong>More options:</strong> click <span class="kbd">⋯</span> on a row to set a custom lead time (overrides your default).</li>
+          <li><strong>Search:</strong> the <em>Search reminders</em> box in the top bar matches title and tags. Shortcut <code>f</code>.</li>
+          <li><strong>Quick filters:</strong> use the row of pills above the list (<em>Timed</em>, <em>Anytime</em>, <em>Priority</em>, <em>Done</em>) to focus a slice fast.</li>
+          <li><strong>Select multiple:</strong> click <em>Select</em> in the top bar to pick several rows and bulk-done / delete / star them.</li>
           <li><strong>Group by tag:</strong> the top-right toggle, or press <code>g</code>.</li>
           <li><strong>Mark done:</strong> tick the checkbox. Undo within 5 seconds.</li>
           <li><strong>Bot chat:</strong> open the <em>Chat</em> tab above and type <code>/help</code>, <code>/list</code>, <code>/add</code>, <code>/done</code>.</li>
-          <li><strong>Shortcuts:</strong> <code>/</code> focus add, <code>g</code> group, <code>?</code> this guide.</li>
+          <li><strong>Shortcuts:</strong> <code>/</code> add, <code>f</code> search, <code>g</code> group, <code>?</code> this guide, <code>Esc</code> clear filters.</li>
         </ul>
       </section>
     </aside>
@@ -106,6 +143,18 @@
     <form method="dialog">
       <h2>What's new</h2>
       <ul class="changelog">
+        <li><strong>v1.2.8</strong>
+          <ul>
+            <li>Search box in the top bar (shortcut <code>f</code>) matches title and tags</li>
+            <li>Quick-filter pills: <em>All / Timed / Anytime / Priority / Done</em></li>
+            <li>Filter state (search + pills + tag) persists across reloads</li>
+            <li><em>Select</em> mode for bulk done, delete, and priority toggle</li>
+            <li>Templates: a curated set of common reminders, one click away</li>
+            <li>First-launch welcome card with a 3-step intro (dismissable)</li>
+            <li>Mobile polish: tighter touch targets, sensible wraps on narrow screens</li>
+          </ul>
+        </li>
+        <li><strong>v1.2.7</strong>: fix global <code>hidden</code> attribute (filter banner now actually hides when cleared)</li>
         <li><strong>v1.2.6</strong>
           <ul>
             <li>Drag-to-reorder via the <span class="kbd">☰</span> handle (in Anytime today, tag, and high-priority sections)</li>
@@ -150,6 +199,17 @@
     </form>
   </dialog>
 
+  <dialog id="templatesDialog" class="dialog">
+    <form method="dialog" id="templatesForm">
+      <h2>Templates</h2>
+      <p class="muted" style="margin: 0 0 8px;">Click any template to add it to today.</p>
+      <div id="templateGrid" class="template-grid"></div>
+      <div class="dialog-actions">
+        <button type="submit" class="btn ghost">Close</button>
+      </div>
+    </form>
+  </dialog>
+
   <dialog id="guideDialog" class="dialog">
     <form method="dialog">
       <h2>Quick guide</h2>
@@ -181,6 +241,6 @@
     <a class="link" href="https://github.com/projectvelox/team-reminder/issues" target="_blank" rel="noopener">Report an issue</a>
   </footer>
 
-  <script src="app.js?v=1.2.7"></script>
+  <script src="app.js?v=1.2.8"></script>
 </body>
 </html>

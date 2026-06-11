@@ -1,4 +1,4 @@
-/* Day Reminders — Teams personal tab (v1.2.7)
+/* Day Reminders — Teams personal tab (v1.2.8)
    Thin client over the bot's REST API. Auth via Teams SSO.
    Server-side bot handles all notifications (proactive Adaptive Cards in chat).
 */
@@ -8,7 +8,7 @@
   const API_BASE = "https://func-day-reminders-17023.azurewebsites.net/api";
   const DONE_AGE_MS = 24 * 60 * 60 * 1000;
   const UNDO_MS = 5000;
-  const APP_VERSION = "1.2.7";
+  const APP_VERSION = "1.2.8";
   const TAG_PALETTE = [
     "#0078d4", "#107c10", "#8764b8", "#ca5010", "#c50f1f",
     "#038387", "#d83b01", "#5c2d91", "#0099bc", "#498205",
@@ -28,14 +28,56 @@
   let hasBot = false;
   let authToken = null;
   let activeTagFilter = null;
+  let quickFilter = "all"; // all | timed | anytime | high | done
+  let searchText = "";
+  let bulkMode = false;
+  const bulkSelected = new Set();
   let teamsTheme = "default";
   let lastFocusedTrigger = null; // for dialog focus return
   const pendingDeletes = new Map(); // id -> { reminder, timer, toast }
 
+  // localStorage keys (tab-only UI state — server is still source of truth for reminders)
+  const LS_THEME = "themeOverride";
+  const LS_QUICK_FILTER = "quickFilter";
+  const LS_TAG_FILTER = "tagFilter";
+  const LS_SEARCH = "searchText";
+  const LS_ONBOARDED = "onboardingDismissed";
+
   try {
-    const saved = localStorage.getItem("themeOverride");
+    const saved = localStorage.getItem(LS_THEME);
     if (saved) settings.themeOverride = saved;
+    const sq = localStorage.getItem(LS_QUICK_FILTER);
+    if (sq && ["all", "timed", "anytime", "high", "done"].includes(sq)) quickFilter = sq;
+    const st = localStorage.getItem(LS_TAG_FILTER);
+    if (st) activeTagFilter = st;
+    const ss = localStorage.getItem(LS_SEARCH);
+    if (ss) searchText = ss;
   } catch (_) {}
+
+  // debounce search input writes/render
+  let searchTimer = null;
+  function debouncedSearch(value) {
+    searchText = value;
+    if (searchTimer) clearTimeout(searchTimer);
+    searchTimer = setTimeout(() => {
+      try { localStorage.setItem(LS_SEARCH, searchText); } catch (_) {}
+      render();
+    }, 150);
+  }
+
+  // templates: title + optional time (24h). Times use user's wall clock interpretation.
+  const TEMPLATES = [
+    { title: "Standup #work", time: "10:00" },
+    { title: "Daily review #review", time: "17:00" },
+    { title: "Lunch #personal", time: "12:30" },
+    { title: "Hydration #wellness", time: "11:00" },
+    { title: "PR review window #work", time: "14:00" },
+    { title: "End-of-day wrap #review", time: "17:30" },
+    { title: "1:1 prep #work", time: "16:00" },
+    { title: "Inbox zero #work", time: "" },
+    { title: "Weekly planning #planning", time: "" },
+    { title: "Walk break #wellness", time: "15:00" },
+  ];
 
   // ---------- DOM ----------
   const $ = (id) => document.getElementById(id);
@@ -51,7 +93,6 @@
   const groupToggle = $("groupToggle");
   const markAllDoneBtn = $("markAllDone");
   const filterBanner = $("filterBanner");
-  const filterTagLabel = $("filterTagLabel");
   const clearFilterBtn = $("clearFilter");
   const liveRegion = $("liveRegion");
   const toastRegion = $("toastRegion");
@@ -60,6 +101,16 @@
   const rowOptionsForm = $("rowOptionsForm");
   const rowOptionsTitle = $("rowOptionsTitle");
   const rowLeadMinutes = $("rowLeadMinutes");
+  const searchInput = $("searchInput");
+  const searchClear = $("searchClear");
+  const bulkToggleBtn = $("bulkToggle");
+  const bulkBar = $("bulkBar");
+  const bulkCountLabel = $("bulkCount");
+  const filterPills = $("filterPills");
+  const filterCrumbs = $("filterCrumbs");
+  const onboardingCard = $("onboardingCard");
+  const templatesDialog = $("templatesDialog");
+  const templateGrid = $("templateGrid");
   let editingReminderId = null;
 
   if (versionLabel) versionLabel.textContent = `v${APP_VERSION}`;
@@ -127,10 +178,61 @@
     render();
   });
 
-  clearFilterBtn.addEventListener("click", () => setTagFilter(null));
+  clearFilterBtn.addEventListener("click", clearAllFilters);
   markAllDoneBtn.addEventListener("click", markAllOpenDone);
   $("openGuide").addEventListener("click", () => openDialog(guideDialog));
   $("openWhatsNew").addEventListener("click", () => openDialog(whatsNewDialog));
+
+  // search input
+  if (searchInput) {
+    searchInput.value = searchText;
+    if (searchText) searchClear.hidden = false;
+    searchInput.addEventListener("input", (e) => {
+      const v = e.target.value;
+      searchClear.hidden = !v;
+      debouncedSearch(v);
+    });
+    searchInput.addEventListener("keydown", (e) => {
+      if (e.key === "Escape") { e.preventDefault(); clearSearch(); searchInput.blur(); }
+    });
+  }
+  if (searchClear) searchClear.addEventListener("click", () => { clearSearch(); searchInput.focus(); });
+
+  // quick-filter pills
+  if (filterPills) {
+    filterPills.addEventListener("click", (e) => {
+      const btn = e.target.closest("button.filter-pill");
+      if (!btn) return;
+      const key = btn.dataset.quick;
+      if (!key) return;
+      setQuickFilter(key);
+    });
+  }
+
+  // bulk select
+  if (bulkToggleBtn) bulkToggleBtn.addEventListener("click", () => setBulkMode(!bulkMode));
+  if (bulkBar) {
+    $("bulkDone").addEventListener("click", bulkMarkDone);
+    $("bulkDelete").addEventListener("click", bulkDelete);
+    $("bulkPriority").addEventListener("click", bulkTogglePriority);
+    $("bulkCancel").addEventListener("click", () => setBulkMode(false));
+  }
+
+  // onboarding dismiss
+  $("dismissOnboarding").addEventListener("click", () => {
+    onboardingCard.hidden = true;
+    try { localStorage.setItem(LS_ONBOARDED, "1"); } catch (_) {}
+    lastFocusedTrigger = null;
+  });
+  try {
+    if (localStorage.getItem(LS_ONBOARDED) !== "1") onboardingCard.hidden = false;
+  } catch (_) { /* show by default if storage broken */ onboardingCard.hidden = false; }
+
+  // templates
+  $("openTemplates").addEventListener("click", () => {
+    buildTemplateGrid();
+    openDialog(templatesDialog);
+  });
 
   $("rowOptionsCancel").addEventListener("click", () => rowOptionsDialog.close());
   rowOptionsForm.addEventListener("submit", async (e) => {
@@ -167,13 +269,17 @@
     const tag = (t && t.tagName ? t.tagName.toLowerCase() : "");
     if (tag === "input" || tag === "textarea" || tag === "select" || (t && t.isContentEditable)) return;
     if (e.key === "/") { e.preventDefault(); titleInput.focus(); }
+    else if (e.key === "f" || e.key === "F") { e.preventDefault(); searchInput && searchInput.focus(); }
     else if (e.key === "g" || e.key === "G") { e.preventDefault(); groupToggle.click(); }
     else if (e.key === "?") { e.preventDefault(); openDialog(guideDialog); }
-    else if (e.key === "Escape" && activeTagFilter) { setTagFilter(null); }
+    else if (e.key === "Escape" && (activeTagFilter || searchText || quickFilter !== "all" || bulkMode)) {
+      if (bulkMode) setBulkMode(false);
+      else clearAllFilters();
+    }
   });
 
   // focus return after a dialog closes
-  for (const d of [settingsDialog, whatsNewDialog, guideDialog, rowOptionsDialog]) {
+  for (const d of [settingsDialog, whatsNewDialog, guideDialog, rowOptionsDialog, templatesDialog]) {
     d.addEventListener("close", () => {
       if (lastFocusedTrigger && typeof lastFocusedTrigger.focus === "function") {
         lastFocusedTrigger.focus();
@@ -184,33 +290,96 @@
 
   // ---------- render ----------
   function render() {
-    const visible = activeTagFilter
-      ? reminders.filter((r) => (r.tags || []).some((t) => t.toLowerCase() === activeTagFilter.toLowerCase()))
-      : reminders;
-    const open = visible.filter((r) => !r.done && !pendingDeletes.has(r.id));
-    const done = visible.filter((r) => r.done && !pendingDeletes.has(r.id));
+    const norm = (s) => String(s || "").toLowerCase();
+    const searchNorm = norm(searchText.trim());
+
+    // Cascade: !pendingDelete -> tag -> search
+    let visible = reminders.filter((r) => !pendingDeletes.has(r.id));
+    if (activeTagFilter) {
+      const tagNorm = norm(activeTagFilter);
+      visible = visible.filter((r) => (r.tags || []).some((t) => norm(t) === tagNorm));
+    }
+    if (searchNorm) {
+      visible = visible.filter((r) =>
+        norm(r.title).includes(searchNorm) ||
+        (r.tags || []).some((t) => norm(t).includes(searchNorm))
+      );
+    }
+
+    const open = visible.filter((r) => !r.done);
+    const doneAll = visible.filter((r) => r.done);
     const recentDone = settings.showAllDone
-      ? done
-      : done.filter((r) => !r.closedAt || (Date.now() - new Date(r.closedAt).getTime()) < DONE_AGE_MS);
-    const olderDoneCount = done.length - recentDone.length;
+      ? doneAll
+      : doneAll.filter((r) => !r.closedAt || (Date.now() - new Date(r.closedAt).getTime()) < DONE_AGE_MS);
+    const olderDoneCount = doneAll.length - recentDone.length;
 
     reminderRoot.innerHTML = "";
+    updateFilterBanner();
+    updateQuickFilterPills();
 
     const totalNonPending = reminders.filter((r) => !pendingDeletes.has(r.id)).length;
-    if (totalNonPending === 0 && !activeTagFilter) {
-      reminderRoot.appendChild(buildEmptyHero());
-    } else if (settings.groupByTag) {
-      renderByTag(open);
+    const noFiltersActive = !activeTagFilter && !searchNorm && quickFilter === "all";
+
+    if (quickFilter === "done") {
+      if (doneAll.length === 0) {
+        reminderRoot.appendChild(buildEmptyState(noFiltersActive
+          ? "No completed reminders yet."
+          : "No completed reminders match these filters."));
+      } else {
+        reminderRoot.appendChild(buildDoneSection(recentDone, olderDoneCount));
+      }
+    } else if (quickFilter === "timed") {
+      const items = sortReminders(open.filter((r) => !!r.time));
+      reminderRoot.appendChild(buildSection("Timed today", items, {
+        showWhen: true,
+        emptyText: items.length ? null : "Nothing scheduled in this slice.",
+        meta: todayDateString,
+        draggable: false,
+      }));
+    } else if (quickFilter === "anytime") {
+      const items = sortByOrderThenTime(open.filter((r) => !r.time));
+      reminderRoot.appendChild(buildSection("Anytime today", items, {
+        showWhen: false,
+        emptyText: items.length ? null : "Nothing without a time in this slice.",
+        meta: "No specific time",
+        draggable: true,
+      }));
+    } else if (quickFilter === "high") {
+      const items = sortByOrderThenTime(open.filter((r) => r.priority === "high"));
+      reminderRoot.appendChild(buildSection("High priority", items, {
+        showWhen: true,
+        emptyText: items.length ? null : "No high-priority reminders in this slice.",
+        meta: "",
+        draggable: true,
+      }));
     } else {
-      renderByTime(open);
+      // quickFilter === "all"
+      if (totalNonPending === 0 && noFiltersActive) {
+        reminderRoot.appendChild(buildEmptyHero());
+      } else if (open.length === 0 && !noFiltersActive) {
+        reminderRoot.appendChild(buildEmptyState("No open reminders match these filters."));
+      } else if (settings.groupByTag) {
+        renderByTag(open);
+      } else {
+        renderByTime(open);
+      }
+      if (recentDone.length || olderDoneCount) {
+        reminderRoot.appendChild(buildDoneSection(recentDone, olderDoneCount));
+      }
     }
 
-    if (recentDone.length || olderDoneCount) {
-      reminderRoot.appendChild(buildDoneSection(recentDone, olderDoneCount));
-    }
-
-    markAllDoneBtn.hidden = open.length === 0;
+    markAllDoneBtn.hidden = bulkMode || open.length === 0 || quickFilter === "done";
+    updateBulkBar();
     updateBotHint();
+  }
+
+  function buildEmptyState(text) {
+    const p = document.createElement("p");
+    p.className = "empty";
+    p.style.textAlign = "center";
+    p.style.padding = "18px 8px";
+    p.textContent = text;
+    return p;
   }
 
   function buildEmptyHero() {
@@ -400,14 +569,28 @@
     if (r.firedAt) li.classList.add("fired");
     if (r.priority === "high") li.classList.add("high");
     if (pendingDeletes.has(r.id)) li.classList.add("pending-delete");
+    if (bulkMode && bulkSelected.has(r.id)) li.classList.add("selected");
 
-    const handle = document.createElement("button");
-    handle.type = "button";
-    handle.className = "drag-handle";
-    handle.setAttribute("aria-label", "Drag to reorder");
-    handle.title = draggable ? "Drag to reorder" : "Reorder not available in this view";
-    handle.textContent = "☰"; // ≡
-    if (!draggable) handle.style.visibility = "hidden";
+    // In bulk mode the drag handle is replaced by a select checkbox.
+    let leading;
+    if (bulkMode) {
+      leading = document.createElement("input");
+      leading.type = "checkbox";
+      leading.className = "bulk-checkbox";
+      leading.checked = bulkSelected.has(r.id);
+      leading.setAttribute("aria-label", `Select ${r.title}`);
+      leading.addEventListener("change", () => toggleBulkSelected(r));
+      draggable = false; // disable drag while selecting
+    } else {
+      leading = document.createElement("button");
+      leading.type = "button";
+      leading.className = "drag-handle";
+      leading.setAttribute("aria-label", "Drag to reorder");
+      leading.title = draggable ? "Drag to reorder" : "Reorder not available in this view";
+      leading.textContent = "☰"; // ≡
+      if (!draggable) leading.style.visibility = "hidden";
+    }
+    const handle = leading;
 
     const star = document.createElement("button");
     star.className = "icon-btn star" + (r.priority === "high" ? " on" : "");
@@ -707,11 +890,28 @@
     }
   }
 
+  function currentVisiblePool() {
+    const norm = (s) => String(s || "").toLowerCase();
+    const sn = norm(searchText.trim());
+    let v = reminders.filter((r) => !pendingDeletes.has(r.id));
+    if (activeTagFilter) {
+      const tn = norm(activeTagFilter);
+      v = v.filter((r) => (r.tags || []).some((t) => norm(t) === tn));
+    }
+    if (sn) {
+      v = v.filter((r) =>
+        norm(r.title).includes(sn) ||
+        (r.tags || []).some((t) => norm(t).includes(sn))
+      );
+    }
+    return v;
+  }
+
   async function markAllOpenDone() {
-    const openVisible = (activeTagFilter
-      ? reminders.filter((r) => (r.tags || []).some((t) => t.toLowerCase() === activeTagFilter.toLowerCase()))
-      : reminders
-    ).filter((r) => !r.done && !pendingDeletes.has(r.id));
+    let openVisible = currentVisiblePool().filter((r) => !r.done);
+    if (quickFilter === "timed") openVisible = openVisible.filter((r) => !!r.time);
+    else if (quickFilter === "anytime") openVisible = openVisible.filter((r) => !r.time);
+    else if (quickFilter === "high") openVisible = openVisible.filter((r) => r.priority === "high");
     if (openVisible.length === 0) return;
     if (openVisible.length > 1 && !confirm(`Mark all ${openVisible.length} open reminders as done?`)) return;
     const snapshot = openVisible.map((r) => ({ id: r.id, done: r.done, closedAt: r.closedAt }));
@@ -735,9 +935,7 @@
   }
 
   async function clearDoneVisible() {
-    const inFilter = activeTagFilter
-      ? reminders.filter((r) => (r.tags || []).some((t) => t.toLowerCase() === activeTagFilter.toLowerCase()))
-      : reminders;
+    const inFilter = currentVisiblePool();
     const targets = inFilter.filter((r) => r.done && (settings.showAllDone || !r.closedAt || (Date.now() - new Date(r.closedAt).getTime()) < DONE_AGE_MS));
     if (targets.length === 0) return;
     const snapshot = targets.map((r) => ({ ...r }));
@@ -766,18 +964,209 @@
     else reminders.push(r);
   }
 
-  // ---------- tag filter ----------
+  // ---------- filters ----------
   function setTagFilter(tag) {
     activeTagFilter = tag;
-    if (tag) {
-      filterBanner.hidden = false;
-      filterTagLabel.textContent = `#${tag}`;
-      announce(`Filtered to ${tag}`);
-    } else {
+    try {
+      if (tag) localStorage.setItem(LS_TAG_FILTER, tag);
+      else localStorage.removeItem(LS_TAG_FILTER);
+    } catch (_) {}
+    if (tag) announce(`Filtered to ${tag}`);
+    else announce("Tag filter cleared");
+    render();
+  }
+  function setQuickFilter(key) {
+    if (!["all", "timed", "anytime", "high", "done"].includes(key)) return;
+    quickFilter = key;
+    try { localStorage.setItem(LS_QUICK_FILTER, key); } catch (_) {}
+    announce(key === "all" ? "Showing all" : `Quick filter: ${key}`);
+    render();
+  }
+  function clearSearch() {
+    searchText = "";
+    if (searchInput) searchInput.value = "";
+    if (searchClear) searchClear.hidden = true;
+    try { localStorage.removeItem(LS_SEARCH); } catch (_) {}
+    render();
+  }
+  function clearAllFilters() {
+    activeTagFilter = null;
+    quickFilter = "all";
+    searchText = "";
+    if (searchInput) searchInput.value = "";
+    if (searchClear) searchClear.hidden = true;
+    try {
+      localStorage.removeItem(LS_TAG_FILTER);
+      localStorage.removeItem(LS_SEARCH);
+      localStorage.setItem(LS_QUICK_FILTER, "all");
+    } catch (_) {}
+    announce("All filters cleared");
+    render();
+  }
+  function updateFilterBanner() {
+    if (!filterBanner || !filterCrumbs) return;
+    filterCrumbs.textContent = "";
+    const crumbs = [];
+    if (quickFilter !== "all") {
+      const labels = { timed: "Timed", anytime: "Anytime", high: "Priority", done: "Done" };
+      crumbs.push({ kind: "quick", text: labels[quickFilter] });
+    }
+    if (activeTagFilter) crumbs.push({ kind: "tag", text: `#${activeTagFilter}` });
+    if (searchText) crumbs.push({ kind: "search", text: `"${truncate(searchText, 30)}"` });
+    if (crumbs.length === 0) {
       filterBanner.hidden = true;
-      announce("Filter cleared");
+      return;
+    }
+    filterBanner.hidden = false;
+    const intro = document.createElement("span");
+    intro.textContent = "Showing ";
+    intro.style.marginRight = "2px";
+    filterCrumbs.appendChild(intro);
+    for (const c of crumbs) {
+      const chip = document.createElement("span");
+      chip.className = "crumb";
+      chip.textContent = c.text;
+      filterCrumbs.appendChild(chip);
+    }
+  }
+  function updateQuickFilterPills() {
+    if (!filterPills) return;
+    for (const btn of filterPills.querySelectorAll("button.filter-pill[data-quick]")) {
+      btn.setAttribute("aria-pressed", String(btn.dataset.quick === quickFilter));
+    }
+  }
+
+  // ---------- bulk select ----------
+  function setBulkMode(on) {
+    bulkMode = !!on;
+    bulkSelected.clear();
+    document.body.classList.toggle("bulk-mode", bulkMode);
+    if (bulkToggleBtn) {
+      bulkToggleBtn.textContent = bulkMode ? "Cancel select" : "Select";
+      bulkToggleBtn.setAttribute("aria-pressed", String(bulkMode));
     }
     render();
+  }
+  function toggleBulkSelected(r) {
+    if (bulkSelected.has(r.id)) bulkSelected.delete(r.id);
+    else bulkSelected.add(r.id);
+    render();
+  }
+  function updateBulkBar() {
+    if (!bulkBar) return;
+    if (!bulkMode || bulkSelected.size === 0) {
+      bulkBar.hidden = true;
+      return;
+    }
+    bulkBar.hidden = false;
+    bulkCountLabel.textContent = `${bulkSelected.size} selected`;
+  }
+  function selectedReminders() {
+    return reminders.filter((r) => bulkSelected.has(r.id) && !pendingDeletes.has(r.id));
+  }
+  async function bulkMarkDone() {
+    const targets = selectedReminders().filter((r) => !r.done);
+    if (targets.length === 0) { setBulkMode(false); return; }
+    const snapshot = targets.map((r) => ({ id: r.id, done: r.done, closedAt: r.closedAt }));
+    const now = new Date().toISOString();
+    for (const r of targets) { r.done = true; r.closedAt = now; }
+    setBulkMode(false);
+    try {
+      await Promise.all(targets.map((r) =>
+        api("PATCH", `/reminders/${r.id}`, { done: true })
+          .catch((err) => { if (err.status !== 404) throw err; })
+      ));
+      announce(`${targets.length} marked done`);
+    } catch (err) {
+      for (const snap of snapshot) {
+        const rr = reminders.find((x) => x.id === snap.id);
+        if (rr) { rr.done = snap.done; rr.closedAt = snap.closedAt; }
+      }
+      render();
+      showError("Could not mark all selected", err);
+    }
+  }
+  async function bulkDelete() {
+    const targets = selectedReminders();
+    if (targets.length === 0) { setBulkMode(false); return; }
+    setBulkMode(false);
+    try {
+      await Promise.all(targets.map((r) =>
+        api("DELETE", `/reminders/${r.id}`).catch((e) => { if (e.status !== 404) throw e; })
+      ));
+      reminders = reminders.filter((r) => !targets.some((t) => t.id === r.id));
+      render();
+      announce(`${targets.length} deleted`);
+    } catch (err) {
+      showError("Could not delete all selected", err);
+    }
+  }
+  async function bulkTogglePriority() {
+    const targets = selectedReminders();
+    if (targets.length === 0) { setBulkMode(false); return; }
+    // If any are not high, raise all to high; else demote all to normal.
+    const promoteAll = targets.some((r) => r.priority !== "high");
+    const nextPriority = promoteAll ? "high" : "normal";
+    const snapshot = targets.map((r) => ({ id: r.id, priority: r.priority }));
+    for (const r of targets) r.priority = nextPriority;
+    setBulkMode(false);
+    try {
+      await Promise.all(targets.map((r) =>
+        api("PATCH", `/reminders/${r.id}`, { priority: nextPriority })
+          .catch((err) => { if (err.status !== 404) throw err; })
+      ));
+      announce(`${targets.length} updated`);
+    } catch (err) {
+      for (const snap of snapshot) {
+        const rr = reminders.find((x) => x.id === snap.id);
+        if (rr) rr.priority = snap.priority;
+      }
+      render();
+      showError("Could not update all selected", err);
+    }
+  }
+
+  // ---------- templates ----------
+  function buildTemplateGrid() {
+    if (!templateGrid) return;
+    templateGrid.textContent = "";
+    for (const t of TEMPLATES) {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "template";
+      const title = document.createElement("strong");
+      title.textContent = t.title;
+      const sub = document.createElement("span");
+      sub.className = "sub";
+      sub.textContent = t.time ? `at ${formatTime(t.time)}` : "no time";
+      btn.append(title, sub);
+      btn.addEventListener("click", async () => {
+        templatesDialog.close();
+        await addFromTemplate(t);
+      });
+      templateGrid.appendChild(btn);
+    }
+  }
+  async function addFromTemplate(t) {
+    const { title, tags } = extractTagsFromTitle(t.title);
+    if (!title) return;
+    const tempId = `tmp-${Date.now()}-${Math.random().toString(16).slice(2, 8)}`;
+    const optimistic = {
+      id: tempId, title, time: t.time || null, tags,
+      done: false, priority: "normal", closedAt: null, _optimistic: true,
+    };
+    reminders.push(optimistic);
+    render();
+    try {
+      const created = await api("POST", "/reminders", { title, time: t.time || null, tags });
+      replaceById(tempId, created.reminder);
+      render();
+      announce(`Added template: ${title}`);
+    } catch (err) {
+      reminders = reminders.filter((r) => r.id !== tempId);
+      render();
+      showError("Could not add template", err);
+    }
   }
 
   // ---------- toasts ----------
