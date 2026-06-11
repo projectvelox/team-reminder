@@ -30,14 +30,13 @@
   const addForm = $("addForm");
   const titleInput = $("title");
   const timeInput = $("time");
-  const todayDate = $("todayDate");
   const settingsDialog = $("settingsDialog");
   const settingsForm = $("settingsForm");
   const permHint = $("permHint");
   const reminderRoot = $("reminderRoot");
   const groupToggle = $("groupToggle");
 
-  todayDate.textContent = new Date().toLocaleDateString(undefined, {
+  const todayDateString = new Date().toLocaleDateString(undefined, {
     weekday: "long", month: "short", day: "numeric",
   });
 
@@ -119,7 +118,7 @@
     reminderRoot.appendChild(buildSection("Today", timed, {
       showWhen: true,
       emptyText: timed.length ? null : "Nothing scheduled. Add something above.",
-      meta: todayDate.textContent,
+      meta: todayDateString,
     }));
     reminderRoot.appendChild(buildSection("Anytime today", anytime, {
       showWhen: false,
@@ -152,7 +151,7 @@
       reminderRoot.appendChild(buildSection("No tag", sortReminders(untagged), { showWhen: true, emptyText: null }));
     }
     if (tagNames.length === 0 && untagged.length === 0) {
-      reminderRoot.appendChild(buildSection("Today", [], { showWhen: true, emptyText: "Nothing scheduled.", meta: todayDate.textContent }));
+      reminderRoot.appendChild(buildSection("Today", [], { showWhen: true, emptyText: "Nothing scheduled.", meta: todayDateString }));
     }
   }
 
