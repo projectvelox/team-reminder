@@ -44,9 +44,11 @@ app.http('remindersCollection', {
     if (!title) return json(400, { error: 'title is required' });
     const time = body.time ? String(body.time).slice(0, 5) : null;
     if (time && !/^\d{2}:\d{2}$/.test(time)) return json(400, { error: 'time must be HH:MM' });
+    const tags = Array.isArray(body.tags) ? body.tags.map(String).map(s => s.trim()).filter(Boolean).slice(0, 8) : [];
+    const priority = body.priority === 'high' ? 'high' : 'normal';
 
     const id = (globalThis.crypto?.randomUUID?.()) || `id-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
-    const reminder = { id, title, time, done: false, firedAt: null, createdDate: store.todayKey() };
+    const reminder = { id, title, time, done: false, firedAt: null, createdDate: store.todayKey(), closedAt: null, tags, priority };
     await store.upsertReminder(user.oid, reminder);
     return json(201, { reminder });
   },
@@ -67,17 +69,30 @@ app.http('remindersItem', {
 
     if (request.method === 'DELETE') {
       const ok = await store.deleteReminder(user.oid, id);
-      return json(ok ? 204 : 404, ok ? {} : { error: 'not found' });
+      if (ok) return { status: 204, headers: corsHeaders() };
+      return json(404, { error: 'not found' });
     }
 
-    // PATCH — partial update (only done flag for now)
+    // PATCH — partial update
     const body = await request.json().catch(() => ({}));
     const existing = await store.getReminder(user.oid, id);
     if (!existing) return json(404, { error: 'not found' });
-    if (typeof body.done === 'boolean') existing.done = body.done;
+    if (typeof body.done === 'boolean') {
+      existing.done = body.done;
+      existing.closedAt = body.done ? new Date().toISOString() : null;
+    }
     if (typeof body.title === 'string' && body.title.trim()) existing.title = body.title.trim();
-    if (body.time === null) existing.time = null;
-    else if (typeof body.time === 'string' && /^\d{2}:\d{2}$/.test(body.time)) existing.time = body.time;
+    if (body.time === null) {
+      existing.time = null;
+      existing.firedAt = null;
+    } else if (typeof body.time === 'string' && /^\d{2}:\d{2}$/.test(body.time)) {
+      if (existing.time !== body.time) existing.firedAt = null;
+      existing.time = body.time;
+    }
+    if (Array.isArray(body.tags)) {
+      existing.tags = body.tags.map(String).map(s => s.trim()).filter(Boolean).slice(0, 8);
+    }
+    if (body.priority === 'high' || body.priority === 'normal') existing.priority = body.priority;
     await store.upsertReminder(user.oid, existing);
     return json(200, { reminder: existing });
   },

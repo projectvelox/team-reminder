@@ -13,6 +13,50 @@ const {
 
 const store = require('./store');
 
+function parseTimeToken(token) {
+  if (!token) return null;
+  const lower = token.toLowerCase();
+  // 12-hour with am/pm: 5pm, 5:30pm, 5p, 12:00am
+  let m = lower.match(/^(\d{1,2})(?::(\d{2}))?\s*(am?|pm?)$/);
+  if (m) {
+    let h = parseInt(m[1], 10);
+    const mm = m[2] ? parseInt(m[2], 10) : 0;
+    const isPm = m[3].startsWith('p');
+    if (h < 1 || h > 12 || mm < 0 || mm > 59) return null;
+    if (h === 12) h = isPm ? 12 : 0;
+    else if (isPm) h += 12;
+    return `${String(h).padStart(2, '0')}:${String(mm).padStart(2, '0')}`;
+  }
+  // 24-hour HH:MM
+  m = lower.match(/^(\d{1,2}):(\d{2})$/);
+  if (m) {
+    const h = parseInt(m[1], 10);
+    const mm = parseInt(m[2], 10);
+    if (h > 23 || mm > 59) return null;
+    return `${String(h).padStart(2, '0')}:${String(mm).padStart(2, '0')}`;
+  }
+  return null;
+}
+
+function parseAddCommand(rest) {
+  const tokens = rest.trim().split(/\s+/).filter(Boolean);
+  if (tokens.length === 0) return null;
+  let i = 0;
+  let time = null;
+  const maybeTime = parseTimeToken(tokens[0]);
+  if (maybeTime) { time = maybeTime; i = 1; }
+  const tags = [];
+  const titleParts = [];
+  for (; i < tokens.length; i++) {
+    const t = tokens[i];
+    if (t.startsWith('#') && t.length > 1) tags.push(t.slice(1));
+    else titleParts.push(t);
+  }
+  const title = titleParts.join(' ').trim();
+  if (!title) return null;
+  return { title, time, tags: tags.slice(0, 8) };
+}
+
 const auth = new ConfigurationBotFrameworkAuthentication({
   MicrosoftAppId: process.env.MicrosoftAppId,
   MicrosoftAppPassword: process.env.MicrosoftAppPassword,
@@ -47,25 +91,23 @@ class ReminderBot extends TeamsActivityHandler {
     });
 
     this.onMessage(async (context, next) => {
-      // Capture/refresh the conversation ref on any message too.
       await this._registerUser(context);
+      const raw = (context.activity.text || '').replace(/^<at>[^<]*<\/at>\s*/, '').trim();
+      const lower = raw.toLowerCase();
+      const oid = context.activity.from.aadObjectId;
 
-      const text = (context.activity.text || '').trim().toLowerCase();
-      if (text === 'help' || text === '/help') {
-        await context.sendActivity("Open the **Reminders** tab to add or check off items. I post here before each timed reminder and at your end-of-day time.");
-      } else if (text === 'list' || text === '/list') {
-        const items = await store.listReminders(context.activity.from.aadObjectId);
-        const open = items.filter((r) => !r.done);
-        if (open.length === 0) {
-          await context.sendActivity('Nothing open right now.');
-        } else {
-          const lines = open
-            .sort((a, b) => (a.time || 'zz').localeCompare(b.time || 'zz'))
-            .map((r) => (r.time ? `• ${r.time} — ${r.title}` : `• ${r.title}`));
-          await context.sendActivity(lines.join('\n'));
-        }
-      } else if (text) {
-        await context.sendActivity("Type **list** to see open items, or open the **Reminders** tab to add new ones.");
+      if (lower === '/help' || lower === 'help' || lower === '?') {
+        await this._sendHelp(context);
+      } else if (lower === '/list' || lower === 'list') {
+        await this._listOpen(context, oid);
+      } else if (lower.startsWith('/done ') || lower.startsWith('done ')) {
+        const query = raw.slice(raw.toLowerCase().indexOf(' ') + 1).trim();
+        await this._markDoneByQuery(context, oid, query);
+      } else if (lower.startsWith('/add ') || lower.startsWith('add ')) {
+        const rest = raw.slice(raw.toLowerCase().indexOf(' ') + 1).trim();
+        await this._addFromCommand(context, oid, rest);
+      } else if (raw) {
+        await context.sendActivity("Try **/add 5pm Send report**, **/list**, **/done report**, or **/help**. Or open the Reminders tab.");
       }
       await next();
     });
@@ -104,6 +146,87 @@ class ReminderBot extends TeamsActivityHandler {
       await store.upsertUser(oid, user);
       await context.sendActivity("OK — I'll nudge you again in 15 min.");
     }
+  }
+
+  async _sendHelp(context) {
+    await context.sendActivity(
+      "**Day Reminders commands**\n" +
+      "* **/add** [time] [#tag] *title* (e.g. `/add 5pm #work Send weekly report`)\n" +
+      "* **/list** to see what's open today\n" +
+      "* **/done** *substring* to mark a matching item done (e.g. `/done report`)\n" +
+      "* **/help** to see this again\n\n" +
+      "Or use the **Reminders** tab in this app for clicking instead of typing."
+    );
+  }
+
+  async _listOpen(context, oid) {
+    const items = await store.listReminders(oid);
+    const open = items.filter((r) => !r.done);
+    if (open.length === 0) {
+      await context.sendActivity('Nothing open right now.');
+      return;
+    }
+    const lines = open
+      .sort((a, b) => {
+        if (a.priority !== b.priority) return a.priority === 'high' ? -1 : 1;
+        return (a.time || 'zz').localeCompare(b.time || 'zz');
+      })
+      .map((r) => {
+        const star = r.priority === 'high' ? '⭐ ' : '';
+        const tags = (r.tags || []).length ? ' ' + r.tags.map((t) => `#${t}`).join(' ') : '';
+        return r.time
+          ? `* ${star}**${r.time}** ${r.title}${tags}`
+          : `* ${star}${r.title}${tags}`;
+      });
+    await context.sendActivity(lines.join('\n'));
+  }
+
+  async _addFromCommand(context, oid, rest) {
+    const parsed = parseAddCommand(rest);
+    if (!parsed) {
+      await context.sendActivity("I need at least a title. Try `/add 5pm Send report`.");
+      return;
+    }
+    const id = (globalThis.crypto?.randomUUID?.()) || `id-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+    const reminder = {
+      id,
+      title: parsed.title,
+      time: parsed.time,
+      done: false,
+      firedAt: null,
+      createdDate: store.todayKey(),
+      closedAt: null,
+      tags: parsed.tags,
+      priority: 'normal',
+    };
+    await store.upsertReminder(oid, reminder);
+    const whenLabel = reminder.time ? ` at ${reminder.time}` : ' (anytime)';
+    const tagLabel = reminder.tags.length ? ` ${reminder.tags.map((t) => `#${t}`).join(' ')}` : '';
+    await context.sendActivity(`Added: ${reminder.title}${whenLabel}${tagLabel}`);
+  }
+
+  async _markDoneByQuery(context, oid, query) {
+    if (!query) {
+      await context.sendActivity("Tell me which one to close. Try `/done report`.");
+      return;
+    }
+    const q = query.toLowerCase();
+    const items = (await store.listReminders(oid)).filter((r) => !r.done);
+    const matches = items.filter((r) => r.title.toLowerCase().includes(q));
+    if (matches.length === 0) {
+      await context.sendActivity(`No open item matches "${query}".`);
+      return;
+    }
+    if (matches.length > 1) {
+      const lines = matches.slice(0, 5).map((r) => `* ${r.title}`);
+      await context.sendActivity(`Several match "${query}":\n${lines.join('\n')}\nBe more specific.`);
+      return;
+    }
+    const r = matches[0];
+    r.done = true;
+    r.closedAt = new Date().toISOString();
+    await store.upsertReminder(oid, r);
+    await context.sendActivity(`Marked done: ${r.title}`);
   }
 
   async _registerUser(context) {

@@ -98,22 +98,32 @@ async function* iterateUsersWithConversationRefs() {
 
 // ---------- reminders ----------
 
+function entityToReminder(e) {
+  let tags = [];
+  if (e.tags) {
+    try { tags = JSON.parse(e.tags); } catch { tags = []; }
+    if (!Array.isArray(tags)) tags = [];
+  }
+  return {
+    id: e.rowKey.slice(2),
+    title: e.title,
+    time: e.time || null,
+    done: !!e.done,
+    firedAt: e.firedAt || null,
+    createdDate: e.createdDate || null,
+    closedAt: e.closedAt || null,
+    tags,
+    priority: e.priority === 'high' ? 'high' : 'normal',
+  };
+}
+
 async function listReminders(oid) {
   await ensureTable();
   const iter = getClient().listEntities({
     queryOptions: { filter: `PartitionKey eq '${oid}' and RowKey ge 'r:' and RowKey lt 'r;'` },
   });
   const out = [];
-  for await (const e of iter) {
-    out.push({
-      id: e.rowKey.slice(2),
-      title: e.title,
-      time: e.time || null,
-      done: !!e.done,
-      firedAt: e.firedAt || null,
-      createdDate: e.createdDate || null,
-    });
-  }
+  for await (const e of iter) out.push(entityToReminder(e));
   return out;
 }
 
@@ -121,14 +131,7 @@ async function getReminder(oid, id) {
   await ensureTable();
   try {
     const e = await getClient().getEntity(oid, `r:${id}`);
-    return {
-      id,
-      title: e.title,
-      time: e.time || null,
-      done: !!e.done,
-      firedAt: e.firedAt || null,
-      createdDate: e.createdDate || null,
-    };
+    return entityToReminder({ ...e, rowKey: `r:${id}` });
   } catch (err) {
     if (err.statusCode === 404) return null;
     throw err;
@@ -145,6 +148,9 @@ async function upsertReminder(oid, r) {
     done: !!r.done,
     firedAt: r.firedAt || null,
     createdDate: r.createdDate || todayKey(),
+    closedAt: r.closedAt || null,
+    tags: JSON.stringify(Array.isArray(r.tags) ? r.tags : []),
+    priority: r.priority === 'high' ? 'high' : 'normal',
   }, 'Replace');
 }
 
