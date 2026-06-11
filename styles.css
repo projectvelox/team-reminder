@@ -658,3 +658,150 @@ button:focus-visible, .link:focus-visible, .tag-chip:focus-visible, select:focus
 }
 .snooze-badge:hover { color: var(--text); border-color: var(--accent); }
 .list li.snoozed { border-left: 3px solid var(--accent); }
+
+/* ===== v1.2.10 — view toggle (Lines / Grid / Calendar) ===== */
+
+/* segmented control in the topbar */
+.view-switch {
+  display: inline-flex;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  overflow: hidden;
+  background: var(--surface);
+}
+.view-switch .view-btn {
+  background: transparent;
+  color: var(--muted);
+  border: none;
+  padding: 6px 12px;
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+  border-right: 1px solid var(--border);
+}
+.view-switch .view-btn:last-child { border-right: none; }
+.view-switch .view-btn:hover { color: var(--text); }
+.view-switch .view-btn[aria-pressed="true"] {
+  background: var(--accent);
+  color: var(--accent-ink);
+  font-weight: 600;
+}
+@media (max-width: 600px) {
+  .view-switch .view-btn { padding: 6px 10px; }
+}
+@media (max-width: 420px) {
+  .view-switch { order: 99; flex-basis: 100%; justify-content: center; }
+}
+
+/* grid view — compact reminder cards */
+.gcard-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 10px;
+}
+.gcard {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 10px 12px;
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+.gcard.high { border-color: #f7d12c; box-shadow: inset 3px 0 0 #f7d12c; }
+.gcard.snoozed { border-left: 3px solid var(--accent); }
+.gcard.fired { border-color: var(--accent); }
+.gcard.selected {
+  background: color-mix(in srgb, var(--accent) 12%, var(--bg));
+  border-color: var(--accent);
+}
+.gcard-head {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: 8px;
+  align-items: start;
+}
+.gcard-title {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: text;
+  word-break: break-word;
+  line-height: 1.3;
+}
+.gcard.done .gcard-title { text-decoration: line-through; color: var(--muted); }
+.gcard-foot {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+}
+.gcard .when {
+  font-variant-numeric: tabular-nums;
+  color: var(--muted);
+  font-size: 12px;
+  cursor: pointer;
+  padding: 2px 4px;
+  border-radius: 4px;
+}
+.gcard .when:hover { background: var(--surface); }
+.gcard .when.empty { font-style: italic; opacity: .55; }
+
+/* calendar view — hour-by-hour timeline */
+.calendar { padding: 14px 16px; }
+.cal-row {
+  display: grid;
+  grid-template-columns: 56px 1fr;
+  gap: 12px;
+  align-items: start;
+  padding: 6px 0;
+  border-top: 1px solid var(--border);
+}
+.cal-row:first-of-type { border-top: none; }
+.cal-row.now { background: color-mix(in srgb, var(--accent) 8%, transparent); }
+.cal-hour {
+  color: var(--muted);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  padding-top: 4px;
+  text-align: right;
+}
+.cal-slot { display: grid; gap: 4px; min-height: 14px; }
+.cal-item {
+  display: grid;
+  grid-template-columns: auto auto 1fr auto;
+  gap: 8px;
+  align-items: center;
+  padding: 6px 10px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  cursor: pointer;
+}
+.cal-item:hover { border-color: var(--accent); }
+.cal-item.high { border-color: #f7d12c; box-shadow: inset 3px 0 0 #f7d12c; }
+.cal-item.done .cal-item-text { text-decoration: line-through; color: var(--muted); }
+.cal-item.snoozed { border-left: 3px solid var(--accent); }
+.cal-item-time { font-variant-numeric: tabular-nums; color: var(--muted); font-size: 12px; }
+.cal-item-text { font-size: 13px; word-break: break-word; }
+.cal-item .tag-chip { font-size: 10px; padding: 1px 6px; }
+.cal-anytime {
+  padding: 14px 0 0;
+  margin-top: 10px;
+  border-top: 1px solid var(--border);
+  display: grid;
+  gap: 4px;
+}
+.cal-anytime h3 {
+  margin: 0 0 6px;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: .04em;
+  color: var(--muted);
+  font-weight: 600;
+}
+@media (max-width: 600px) {
+  .calendar { padding: 10px 12px; }
+  .cal-row { grid-template-columns: 44px 1fr; gap: 8px; }
+  .gcard-grid { grid-template-columns: 1fr; }
+}

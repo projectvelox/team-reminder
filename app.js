@@ -1,4 +1,4 @@
-/* Day Reminders — Teams personal tab (v1.2.9)
+/* Day Reminders — Teams personal tab (v1.2.10)
    Thin client over the bot's REST API. Auth via Teams SSO.
    Server-side bot handles all notifications (proactive Adaptive Cards in chat).
 */
@@ -8,7 +8,8 @@
   const API_BASE = "https://func-day-reminders-17023.azurewebsites.net/api";
   const DONE_AGE_MS = 24 * 60 * 60 * 1000;
   const UNDO_MS = 5000;
-  const APP_VERSION = "1.2.9";
+  const APP_VERSION = "1.2.10";
+  const VIEWS = ["lines", "grid", "calendar"];
   const TAG_PALETTE = [
     "#0078d4", "#107c10", "#8764b8", "#ca5010", "#c50f1f",
     "#038387", "#d83b01", "#5c2d91", "#0099bc", "#498205",
@@ -30,6 +31,7 @@
   let activeTagFilter = null;
   let quickFilter = "all"; // all | timed | anytime | high | done
   let searchText = "";
+  let currentView = "lines"; // lines | grid | calendar
   let bulkMode = false;
   const bulkSelected = new Set();
   let teamsTheme = "default";
@@ -41,6 +43,7 @@
   const LS_QUICK_FILTER = "quickFilter";
   const LS_TAG_FILTER = "tagFilter";
   const LS_SEARCH = "searchText";
+  const LS_VIEW = "currentView";
   const LS_ONBOARDED = "onboardingDismissed";
 
   try {
@@ -52,6 +55,8 @@
     if (st) activeTagFilter = st;
     const ss = localStorage.getItem(LS_SEARCH);
     if (ss) searchText = ss;
+    const sv = localStorage.getItem(LS_VIEW);
+    if (sv && VIEWS.includes(sv)) currentView = sv;
   } catch (_) {}
 
   // debounce search input writes/render
@@ -108,6 +113,7 @@
   const bulkCountLabel = $("bulkCount");
   const filterPills = $("filterPills");
   const filterCrumbs = $("filterCrumbs");
+  const viewSwitch = $("viewSwitch");
   const onboardingCard = $("onboardingCard");
   const templatesDialog = $("templatesDialog");
   const templateGrid = $("templateGrid");
@@ -209,6 +215,15 @@
     });
   }
 
+  // view switch
+  if (viewSwitch) {
+    viewSwitch.addEventListener("click", (e) => {
+      const btn = e.target.closest("button.view-btn");
+      if (!btn) return;
+      setView(btn.dataset.view);
+    });
+  }
+
   // bulk select
   if (bulkToggleBtn) bulkToggleBtn.addEventListener("click", () => setBulkMode(!bulkMode));
   if (bulkBar) {
@@ -271,6 +286,7 @@
     if (e.key === "/") { e.preventDefault(); titleInput.focus(); }
     else if (e.key === "f" || e.key === "F") { e.preventDefault(); searchInput && searchInput.focus(); }
     else if (e.key === "g" || e.key === "G") { e.preventDefault(); groupToggle.click(); }
+    else if (e.key === "v" || e.key === "V") { e.preventDefault(); cycleView(); }
     else if (e.key === "?") { e.preventDefault(); openDialog(guideDialog); }
     else if (e.key === "Escape" && (activeTagFilter || searchText || quickFilter !== "all" || bulkMode)) {
       if (bulkMode) setBulkMode(false);
@@ -316,9 +332,36 @@
     reminderRoot.innerHTML = "";
     updateFilterBanner();
     updateQuickFilterPills();
+    updateViewSwitch();
 
     const totalNonPending = reminders.filter((r) => !pendingDeletes.has(r.id)).length;
     const noFiltersActive = !activeTagFilter && !searchNorm && quickFilter === "all";
+
+    // Calendar view bypasses the section/quick-filter structure entirely
+    // for the "all" / "timed" / "anytime" cases — it shows ALL open items
+    // (respecting tag + search filters from the cascade above) under hour rows.
+    // For "done" and "high" we still defer to the per-quick-filter logic so
+    // those filters keep meaning in calendar mode.
+    if (currentView === "calendar" && quickFilter !== "done") {
+      let calItems = open;
+      if (quickFilter === "timed") calItems = open.filter((r) => !!r.time);
+      else if (quickFilter === "anytime") calItems = open.filter((r) => !r.time);
+      else if (quickFilter === "high") calItems = open.filter((r) => r.priority === "high");
+      if (totalNonPending === 0 && noFiltersActive) {
+        reminderRoot.appendChild(buildEmptyHero());
+      } else if (calItems.length === 0) {
+        reminderRoot.appendChild(buildEmptyState("Nothing on the calendar for this slice."));
+      } else {
+        reminderRoot.appendChild(buildCalendarLayout(calItems));
+      }
+      if (recentDone.length || olderDoneCount) {
+        reminderRoot.appendChild(buildDoneSection(recentDone, olderDoneCount));
+      }
+      markAllDoneBtn.hidden = bulkMode || open.length === 0;
+      updateBulkBar();
+      updateBotHint();
+      return;
+    }
 
     if (quickFilter === "done") {
       if (doneAll.length === 0) {
@@ -380,6 +423,211 @@
     p.style.padding = "18px 8px";
     p.textContent = text;
     return p;
+  }
+
+  // ---------- grid view ----------
+  function buildCard(r) {
+    const card = document.createElement("article");
+    card.className = "gcard";
+    card.dataset.id = r.id;
+    if (r.priority === "high") card.classList.add("high");
+    if (r.firedAt) card.classList.add("fired");
+    if (r.done) card.classList.add("done");
+    if (pendingDeletes.has(r.id)) card.classList.add("pending-delete");
+    if (bulkMode && bulkSelected.has(r.id)) card.classList.add("selected");
+    if (r.snoozedUntil && new Date(r.snoozedUntil).getTime() > Date.now()) card.classList.add("snoozed");
+
+    const head = document.createElement("div");
+    head.className = "gcard-head";
+
+    if (bulkMode) {
+      const bcb = document.createElement("input");
+      bcb.type = "checkbox";
+      bcb.className = "bulk-checkbox";
+      bcb.checked = bulkSelected.has(r.id);
+      bcb.setAttribute("aria-label", `Select ${r.title}`);
+      bcb.addEventListener("change", () => toggleBulkSelected(r));
+      head.appendChild(bcb);
+    } else {
+      const star = document.createElement("button");
+      star.type = "button";
+      star.className = "icon-btn star" + (r.priority === "high" ? " on" : "");
+      star.textContent = r.priority === "high" ? "★" : "☆";
+      star.title = r.priority === "high" ? "Unstar" : "Mark high priority";
+      star.setAttribute("aria-label", star.title);
+      star.addEventListener("click", () => togglePriority(r));
+      head.appendChild(star);
+    }
+
+    const title = document.createElement("h3");
+    title.className = "gcard-title";
+    title.textContent = r.title;
+    title.title = "Click to rename";
+    title.addEventListener("click", () => startTitleEdit(r, title));
+    head.appendChild(title);
+
+    const cb = document.createElement("input");
+    cb.type = "checkbox";
+    cb.className = "checkbox";
+    cb.checked = !!r.done;
+    cb.setAttribute("aria-label", r.done ? "Mark not done" : "Mark done");
+    cb.addEventListener("change", () => toggleDone(r));
+    head.appendChild(cb);
+
+    card.appendChild(head);
+
+    if (r.snoozedUntil && new Date(r.snoozedUntil).getTime() > Date.now()) {
+      const badge = document.createElement("button");
+      badge.type = "button";
+      badge.className = "snooze-badge";
+      badge.textContent = `\u{1F4A4} ${formatSnoozeRelative(r.snoozedUntil)}`;
+      badge.title = "Click to clear snooze";
+      badge.addEventListener("click", () => unsnooze(r));
+      card.appendChild(badge);
+    }
+
+    if (r.tags && r.tags.length) {
+      const tagRow = document.createElement("div");
+      tagRow.className = "tag-row";
+      for (const t of r.tags) {
+        const isActive = activeTagFilter && activeTagFilter.toLowerCase() === t.toLowerCase();
+        const chip = document.createElement("button");
+        chip.type = "button";
+        chip.className = "tag-chip" + (isActive ? " active" : "");
+        chip.style.backgroundColor = colorForTag(t);
+        chip.textContent = `#${t}`;
+        chip.title = isActive ? "Clear filter" : `Filter by #${t}`;
+        chip.addEventListener("click", (e) => { e.stopPropagation(); setTagFilter(isActive ? null : t); });
+        tagRow.appendChild(chip);
+      }
+      card.appendChild(tagRow);
+    }
+
+    const foot = document.createElement("div");
+    foot.className = "gcard-foot";
+    const when = document.createElement("span");
+    when.className = "when";
+    renderWhen(when, r.time, r.leadMinutes);
+    when.title = r.time ? "Click to change time" : "Click to set a time";
+    when.addEventListener("click", () => startTimeEdit(r, when));
+    foot.appendChild(when);
+
+    const more = document.createElement("button");
+    more.type = "button";
+    more.className = "icon-btn more";
+    more.title = "More options";
+    more.setAttribute("aria-label", "More options");
+    more.textContent = "⋯";
+    more.addEventListener("click", () => openRowOptions(r));
+    foot.appendChild(more);
+
+    card.appendChild(foot);
+    return card;
+  }
+
+  // ---------- calendar view ----------
+  function buildCalendarLayout(items) {
+    const section = document.createElement("section");
+    section.className = "card calendar";
+
+    const timed = items.filter((r) => !!r.time);
+    const anytime = items.filter((r) => !r.time);
+
+    // Hour range: 1h before earliest, 1h after latest, with a sensible 8-18 default.
+    let startHour = 8, endHour = 18;
+    if (timed.length) {
+      const hours = timed.map((r) => parseInt(r.time.split(":")[0], 10));
+      startHour = Math.max(0, Math.min(...hours) - 1);
+      endHour = Math.min(23, Math.max(...hours) + 1);
+    }
+    const now = new Date();
+    const nowHour = now.getHours();
+    const nowMin = now.getMinutes();
+
+    for (let h = startHour; h <= endHour; h++) {
+      const row = document.createElement("div");
+      row.className = "cal-row";
+      if (h === nowHour) row.classList.add("now");
+
+      const label = document.createElement("div");
+      label.className = "cal-hour";
+      label.textContent = `${String(h).padStart(2, "0")}:00`;
+
+      const slot = document.createElement("div");
+      slot.className = "cal-slot";
+
+      const inHour = timed
+        .filter((r) => parseInt(r.time.split(":")[0], 10) === h)
+        .sort((a, b) => a.time.localeCompare(b.time));
+      for (const r of inHour) slot.appendChild(buildCalendarItem(r));
+
+      row.append(label, slot);
+      section.appendChild(row);
+    }
+
+    if (anytime.length) {
+      const at = document.createElement("div");
+      at.className = "cal-anytime";
+      const heading = document.createElement("h3");
+      heading.textContent = "Anytime today";
+      at.appendChild(heading);
+      const stack = document.createElement("div");
+      stack.style.display = "grid";
+      stack.style.gap = "4px";
+      for (const r of sortByOrderThenTime(anytime)) stack.appendChild(buildCalendarItem(r));
+      at.appendChild(stack);
+      section.appendChild(at);
+    }
+
+    if (nowHour >= startHour && nowHour <= endHour) {
+      // tiny "now" label so the user can orient
+      const note = document.createElement("p");
+      note.className = "muted";
+      note.style.margin = "8px 0 0";
+      note.style.fontSize = "11px";
+      note.textContent = `Now: ${String(nowHour).padStart(2, "0")}:${String(nowMin).padStart(2, "0")}`;
+      section.appendChild(note);
+    }
+
+    return section;
+  }
+  function buildCalendarItem(r) {
+    const item = document.createElement("div");
+    item.className = "cal-item";
+    item.dataset.id = r.id;
+    if (r.priority === "high") item.classList.add("high");
+    if (r.done) item.classList.add("done");
+    if (r.snoozedUntil && new Date(r.snoozedUntil).getTime() > Date.now()) item.classList.add("snoozed");
+
+    const cb = document.createElement("input");
+    cb.type = "checkbox";
+    cb.className = "checkbox";
+    cb.checked = !!r.done;
+    cb.setAttribute("aria-label", r.done ? "Mark not done" : "Mark done");
+    cb.addEventListener("change", (e) => { e.stopPropagation(); toggleDone(r); });
+
+    const time = document.createElement("span");
+    time.className = "cal-item-time";
+    time.textContent = r.time ? formatTime(r.time) : "";
+
+    const text = document.createElement("span");
+    text.className = "cal-item-text";
+    text.textContent = r.title;
+
+    const more = document.createElement("button");
+    more.type = "button";
+    more.className = "icon-btn more";
+    more.textContent = "⋯";
+    more.title = "More options";
+    more.setAttribute("aria-label", "More options");
+    more.addEventListener("click", (e) => { e.stopPropagation(); openRowOptions(r); });
+
+    item.append(cb, time, text, more);
+    item.addEventListener("click", (e) => {
+      if (e.target === cb || e.target === more || e.target.closest("button")) return;
+      startTitleEdit(r, text);
+    });
+    return item;
   }
 
   function buildEmptyHero() {
@@ -520,10 +768,17 @@
       return section;
     }
 
-    const ul = document.createElement("ul");
-    ul.className = "list";
-    for (const r of items) ul.appendChild(buildRow(r, opts.showWhen, !!opts.draggable));
-    section.appendChild(ul);
+    if (currentView === "grid") {
+      const grid = document.createElement("div");
+      grid.className = "gcard-grid";
+      for (const r of items) grid.appendChild(buildCard(r));
+      section.appendChild(grid);
+    } else {
+      const ul = document.createElement("ul");
+      ul.className = "list";
+      for (const r of items) ul.appendChild(buildRow(r, opts.showWhen, !!opts.draggable));
+      section.appendChild(ul);
+    }
     return section;
   }
 
@@ -1045,6 +1300,23 @@
     if (!filterPills) return;
     for (const btn of filterPills.querySelectorAll("button.filter-pill[data-quick]")) {
       btn.setAttribute("aria-pressed", String(btn.dataset.quick === quickFilter));
+    }
+  }
+  function setView(v) {
+    if (!VIEWS.includes(v) || v === currentView) return;
+    currentView = v;
+    try { localStorage.setItem(LS_VIEW, v); } catch (_) {}
+    announce(`View: ${v}`);
+    render();
+  }
+  function cycleView() {
+    const idx = VIEWS.indexOf(currentView);
+    setView(VIEWS[(idx + 1) % VIEWS.length]);
+  }
+  function updateViewSwitch() {
+    if (!viewSwitch) return;
+    for (const btn of viewSwitch.querySelectorAll("button.view-btn")) {
+      btn.setAttribute("aria-pressed", String(btn.dataset.view === currentView));
     }
   }
 

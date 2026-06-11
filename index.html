@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Day Reminders</title>
-  <link rel="stylesheet" href="styles.css?v=1.2.9" />
+  <link rel="stylesheet" href="styles.css?v=1.2.10" />
   <script src="https://res.cdn.office.net/teams-js/2.24.0/js/MicrosoftTeams.min.js"></script>
 </head>
 <body data-theme="default">
@@ -16,6 +16,11 @@
       </div>
       <button id="bulkToggle" class="btn ghost" title="Select multiple reminders">Select</button>
       <button id="markAllDone" class="btn ghost" title="Mark every open reminder as done" hidden>Mark all done</button>
+      <div id="viewSwitch" class="view-switch" role="group" aria-label="List view">
+        <button type="button" data-view="lines" class="view-btn" title="Row-by-row view (shortcut: v)" aria-pressed="true">Lines</button>
+        <button type="button" data-view="grid" class="view-btn" title="Compact card grid" aria-pressed="false">Grid</button>
+        <button type="button" data-view="calendar" class="view-btn" title="Hour-by-hour calendar" aria-pressed="false">Calendar</button>
+      </div>
       <button id="groupToggle" class="btn ghost" title="Group reminders by tag (shortcut: g)" aria-pressed="false">Group by tag</button>
       <button id="openSettings" class="btn ghost" title="Settings">&#9881; Settings</button>
       <button id="openGuide" class="btn ghost" title="Quick guide (shortcut: ?)" aria-label="Open quick guide">?</button>
@@ -90,7 +95,8 @@
           <li><strong>Group by tag:</strong> the top-right toggle, or press <code>g</code>.</li>
           <li><strong>Mark done:</strong> tick the checkbox. Undo within 5 seconds.</li>
           <li><strong>Bot chat:</strong> open the <em>Chat</em> tab above and type <code>/help</code>, <code>/list</code>, <code>/add</code>, <code>/done</code>.</li>
-          <li><strong>Shortcuts:</strong> <code>/</code> add, <code>f</code> search, <code>g</code> group, <code>?</code> this guide, <code>Esc</code> clear filters.</li>
+          <li><strong>Views:</strong> the top-right segmented control switches between <em>Lines</em>, <em>Grid</em>, and <em>Calendar</em>. Shortcut: <code>v</code>.</li>
+          <li><strong>Shortcuts:</strong> <code>/</code> add, <code>f</code> search, <code>g</code> group, <code>v</code> view, <code>?</code> this guide, <code>Esc</code> clear filters.</li>
         </ul>
       </section>
     </aside>
@@ -143,6 +149,13 @@
     <form method="dialog">
       <h2>What's new</h2>
       <ul class="changelog">
+        <li><strong>v1.2.10</strong>
+          <ul>
+            <li>View toggle in the top bar: <em>Lines</em> (default), <em>Grid</em> (compact cards), <em>Calendar</em> (hour-by-hour timeline)</li>
+            <li>Calendar view stacks timed items under hour headers and lists anytime items at the bottom; shortcut <code>v</code> cycles views</li>
+            <li>View choice persists across reloads</li>
+          </ul>
+        </li>
         <li><strong>v1.2.9</strong>
           <ul>
             <li>Snooze buttons on the proactive Adaptive Card: <em>15m / 1h / Tomorrow</em></li>
@@ -247,6 +260,6 @@
     <a class="link" href="https://github.com/projectvelox/team-reminder/issues" target="_blank" rel="noopener">Report an issue</a>
   </footer>
 
-  <script src="app.js?v=1.2.9"></script>
+  <script src="app.js?v=1.2.10"></script>
 </body>
 </html>
