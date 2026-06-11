@@ -116,6 +116,7 @@ function entityToReminder(e) {
     priority: e.priority === 'high' ? 'high' : 'normal',
     order: typeof e.order === 'number' ? e.order : null,
     leadMinutes: typeof e.leadMinutes === 'number' ? e.leadMinutes : null,
+    snoozedUntil: e.snoozedUntil || null,
   };
 }
 
@@ -155,6 +156,7 @@ async function upsertReminder(oid, r) {
     priority: r.priority === 'high' ? 'high' : 'normal',
     order: typeof r.order === 'number' ? r.order : null,
     leadMinutes: typeof r.leadMinutes === 'number' ? r.leadMinutes : null,
+    snoozedUntil: r.snoozedUntil || null,
   }, 'Replace');
 }
 

@@ -38,6 +38,38 @@ function parseTimeToken(token) {
   return null;
 }
 
+// ---------- snooze time helpers ----------
+// Asia/Manila is UTC+8 with no DST, so we can do wall-clock math by shifting Date.
+const PH_OFFSET_MS = 8 * 60 * 60 * 1000;
+
+function snoozeMinutesIso(n) {
+  return new Date(Date.now() + n * 60 * 1000).toISOString();
+}
+function snoozeTomorrowIso(hhmm) {
+  // tomorrow's PH wall-clock at the reminder's original time (or 09:00 default),
+  // converted back to a real UTC ISO.
+  const ph = new Date(Date.now() + PH_OFFSET_MS);
+  ph.setUTCDate(ph.getUTCDate() + 1);
+  const [h, m] = (hhmm || '09:00').split(':').map(Number);
+  ph.setUTCHours(h, m, 0, 0);
+  return new Date(ph.getTime() - PH_OFFSET_MS).toISOString();
+}
+function snoozeLabel(data, untilIso) {
+  if (data.tomorrow) {
+    // describe in PH wall-clock terms
+    const ph = new Date(new Date(untilIso).getTime() + PH_OFFSET_MS);
+    const hh = String(ph.getUTCHours()).padStart(2, '0');
+    const mm = String(ph.getUTCMinutes()).padStart(2, '0');
+    return `tomorrow at ${hh}:${mm}`;
+  }
+  if (typeof data.minutes === 'number') {
+    if (data.minutes < 60) return `in ${data.minutes} min`;
+    if (data.minutes % 60 === 0) return `in ${data.minutes / 60} h`;
+    return `in ${data.minutes} min`;
+  }
+  return 'later';
+}
+
 function parseAddCommand(rest) {
   const tokens = rest.trim().split(/\s+/).filter(Boolean);
   if (tokens.length === 0) return null;
@@ -131,9 +163,21 @@ class ReminderBot extends TeamsActivityHandler {
       const r = await store.getReminder(oid, data.reminderId);
       if (r) {
         r.done = true;
+        r.snoozedUntil = null;
         await store.upsertReminder(oid, r);
         await context.sendActivity(`Marked done: ${r.title}`);
       }
+    } else if (data.action === 'snooze' && data.reminderId) {
+      const r = await store.getReminder(oid, data.reminderId);
+      if (!r) return;
+      let until = null;
+      if (data.tomorrow) until = snoozeTomorrowIso(r.time);
+      else if (typeof data.minutes === 'number' && data.minutes > 0) until = snoozeMinutesIso(data.minutes);
+      if (!until) return;
+      r.snoozedUntil = until;
+      r.firedAt = null; // re-enable firing on the snooze window
+      await store.upsertReminder(oid, r);
+      await context.sendActivity(`Snoozed "${r.title}" ${snoozeLabel(data, until)}.`);
     } else if (data.action === 'eodDismiss') {
       const user = await store.getUser(oid);
       user.lastEodDate = store.todayKey();

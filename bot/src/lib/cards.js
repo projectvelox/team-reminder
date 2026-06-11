@@ -20,6 +20,9 @@ function reminderCard(reminder, leadMinutes) {
       ],
       actions: [
         { type: 'Action.Submit', title: "Mark done", data: { action: 'markDone', reminderId: reminder.id } },
+        { type: 'Action.Submit', title: "Snooze 15m", data: { action: 'snooze', reminderId: reminder.id, minutes: 15 } },
+        { type: 'Action.Submit', title: "Snooze 1h", data: { action: 'snooze', reminderId: reminder.id, minutes: 60 } },
+        { type: 'Action.Submit', title: "Tomorrow", data: { action: 'snooze', reminderId: reminder.id, tomorrow: true } },
       ],
     },
   };

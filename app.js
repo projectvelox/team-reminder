@@ -1,4 +1,4 @@
-/* Day Reminders — Teams personal tab (v1.2.8)
+/* Day Reminders — Teams personal tab (v1.2.9)
    Thin client over the bot's REST API. Auth via Teams SSO.
    Server-side bot handles all notifications (proactive Adaptive Cards in chat).
 */
@@ -8,7 +8,7 @@
   const API_BASE = "https://func-day-reminders-17023.azurewebsites.net/api";
   const DONE_AGE_MS = 24 * 60 * 60 * 1000;
   const UNDO_MS = 5000;
-  const APP_VERSION = "1.2.8";
+  const APP_VERSION = "1.2.9";
   const TAG_PALETTE = [
     "#0078d4", "#107c10", "#8764b8", "#ca5010", "#c50f1f",
     "#038387", "#d83b01", "#5c2d91", "#0099bc", "#498205",
@@ -570,6 +570,7 @@
     if (r.priority === "high") li.classList.add("high");
     if (pendingDeletes.has(r.id)) li.classList.add("pending-delete");
     if (bulkMode && bulkSelected.has(r.id)) li.classList.add("selected");
+    if (r.snoozedUntil && new Date(r.snoozedUntil).getTime() > Date.now()) li.classList.add("snoozed");
 
     // In bulk mode the drag handle is replaced by a select checkbox.
     let leading;
@@ -614,6 +615,17 @@
     title.title = "Click to rename";
     title.addEventListener("click", () => startTitleEdit(r, title));
     titleWrap.appendChild(title);
+
+    if (r.snoozedUntil && new Date(r.snoozedUntil).getTime() > Date.now()) {
+      const badge = document.createElement("button");
+      badge.type = "button";
+      badge.className = "snooze-badge";
+      badge.textContent = `\u{1F4A4} ${formatSnoozeRelative(r.snoozedUntil)}`;
+      badge.title = "Click to clear snooze (reminder will fire at its normal time again)";
+      badge.setAttribute("aria-label", `Snoozed. Click to unsnooze.`);
+      badge.addEventListener("click", () => unsnooze(r));
+      titleWrap.appendChild(badge);
+    }
 
     if (r.tags && r.tags.length) {
       const tagRow = document.createElement("div");
@@ -1287,6 +1299,32 @@
     const d = new Date();
     d.setHours(h, m, 0, 0);
     return d.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
+  }
+  function formatSnoozeRelative(iso) {
+    const target = new Date(iso).getTime();
+    const ms = target - Date.now();
+    if (ms <= 0) return "now";
+    const mins = Math.round(ms / 60000);
+    if (mins < 60) return `${mins}m left`;
+    const hours = Math.round(mins / 60);
+    if (hours < 24) return `${hours}h left`;
+    // Different day — show local wall clock
+    return `until ${new Date(target).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" })}`;
+  }
+  async function unsnooze(r) {
+    const prev = r.snoozedUntil;
+    r.snoozedUntil = null;
+    render();
+    try {
+      const updated = await api("PATCH", `/reminders/${r.id}`, { snoozedUntil: null });
+      replaceLocal(updated.reminder);
+      render();
+      announce(`Cleared snooze on ${r.title}`);
+    } catch (err) {
+      r.snoozedUntil = prev;
+      render();
+      showError("Could not clear snooze", err);
+    }
   }
   function clampInt(v, min, max, fallback) {
     const n = parseInt(v, 10);

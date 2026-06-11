@@ -51,7 +51,7 @@ app.http('remindersCollection', {
     const order = typeof body.order === 'number' && isFinite(body.order) ? body.order : null;
     const leadMinutes = typeof body.leadMinutes === 'number' && body.leadMinutes >= 0 && body.leadMinutes <= 240
       ? Math.floor(body.leadMinutes) : null;
-    const reminder = { id, title, time, done: false, firedAt: null, createdDate: store.todayKey(), closedAt: null, tags, priority, order, leadMinutes };
+    const reminder = { id, title, time, done: false, firedAt: null, createdDate: store.todayKey(), closedAt: null, tags, priority, order, leadMinutes, snoozedUntil: null };
     await store.upsertReminder(user.oid, reminder);
     return json(201, { reminder });
   },
@@ -100,6 +100,12 @@ app.http('remindersItem', {
     if (body.leadMinutes === null) existing.leadMinutes = null;
     else if (typeof body.leadMinutes === 'number' && body.leadMinutes >= 0 && body.leadMinutes <= 240) {
       existing.leadMinutes = Math.floor(body.leadMinutes);
+    }
+    // snoozedUntil: accept null to clear, or an ISO string to set
+    if (body.snoozedUntil === null) existing.snoozedUntil = null;
+    else if (typeof body.snoozedUntil === 'string' && !isNaN(Date.parse(body.snoozedUntil))) {
+      existing.snoozedUntil = new Date(body.snoozedUntil).toISOString();
+      existing.firedAt = null;
     }
     await store.upsertReminder(user.oid, existing);
     return json(200, { reminder: existing });

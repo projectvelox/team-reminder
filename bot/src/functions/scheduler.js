@@ -68,9 +68,28 @@ async function processUser(appId, user, ph, context) {
   const defaultLead = user.settings?.leadMinutes ?? 10;
   const reminders = await store.listReminders(user.oid);
 
-  // 1) lead-time reminders. Work in PH minute-of-day so process TZ is irrelevant.
+  // 1) reminders. Snoozed items fire at their snoozedUntil; otherwise, normal lead-time logic.
+  const nowMs = Date.now();
   for (const r of reminders) {
-    if (r.done || !r.time || r.firedAt) continue;
+    if (r.done) continue;
+
+    // Snooze path: fire when now >= snoozedUntil, then clear the snooze.
+    if (r.snoozedUntil) {
+      if (nowMs < new Date(r.snoozedUntil).getTime()) continue;
+      context.log(`[scheduler] firing snoozed "${r.title}" snoozedUntil=${r.snoozedUntil} now=${new Date(nowMs).toISOString()}`);
+      try {
+        await sendProactive(appId, user, MessageFactory.attachment(reminderCard(r, 0)));
+        r.snoozedUntil = null;
+        r.firedAt = new Date().toISOString();
+        await store.upsertReminder(user.oid, r);
+      } catch (err) {
+        context.error(`[scheduler] sendProactive failed for snoozed "${r.title}": ${err?.message || err}`);
+      }
+      continue;
+    }
+
+    // Normal time-based path
+    if (!r.time || r.firedAt) continue;
     const effectiveLead = typeof r.leadMinutes === 'number' ? r.leadMinutes : defaultLead;
     const targetMin = hhmmToMinutes(r.time);
     const fireAtMin = targetMin - effectiveLead;

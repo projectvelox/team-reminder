@@ -637,3 +637,24 @@ button:focus-visible, .link:focus-visible, .tag-chip:focus-visible, select:focus
   .topbar-actions #groupToggle { display: none; }
   .search-input { width: 100%; min-width: 130px; }
 }
+
+/* snoozed badge — clickable; clears snooze on click */
+.snooze-badge {
+  background: var(--bg);
+  color: var(--muted);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 1px 8px;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  font-family: inherit;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  width: max-content;
+  letter-spacing: .02em;
+  margin-top: 2px;
+}
+.snooze-badge:hover { color: var(--text); border-color: var(--accent); }
+.list li.snoozed { border-left: 3px solid var(--accent); }
