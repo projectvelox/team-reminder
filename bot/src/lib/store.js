@@ -114,6 +114,8 @@ function entityToReminder(e) {
     closedAt: e.closedAt || null,
     tags,
     priority: e.priority === 'high' ? 'high' : 'normal',
+    order: typeof e.order === 'number' ? e.order : null,
+    leadMinutes: typeof e.leadMinutes === 'number' ? e.leadMinutes : null,
   };
 }
 
@@ -151,6 +153,8 @@ async function upsertReminder(oid, r) {
     closedAt: r.closedAt || null,
     tags: JSON.stringify(Array.isArray(r.tags) ? r.tags : []),
     priority: r.priority === 'high' ? 'high' : 'normal',
+    order: typeof r.order === 'number' ? r.order : null,
+    leadMinutes: typeof r.leadMinutes === 'number' ? r.leadMinutes : null,
   }, 'Replace');
 }
 

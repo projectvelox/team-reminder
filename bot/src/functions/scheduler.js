@@ -65,18 +65,19 @@ app.timer('scheduler', {
 });
 
 async function processUser(appId, user, ph, context) {
-  const leadMinutes = user.settings?.leadMinutes ?? 10;
+  const defaultLead = user.settings?.leadMinutes ?? 10;
   const reminders = await store.listReminders(user.oid);
 
   // 1) lead-time reminders. Work in PH minute-of-day so process TZ is irrelevant.
   for (const r of reminders) {
     if (r.done || !r.time || r.firedAt) continue;
+    const effectiveLead = typeof r.leadMinutes === 'number' ? r.leadMinutes : defaultLead;
     const targetMin = hhmmToMinutes(r.time);
-    const fireAtMin = targetMin - leadMinutes;
+    const fireAtMin = targetMin - effectiveLead;
     if (ph.minutesOfDay >= fireAtMin && ph.minutesOfDay <= targetMin) {
-      context.log(`[scheduler] firing "${r.title}" target=${r.time} now=${ph.hour}:${String(ph.minute).padStart(2, '0')} lead=${leadMinutes}`);
+      context.log(`[scheduler] firing "${r.title}" target=${r.time} now=${ph.hour}:${String(ph.minute).padStart(2, '0')} lead=${effectiveLead}${typeof r.leadMinutes === 'number' ? ' (custom)' : ''}`);
       try {
-        await sendProactive(appId, user, MessageFactory.attachment(reminderCard(r, leadMinutes)));
+        await sendProactive(appId, user, MessageFactory.attachment(reminderCard(r, effectiveLead)));
         r.firedAt = new Date().toISOString();
         await store.upsertReminder(user.oid, r);
       } catch (err) {

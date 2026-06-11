@@ -4,36 +4,60 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Day Reminders</title>
-  <link rel="stylesheet" href="styles.css?v=1.2.1" />
+  <link rel="stylesheet" href="styles.css?v=1.2.6" />
   <script src="https://res.cdn.office.net/teams-js/2.24.0/js/MicrosoftTeams.min.js"></script>
 </head>
 <body data-theme="default">
   <header class="topbar">
-    <div class="brand">
-      <span class="bell">&#9200;</span>
-      <h1>Day Reminders</h1>
-    </div>
     <div class="topbar-actions">
-      <button id="groupToggle" class="btn ghost" title="Group reminders by tag" aria-pressed="false">Group by tag</button>
+      <button id="markAllDone" class="btn ghost" title="Mark every open reminder as done" hidden>Mark all done</button>
+      <button id="groupToggle" class="btn ghost" title="Group reminders by tag (shortcut: g)" aria-pressed="false">Group by tag</button>
       <button id="openSettings" class="btn ghost" title="Settings">&#9881; Settings</button>
+      <button id="openGuide" class="btn ghost" title="Quick guide (shortcut: ?)" aria-label="Open quick guide">?</button>
     </div>
   </header>
 
-  <main>
-    <p id="errorBanner" class="error-banner" hidden></p>
+  <div id="liveRegion" class="visually-hidden" aria-live="polite" aria-atomic="true"></div>
 
-    <section class="card">
-      <form id="addForm" class="add-row" autocomplete="off">
-        <input id="title" type="text" placeholder="What do you need to remember? (try #tags inline, e.g. Send report #work)" aria-label="Reminder text" required />
-        <input id="time" type="time" title="Optional time" aria-label="Optional time" />
-        <button type="submit" class="btn primary">Add</button>
-      </form>
-      <p class="hint" id="permHint" hidden></p>
-      <p class="hint subtle">Tip: click a title or time to edit. Click the star to mark high priority. Type <code>/help</code> in the Day Reminders chat for slash commands.</p>
-    </section>
+  <div class="layout">
+    <main>
+      <p id="errorBanner" class="error-banner" hidden></p>
 
-    <div id="reminderRoot"></div>
-  </main>
+      <section class="card">
+        <form id="addForm" class="add-row" autocomplete="off">
+          <input id="title" type="text" placeholder="What do you need to remember? (try #tags inline, e.g. Send report #work)" aria-label="Reminder text. Press slash anywhere to focus this field." required />
+          <input id="time" type="time" title="Optional time" aria-label="Optional time" />
+          <button type="submit" class="btn primary">Add</button>
+        </form>
+        <p class="hint" id="permHint" hidden></p>
+      </section>
+
+      <div id="filterBanner" class="filter-banner" hidden>
+        <span>Showing <strong id="filterTagLabel"></strong></span>
+        <button id="clearFilter" class="link" type="button">Clear filter</button>
+      </div>
+
+      <div id="reminderRoot"></div>
+    </main>
+
+    <aside class="guide">
+      <section class="card">
+        <h2 class="guide-title">Quick guide</h2>
+        <ul class="guide-list">
+          <li><strong>Add tags:</strong> type <code>#work</code> or <code>#urgent</code> directly in the title, e.g. <code>Send report #work</code>.</li>
+          <li><strong>Filter by tag:</strong> click any <code>#chip</code> to see only that tag. Press Esc to clear.</li>
+          <li><strong>High priority:</strong> click the <span class="kbd">☆</span> next to a row to pin it to the top.</li>
+          <li><strong>Edit inline:</strong> click a title or time to change it. Enter saves, Esc cancels.</li>
+          <li><strong>Reorder:</strong> grab the <span class="kbd">☰</span> handle to drag items within Anytime today or tag sections.</li>
+          <li><strong>More options:</strong> click <span class="kbd">⋯</span> on a row to set a custom lead time (overrides your default).</li>
+          <li><strong>Group by tag:</strong> the top-right toggle, or press <code>g</code>.</li>
+          <li><strong>Mark done:</strong> tick the checkbox. Undo within 5 seconds.</li>
+          <li><strong>Bot chat:</strong> open the <em>Chat</em> tab above and type <code>/help</code>, <code>/list</code>, <code>/add</code>, <code>/done</code>.</li>
+          <li><strong>Shortcuts:</strong> <code>/</code> focus add, <code>g</code> group, <code>?</code> this guide.</li>
+        </ul>
+      </section>
+    </aside>
+  </div>
 
   <dialog id="settingsDialog" class="dialog">
     <form method="dialog" id="settingsForm">
@@ -60,6 +84,17 @@
         <span>Notifications on</span>
       </label>
 
+      <label class="row">
+        <span>Appearance</span>
+        <select id="setThemeOverride" aria-label="Theme override">
+          <option value="auto">Match Teams</option>
+          <option value="default">Light</option>
+          <option value="dark">Dark</option>
+          <option value="contrast">High contrast</option>
+        </select>
+      </label>
+      <p class="hint">"Match Teams" follows whatever theme you have in Teams. The others lock the appearance regardless of the host.</p>
+
       <div class="dialog-actions">
         <button type="button" id="settingsCancel" class="btn ghost">Cancel</button>
         <button type="submit" class="btn primary">Save</button>
@@ -67,6 +102,85 @@
     </form>
   </dialog>
 
-  <script src="app.js?v=1.2.1"></script>
+  <dialog id="whatsNewDialog" class="dialog">
+    <form method="dialog">
+      <h2>What's new</h2>
+      <ul class="changelog">
+        <li><strong>v1.2.6</strong>
+          <ul>
+            <li>Drag-to-reorder via the <span class="kbd">☰</span> handle (in Anytime today, tag, and high-priority sections)</li>
+            <li>Per-row custom lead time via the <span class="kbd">⋯</span> menu (overrides default Settings)</li>
+            <li>Front-end error reporting now feeds Azure App Insights</li>
+          </ul>
+        </li>
+        <li><strong>v1.2.5</strong>
+          <ul>
+            <li>Side Quick guide on wide screens</li>
+            <li>Tag filter: click a chip to focus one project</li>
+            <li>Undo delete (5 seconds)</li>
+            <li>Optimistic UI: instant feedback on add/edit/done</li>
+            <li>Keyboard shortcuts: <code>/</code> add, <code>g</code> group, <code>?</code> guide</li>
+            <li>"Mark all done" sweep, theme override, dark-mode time picker fix</li>
+          </ul>
+        </li>
+        <li><strong>v1.2.0</strong>: hashtag tags, high-priority star, inline edit, slash commands, done archive.</li>
+        <li><strong>v1.1.x</strong>: SSO fixes, Bot Service wiring, proactive Adaptive Cards.</li>
+      </ul>
+      <div class="dialog-actions">
+        <button type="submit" class="btn primary">Got it</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="rowOptionsDialog" class="dialog">
+    <form method="dialog" id="rowOptionsForm">
+      <h2>Reminder options</h2>
+      <p class="muted" id="rowOptionsTitle" style="margin: 0 0 12px;"></p>
+
+      <label class="row">
+        <span>Custom lead time (minutes)</span>
+        <input id="rowLeadMinutes" type="number" min="0" max="240" step="1" placeholder="Use default" aria-label="Custom lead time in minutes" />
+      </label>
+      <p class="hint">Override how many minutes before the time you want to be reminded. Leave blank to use your default from Settings.</p>
+
+      <div class="dialog-actions">
+        <button type="button" id="rowOptionsCancel" class="btn ghost">Cancel</button>
+        <button type="submit" class="btn primary">Save</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="guideDialog" class="dialog">
+    <form method="dialog">
+      <h2>Quick guide</h2>
+      <ul class="guide-list">
+        <li><strong>Add tags:</strong> type <code>#work</code> directly in the title, e.g. <code>Send report #work</code>.</li>
+        <li><strong>Filter by tag:</strong> click any <code>#chip</code> in the list. Esc clears.</li>
+        <li><strong>High priority:</strong> click the <span class="kbd">&#9734;</span> next to a row to pin it to the top.</li>
+        <li><strong>Edit inline:</strong> click a title or time to change it. Enter saves, Esc cancels.</li>
+        <li><strong>Reorder:</strong> drag the <span class="kbd">&#9776;</span> handle (Anytime, tag, and high-priority sections).</li>
+        <li><strong>Per-row options:</strong> click <span class="kbd">&middot;&middot;&middot;</span> to set a custom lead time.</li>
+        <li><strong>Group by tag:</strong> top-right toggle or press <code>g</code>.</li>
+        <li><strong>Mark done:</strong> tick the checkbox. Undo within 5 seconds if you mis-click.</li>
+        <li><strong>Bot chat:</strong> open the Chat tab, type <code>/help</code>, <code>/list</code>, <code>/add</code>, <code>/done</code>.</li>
+        <li><strong>Shortcuts:</strong> <code>/</code> focus add, <code>g</code> toggle group, <code>?</code> open this guide.</li>
+      </ul>
+      <div class="dialog-actions">
+        <button type="submit" class="btn primary">Close</button>
+      </div>
+    </form>
+  </dialog>
+
+  <div id="toastRegion" class="toast-region" aria-live="polite"></div>
+
+  <footer class="appfoot">
+    <span class="muted" id="versionLabel">v1.2.5</span>
+    <span class="muted">&middot;</span>
+    <button id="openWhatsNew" class="link" type="button">What's new</button>
+    <span class="muted">&middot;</span>
+    <a class="link" href="https://github.com/projectvelox/team-reminder/issues" target="_blank" rel="noopener">Report an issue</a>
+  </footer>
+
+  <script src="app.js?v=1.2.6"></script>
 </body>
 </html>

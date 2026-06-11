@@ -1,4 +1,4 @@
-/* Day Reminders — Teams personal tab (v1.2)
+/* Day Reminders — Teams personal tab (v1.2.6)
    Thin client over the bot's REST API. Auth via Teams SSO.
    Server-side bot handles all notifications (proactive Adaptive Cards in chat).
 */
@@ -7,6 +7,8 @@
 
   const API_BASE = "https://func-day-reminders-17023.azurewebsites.net/api";
   const DONE_AGE_MS = 24 * 60 * 60 * 1000;
+  const UNDO_MS = 5000;
+  const APP_VERSION = "1.2.6";
   const TAG_PALETTE = [
     "#0078d4", "#107c10", "#8764b8", "#ca5010", "#c50f1f",
     "#038387", "#d83b01", "#5c2d91", "#0099bc", "#498205",
@@ -19,11 +21,21 @@
     leadMinutes: 10,
     weekdaysOnly: true,
     notifications: true,
+    themeOverride: "auto", // tab-only, persisted in localStorage (bot doesn't care)
     groupByTag: false,
     showAllDone: false,
   };
   let hasBot = false;
   let authToken = null;
+  let activeTagFilter = null;
+  let teamsTheme = "default";
+  let lastFocusedTrigger = null; // for dialog focus return
+  const pendingDeletes = new Map(); // id -> { reminder, timer, toast }
+
+  try {
+    const saved = localStorage.getItem("themeOverride");
+    if (saved) settings.themeOverride = saved;
+  } catch (_) {}
 
   // ---------- DOM ----------
   const $ = (id) => document.getElementById(id);
@@ -32,9 +44,25 @@
   const timeInput = $("time");
   const settingsDialog = $("settingsDialog");
   const settingsForm = $("settingsForm");
+  const whatsNewDialog = $("whatsNewDialog");
+  const guideDialog = $("guideDialog");
   const permHint = $("permHint");
   const reminderRoot = $("reminderRoot");
   const groupToggle = $("groupToggle");
+  const markAllDoneBtn = $("markAllDone");
+  const filterBanner = $("filterBanner");
+  const filterTagLabel = $("filterTagLabel");
+  const clearFilterBtn = $("clearFilter");
+  const liveRegion = $("liveRegion");
+  const toastRegion = $("toastRegion");
+  const versionLabel = $("versionLabel");
+  const rowOptionsDialog = $("rowOptionsDialog");
+  const rowOptionsForm = $("rowOptionsForm");
+  const rowOptionsTitle = $("rowOptionsTitle");
+  const rowLeadMinutes = $("rowLeadMinutes");
+  let editingReminderId = null;
+
+  if (versionLabel) versionLabel.textContent = `v${APP_VERSION}`;
 
   const todayDateString = new Date().toLocaleDateString(undefined, {
     weekday: "long", month: "short", day: "numeric",
@@ -45,19 +73,30 @@
     e.preventDefault();
     const { title, tags } = extractTagsFromTitle(titleInput.value.trim());
     if (!title) return;
+    const time = timeInput.value || null;
+    const tempId = `tmp-${Date.now()}-${Math.random().toString(16).slice(2, 8)}`;
+    const optimistic = {
+      id: tempId, title, time, tags,
+      done: false, priority: "normal", closedAt: null, _optimistic: true,
+    };
+    reminders.push(optimistic);
+    titleInput.value = "";
+    timeInput.value = "";
+    titleInput.focus();
+    render();
+    announce(`Added ${title}`);
     try {
-      const created = await api("POST", "/reminders", { title, time: timeInput.value || null, tags });
-      reminders.push(created.reminder);
-      titleInput.value = "";
-      timeInput.value = "";
-      titleInput.focus();
+      const created = await api("POST", "/reminders", { title, time, tags });
+      replaceById(tempId, created.reminder);
       render();
     } catch (err) {
+      reminders = reminders.filter((r) => r.id !== tempId);
+      render();
       showError("Could not add reminder", err);
     }
   });
 
-  $("openSettings").addEventListener("click", openSettings);
+  $("openSettings").addEventListener("click", () => openDialog(settingsDialog, openSettings));
   $("settingsCancel").addEventListener("click", () => settingsDialog.close());
   settingsForm.addEventListener("submit", async (e) => {
     e.preventDefault();
@@ -67,10 +106,15 @@
       weekdaysOnly: $("setWeekdaysOnly").checked,
       notifications: $("setNotifications").checked,
     };
+    const newTheme = $("setThemeOverride").value;
+    settings.themeOverride = newTheme;
+    try { localStorage.setItem("themeOverride", newTheme); } catch (_) {}
+    applyTheme(teamsTheme);
     try {
       const saved = await api("PUT", "/settings", { settings: next });
       Object.assign(settings, saved.settings);
       settingsDialog.close();
+      announce("Settings saved");
     } catch (err) {
       showError("Could not save settings", err);
     }
@@ -79,13 +123,72 @@
   groupToggle.addEventListener("click", () => {
     settings.groupByTag = !settings.groupByTag;
     groupToggle.setAttribute("aria-pressed", String(settings.groupByTag));
+    announce(settings.groupByTag ? "Grouped by tag" : "Grouped by time");
     render();
   });
 
+  clearFilterBtn.addEventListener("click", () => setTagFilter(null));
+  markAllDoneBtn.addEventListener("click", markAllOpenDone);
+  $("openGuide").addEventListener("click", () => openDialog(guideDialog));
+  $("openWhatsNew").addEventListener("click", () => openDialog(whatsNewDialog));
+
+  $("rowOptionsCancel").addEventListener("click", () => rowOptionsDialog.close());
+  rowOptionsForm.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const r = reminders.find((x) => x.id === editingReminderId);
+    if (!r) { rowOptionsDialog.close(); return; }
+    const raw = rowLeadMinutes.value.trim();
+    let nextLead = null;
+    if (raw !== "") {
+      const n = clampInt(raw, 0, 240, NaN);
+      if (isNaN(n)) { showError("Lead time must be 0 to 240", new Error("invalid")); return; }
+      nextLead = n;
+    }
+    const prev = r.leadMinutes;
+    r.leadMinutes = nextLead;
+    rowOptionsDialog.close();
+    render();
+    try {
+      const updated = await api("PATCH", `/reminders/${r.id}`, { leadMinutes: nextLead });
+      replaceLocal(updated.reminder);
+      render();
+      announce(nextLead === null ? "Lead time reset to default" : `Lead time set to ${nextLead} minutes`);
+    } catch (err) {
+      r.leadMinutes = prev;
+      render();
+      showError("Could not save lead time", err);
+    }
+  });
+
+  // keyboard shortcuts: ignore when typing in a form field
+  document.addEventListener("keydown", (e) => {
+    if (e.ctrlKey || e.metaKey || e.altKey) return;
+    const t = e.target;
+    const tag = (t && t.tagName ? t.tagName.toLowerCase() : "");
+    if (tag === "input" || tag === "textarea" || tag === "select" || (t && t.isContentEditable)) return;
+    if (e.key === "/") { e.preventDefault(); titleInput.focus(); }
+    else if (e.key === "g" || e.key === "G") { e.preventDefault(); groupToggle.click(); }
+    else if (e.key === "?") { e.preventDefault(); openDialog(guideDialog); }
+    else if (e.key === "Escape" && activeTagFilter) { setTagFilter(null); }
+  });
+
+  // focus return after a dialog closes
+  for (const d of [settingsDialog, whatsNewDialog, guideDialog, rowOptionsDialog]) {
+    d.addEventListener("close", () => {
+      if (lastFocusedTrigger && typeof lastFocusedTrigger.focus === "function") {
+        lastFocusedTrigger.focus();
+      }
+      lastFocusedTrigger = null;
+    });
+  }
+
   // ---------- render ----------
   function render() {
-    const open = reminders.filter((r) => !r.done);
-    const done = reminders.filter((r) => r.done);
+    const visible = activeTagFilter
+      ? reminders.filter((r) => (r.tags || []).some((t) => t.toLowerCase() === activeTagFilter.toLowerCase()))
+      : reminders;
+    const open = visible.filter((r) => !r.done && !pendingDeletes.has(r.id));
+    const done = visible.filter((r) => r.done && !pendingDeletes.has(r.id));
     const recentDone = settings.showAllDone
       ? done
       : done.filter((r) => !r.closedAt || (Date.now() - new Date(r.closedAt).getTime()) < DONE_AGE_MS);
@@ -93,7 +196,10 @@
 
     reminderRoot.innerHTML = "";
 
-    if (settings.groupByTag) {
+    const totalNonPending = reminders.filter((r) => !pendingDeletes.has(r.id)).length;
+    if (totalNonPending === 0 && !activeTagFilter) {
+      reminderRoot.appendChild(buildEmptyHero());
+    } else if (settings.groupByTag) {
       renderByTag(open);
     } else {
       renderByTime(open);
@@ -103,7 +209,45 @@
       reminderRoot.appendChild(buildDoneSection(recentDone, olderDoneCount));
     }
 
+    markAllDoneBtn.hidden = open.length === 0;
     updateBotHint();
+  }
+
+  function buildEmptyHero() {
+    const card = document.createElement("section");
+    card.className = "card empty-hero";
+    const h2 = document.createElement("h2");
+    h2.textContent = "Nothing on the list yet";
+    const p = document.createElement("p");
+    p.textContent = "Try one of these to get started, or type your own above.";
+    const examples = document.createElement("div");
+    examples.className = "examples";
+    const seeds = [
+      "Send report 9:00 #work",
+      "Call doctor #personal",
+      "Standup 10:00 #team",
+      "Review PRs #work",
+    ];
+    for (const s of seeds) {
+      const b = document.createElement("button");
+      b.type = "button";
+      b.className = "example";
+      b.textContent = s;
+      b.addEventListener("click", () => {
+        let text = s;
+        const m = text.match(/\b(\d{1,2}:\d{2})\b/);
+        if (m) {
+          const [h, mm] = m[1].split(":");
+          timeInput.value = `${h.padStart(2, "0")}:${mm}`;
+          text = text.replace(m[0], "").replace(/\s+/g, " ").trim();
+        }
+        titleInput.value = text;
+        titleInput.focus();
+      });
+      examples.appendChild(b);
+    }
+    card.append(h2, p, examples);
+    return card;
   }
 
   function renderByTime(items) {
@@ -113,17 +257,19 @@
     const anytime = items.filter((r) => r.priority !== "high" && !r.time);
 
     if (high.length) {
-      reminderRoot.appendChild(buildSection("High priority", high, { showWhen: true, emptyText: null }));
+      reminderRoot.appendChild(buildSection("High priority", sortByOrderThenTime(high), { showWhen: true, emptyText: null, draggable: true }));
     }
     reminderRoot.appendChild(buildSection("Today", timed, {
       showWhen: true,
-      emptyText: timed.length ? null : "Nothing scheduled. Add something above.",
+      emptyText: timed.length ? null : (activeTagFilter ? `No timed reminders for ${activeTagFilter}.` : "Nothing scheduled. Add something above."),
       meta: todayDateString,
+      draggable: false,
     }));
-    reminderRoot.appendChild(buildSection("Anytime today", anytime, {
+    reminderRoot.appendChild(buildSection("Anytime today", sortByOrderThenTime(anytime), {
       showWhen: false,
       emptyText: anytime.length ? null : "None.",
       meta: "No specific time",
+      draggable: true,
     }));
   }
 
@@ -142,23 +288,44 @@
     }
     const tagNames = [...buckets.keys()].sort();
     for (const tag of tagNames) {
-      const section = buildSection(`#${tag}`, sortReminders(buckets.get(tag)), { showWhen: true, emptyText: null });
+      const section = buildSection(`#${tag}`, sortReminders(buckets.get(tag)), { showWhen: true, emptyText: null, draggable: true });
       const head = section.querySelector("h2");
       if (head) head.style.color = colorForTag(tag);
       reminderRoot.appendChild(section);
     }
     if (untagged.length) {
-      reminderRoot.appendChild(buildSection("No tag", sortReminders(untagged), { showWhen: true, emptyText: null }));
+      reminderRoot.appendChild(buildSection("No tag", sortReminders(untagged), { showWhen: true, emptyText: null, draggable: true }));
     }
     if (tagNames.length === 0 && untagged.length === 0) {
-      reminderRoot.appendChild(buildSection("Today", [], { showWhen: true, emptyText: "Nothing scheduled.", meta: todayDateString }));
+      reminderRoot.appendChild(buildSection("Today", [], { showWhen: true, emptyText: "Nothing scheduled.", meta: todayDateString, draggable: false }));
     }
+  }
+
+  function compareOrderless(a, b) {
+    const ta = a.time || "zz";
+    const tb = b.time || "zz";
+    if (ta !== tb) return ta.localeCompare(tb);
+    return (a.id || "").localeCompare(b.id || "");
   }
 
   function sortReminders(items) {
     return [...items].sort((a, b) => {
       if (a.priority !== b.priority) return a.priority === "high" ? -1 : 1;
-      return (a.time || "zz").localeCompare(b.time || "zz");
+      const aHas = typeof a.order === "number";
+      const bHas = typeof b.order === "number";
+      if (aHas !== bHas) return aHas ? -1 : 1;
+      if (aHas && bHas) return a.order - b.order;
+      return compareOrderless(a, b);
+    });
+  }
+
+  function sortByOrderThenTime(items) {
+    return [...items].sort((a, b) => {
+      const aHas = typeof a.order === "number";
+      const bHas = typeof b.order === "number";
+      if (aHas !== bHas) return aHas ? -1 : 1;
+      if (aHas && bHas) return a.order - b.order;
+      return compareOrderless(a, b);
     });
   }
 
@@ -186,7 +353,7 @@
 
     const ul = document.createElement("ul");
     ul.className = "list";
-    for (const r of items) ul.appendChild(buildRow(r, opts.showWhen));
+    for (const r of items) ul.appendChild(buildRow(r, opts.showWhen, !!opts.draggable));
     section.appendChild(ul);
     return section;
   }
@@ -222,15 +389,25 @@
 
     const ul = document.createElement("ul");
     ul.className = "list done";
-    for (const r of recent) ul.appendChild(buildRow(r, true));
+    for (const r of recent) ul.appendChild(buildRow(r, true, false));
     section.appendChild(ul);
     return section;
   }
 
-  function buildRow(r, showWhen) {
+  function buildRow(r, _showWhen, draggable) {
     const li = document.createElement("li");
+    li.dataset.id = r.id;
     if (r.firedAt) li.classList.add("fired");
     if (r.priority === "high") li.classList.add("high");
+    if (pendingDeletes.has(r.id)) li.classList.add("pending-delete");
+
+    const handle = document.createElement("button");
+    handle.type = "button";
+    handle.className = "drag-handle";
+    handle.setAttribute("aria-label", "Drag to reorder");
+    handle.title = draggable ? "Drag to reorder" : "Reorder not available in this view";
+    handle.textContent = "☰"; // ≡
+    if (!draggable) handle.style.visibility = "hidden";
 
     const star = document.createElement("button");
     star.className = "icon-btn star" + (r.priority === "high" ? " on" : "");
@@ -259,10 +436,18 @@
       const tagRow = document.createElement("div");
       tagRow.className = "tag-row";
       for (const t of r.tags) {
-        const chip = document.createElement("span");
-        chip.className = "tag-chip";
+        const chip = document.createElement("button");
+        chip.type = "button";
+        const isActive = activeTagFilter && activeTagFilter.toLowerCase() === t.toLowerCase();
+        chip.className = "tag-chip" + (isActive ? " active" : "");
         chip.style.backgroundColor = colorForTag(t);
         chip.textContent = `#${t}`;
+        chip.title = isActive ? "Clear filter" : `Filter by #${t}`;
+        chip.setAttribute("aria-label", chip.title);
+        chip.addEventListener("click", (e) => {
+          e.stopPropagation();
+          setTagFilter(isActive ? null : t);
+        });
         tagRow.appendChild(chip);
       }
       titleWrap.appendChild(tagRow);
@@ -270,10 +455,18 @@
 
     const when = document.createElement("span");
     when.className = "when";
-    when.textContent = showWhen && r.time ? formatTime(r.time) : (r.time ? formatTime(r.time) : "");
+    renderWhen(when, r.time, r.leadMinutes);
     when.title = r.time ? "Click to change time" : "Click to set a time";
     when.tabIndex = 0;
     when.addEventListener("click", () => startTimeEdit(r, when));
+
+    const more = document.createElement("button");
+    more.type = "button";
+    more.className = "icon-btn more";
+    more.title = "More options";
+    more.setAttribute("aria-label", "More options");
+    more.textContent = "⋯";
+    more.addEventListener("click", () => openRowOptions(r));
 
     const del = document.createElement("button");
     del.className = "icon-btn";
@@ -282,8 +475,89 @@
     del.textContent = "✕";
     del.addEventListener("click", () => removeReminder(r));
 
-    li.append(star, cb, titleWrap, when, del);
+    li.append(handle, star, cb, titleWrap, when, more, del);
+    if (draggable) attachDragHandlers(li, r);
     return li;
+  }
+
+  function attachDragHandlers(li, r) {
+    li.draggable = true;
+    li.addEventListener("dragstart", (e) => {
+      try { e.dataTransfer.effectAllowed = "move"; } catch (_) {}
+      e.dataTransfer.setData("text/reminder-id", r.id);
+      li.classList.add("dragging");
+    });
+    li.addEventListener("dragend", () => {
+      li.classList.remove("dragging");
+      document.querySelectorAll(".drop-before, .drop-after").forEach((el) =>
+        el.classList.remove("drop-before", "drop-after")
+      );
+    });
+    li.addEventListener("dragover", (e) => {
+      if (!e.dataTransfer.types.includes("text/reminder-id")) return;
+      e.preventDefault();
+      const rect = li.getBoundingClientRect();
+      const before = (e.clientY - rect.top) < rect.height / 2;
+      li.classList.toggle("drop-before", before);
+      li.classList.toggle("drop-after", !before);
+    });
+    li.addEventListener("dragleave", () => {
+      li.classList.remove("drop-before", "drop-after");
+    });
+    li.addEventListener("drop", (e) => {
+      e.preventDefault();
+      const sourceId = e.dataTransfer.getData("text/reminder-id");
+      const rect = li.getBoundingClientRect();
+      const before = (e.clientY - rect.top) < rect.height / 2;
+      li.classList.remove("drop-before", "drop-after");
+      if (!sourceId || sourceId === r.id) return;
+      reorderInSection(sourceId, r.id, before, li.parentElement);
+    });
+  }
+
+  async function reorderInSection(sourceId, targetId, before, ul) {
+    const source = reminders.find((x) => x.id === sourceId);
+    if (!source || !ul) return;
+    const siblings = [...ul.querySelectorAll("li[data-id]")];
+    const sectionItems = siblings.map((s) => reminders.find((x) => x.id === s.dataset.id)).filter(Boolean);
+    const withoutSource = sectionItems.filter((x) => x.id !== sourceId);
+    const targetIdx = withoutSource.findIndex((x) => x.id === targetId);
+    if (targetIdx < 0) return;
+    const insertAt = before ? targetIdx : targetIdx + 1;
+    withoutSource.splice(insertAt, 0, source);
+    const snapshots = [];
+    const changed = [];
+    for (let i = 0; i < withoutSource.length; i++) {
+      const item = withoutSource[i];
+      const newOrder = (i + 1) * 1000;
+      if (item.order !== newOrder) {
+        snapshots.push({ id: item.id, order: item.order });
+        item.order = newOrder;
+        changed.push(item);
+      }
+    }
+    if (changed.length === 0) return;
+    render();
+    try {
+      await Promise.all(changed.map((item) =>
+        api("PATCH", `/reminders/${item.id}`, { order: item.order })
+      ));
+      announce(`Moved ${source.title}`);
+    } catch (err) {
+      for (const snap of snapshots) {
+        const r2 = reminders.find((x) => x.id === snap.id);
+        if (r2) r2.order = snap.order;
+      }
+      render();
+      showError("Could not reorder", err);
+    }
+  }
+
+  function openRowOptions(r) {
+    editingReminderId = r.id;
+    rowOptionsTitle.textContent = r.title;
+    rowLeadMinutes.value = typeof r.leadMinutes === "number" ? String(r.leadMinutes) : "";
+    openDialog(rowOptionsDialog);
   }
 
   // ---------- inline edit ----------
@@ -302,19 +576,27 @@
       if (committed) return;
       committed = true;
       const { title, tags } = extractTagsFromTitle(input.value.trim());
-      if (!title || title === r.title && (!tags.length || sameTags(tags, r.tags))) {
+      const wantTagMerge = tags.length && !sameTags(mergeTags(r.tags, tags), r.tags);
+      if (!title || (title === r.title && !wantTagMerge)) {
         span.textContent = r.title;
         return;
       }
+      const prevTitle = r.title;
+      const prevTags = r.tags;
+      r.title = title;
+      if (wantTagMerge) r.tags = mergeTags(r.tags, tags);
+      render();
       try {
         const patch = { title };
-        if (tags.length) patch.tags = mergeTags(r.tags, tags);
+        if (wantTagMerge) patch.tags = r.tags;
         const updated = await api("PATCH", `/reminders/${r.id}`, patch);
         replaceLocal(updated.reminder);
         render();
       } catch (err) {
+        r.title = prevTitle;
+        r.tags = prevTags;
+        render();
         showError("Could not rename", err);
-        span.textContent = r.title;
       }
     };
     input.addEventListener("blur", commit);
@@ -338,69 +620,137 @@
       if (committed) return;
       committed = true;
       const newTime = input.value || null;
-      if (newTime === r.time) { host.textContent = r.time ? formatTime(r.time) : ""; return; }
+      if (newTime === r.time) { renderWhen(host, r.time, r.leadMinutes); return; }
+      const prevTime = r.time;
+      r.time = newTime;
+      render();
       try {
         const updated = await api("PATCH", `/reminders/${r.id}`, { time: newTime });
         replaceLocal(updated.reminder);
         render();
       } catch (err) {
+        r.time = prevTime;
+        render();
         showError("Could not change time", err);
-        host.textContent = r.time ? formatTime(r.time) : "";
       }
     };
     input.addEventListener("blur", commit);
     input.addEventListener("keydown", (e) => {
       if (e.key === "Enter") { e.preventDefault(); input.blur(); }
-      else if (e.key === "Escape") { committed = true; host.textContent = r.time ? formatTime(r.time) : ""; }
+      else if (e.key === "Escape") { committed = true; renderWhen(host, r.time, r.leadMinutes); }
     });
   }
 
-  // ---------- model ops ----------
-  async function removeReminder(r) {
-    try {
-      await api("DELETE", `/reminders/${r.id}`);
+  // ---------- model ops (optimistic) ----------
+  function removeReminder(r) {
+    if (pendingDeletes.has(r.id)) return;
+    // optimistic delete: hide row immediately, fire DELETE after UNDO_MS unless undone
+    const timer = setTimeout(async () => {
+      const entry = pendingDeletes.get(r.id);
+      pendingDeletes.delete(r.id);
       reminders = reminders.filter((x) => x.id !== r.id);
       render();
-    } catch (err) {
-      if (err.status === 404) {
-        reminders = reminders.filter((x) => x.id !== r.id);
-        render();
-        return;
+      if (entry && entry.toast) entry.toast.remove();
+      try {
+        await api("DELETE", `/reminders/${r.id}`);
+      } catch (err) {
+        if (err.status !== 404) showError("Could not delete", err);
       }
-      showError("Could not delete", err);
-    }
+    }, UNDO_MS);
+    const toast = showUndoToast(r);
+    pendingDeletes.set(r.id, { reminder: r, timer, toast });
+    render();
+    announce(`Deleted ${r.title}, undo available`);
+  }
+
+  function undoDelete(id) {
+    const entry = pendingDeletes.get(id);
+    if (!entry) return;
+    clearTimeout(entry.timer);
+    pendingDeletes.delete(id);
+    if (entry.toast) entry.toast.remove();
+    render();
+    announce(`Restored ${entry.reminder.title}`);
   }
 
   async function toggleDone(r) {
-    const nextDone = !r.done;
+    const prevDone = r.done;
+    const prevClosedAt = r.closedAt;
+    r.done = !prevDone;
+    r.closedAt = r.done ? new Date().toISOString() : null;
+    render();
     try {
-      const updated = await api("PATCH", `/reminders/${r.id}`, { done: nextDone });
+      const updated = await api("PATCH", `/reminders/${r.id}`, { done: r.done });
       replaceLocal(updated.reminder);
       render();
     } catch (err) {
+      r.done = prevDone;
+      r.closedAt = prevClosedAt;
+      render();
       showError("Could not update", err);
     }
   }
 
   async function togglePriority(r) {
-    const next = r.priority === "high" ? "normal" : "high";
+    const prev = r.priority || "normal";
+    const next = prev === "high" ? "normal" : "high";
+    r.priority = next;
+    render();
     try {
       const updated = await api("PATCH", `/reminders/${r.id}`, { priority: next });
       replaceLocal(updated.reminder);
       render();
     } catch (err) {
+      r.priority = prev;
+      render();
       showError("Could not change priority", err);
     }
   }
 
+  async function markAllOpenDone() {
+    const openVisible = (activeTagFilter
+      ? reminders.filter((r) => (r.tags || []).some((t) => t.toLowerCase() === activeTagFilter.toLowerCase()))
+      : reminders
+    ).filter((r) => !r.done && !pendingDeletes.has(r.id));
+    if (openVisible.length === 0) return;
+    if (openVisible.length > 1 && !confirm(`Mark all ${openVisible.length} open reminders as done?`)) return;
+    const snapshot = openVisible.map((r) => ({ id: r.id, done: r.done, closedAt: r.closedAt }));
+    const now = new Date().toISOString();
+    for (const r of openVisible) { r.done = true; r.closedAt = now; }
+    render();
+    try {
+      await Promise.all(openVisible.map((r) =>
+        api("PATCH", `/reminders/${r.id}`, { done: true })
+          .catch((err) => { if (err.status !== 404) throw err; })
+      ));
+      announce(`${openVisible.length} reminders marked done`);
+    } catch (err) {
+      for (const snap of snapshot) {
+        const r = reminders.find((x) => x.id === snap.id);
+        if (r) { r.done = snap.done; r.closedAt = snap.closedAt; }
+      }
+      render();
+      showError("Could not mark all done", err);
+    }
+  }
+
   async function clearDoneVisible() {
-    const targets = reminders.filter((r) => r.done && (settings.showAllDone || !r.closedAt || (Date.now() - new Date(r.closedAt).getTime()) < DONE_AGE_MS));
+    const inFilter = activeTagFilter
+      ? reminders.filter((r) => (r.tags || []).some((t) => t.toLowerCase() === activeTagFilter.toLowerCase()))
+      : reminders;
+    const targets = inFilter.filter((r) => r.done && (settings.showAllDone || !r.closedAt || (Date.now() - new Date(r.closedAt).getTime()) < DONE_AGE_MS));
+    if (targets.length === 0) return;
+    const snapshot = targets.map((r) => ({ ...r }));
+    const ids = new Set(targets.map((r) => r.id));
+    reminders = reminders.filter((r) => !ids.has(r.id));
+    render();
     try {
       await Promise.all(targets.map((r) => api("DELETE", `/reminders/${r.id}`).catch((e) => { if (e.status !== 404) throw e; })));
-      const targetIds = new Set(targets.map((r) => r.id));
-      reminders = reminders.filter((r) => !targetIds.has(r.id));
-      render();
+      announce(`Cleared ${targets.length} done`);
     } catch (err) {
+      // best-effort restore
+      reminders = reminders.concat(snapshot);
+      render();
       showError("Could not clear done", err);
     }
   }
@@ -409,6 +759,41 @@
     const idx = reminders.findIndex((x) => x.id === r.id);
     if (idx >= 0) reminders[idx] = r;
     else reminders.push(r);
+  }
+  function replaceById(oldId, r) {
+    const idx = reminders.findIndex((x) => x.id === oldId);
+    if (idx >= 0) reminders[idx] = r;
+    else reminders.push(r);
+  }
+
+  // ---------- tag filter ----------
+  function setTagFilter(tag) {
+    activeTagFilter = tag;
+    if (tag) {
+      filterBanner.hidden = false;
+      filterTagLabel.textContent = `#${tag}`;
+      announce(`Filtered to ${tag}`);
+    } else {
+      filterBanner.hidden = true;
+      announce("Filter cleared");
+    }
+    render();
+  }
+
+  // ---------- toasts ----------
+  function showUndoToast(r) {
+    const toast = document.createElement("div");
+    toast.className = "toast";
+    const label = document.createElement("span");
+    label.textContent = `Deleted "${truncate(r.title, 40)}"`;
+    const action = document.createElement("button");
+    action.type = "button";
+    action.className = "toast-action";
+    action.textContent = "Undo";
+    action.addEventListener("click", () => undoDelete(r.id));
+    toast.append(label, action);
+    toastRegion.appendChild(toast);
+    return toast;
   }
 
   // ---------- API ----------
@@ -432,14 +817,19 @@
     return data;
   }
 
-  // ---------- settings dialog ----------
+  // ---------- dialogs ----------
+  function openDialog(dlg, beforeShow) {
+    lastFocusedTrigger = document.activeElement;
+    if (beforeShow) beforeShow();
+    if (typeof dlg.showModal === "function") dlg.showModal();
+    else dlg.setAttribute("open", "");
+  }
   function openSettings() {
     $("setEodTime").value = settings.eodTime;
     $("setLeadMinutes").value = settings.leadMinutes;
     $("setWeekdaysOnly").checked = !!settings.weekdaysOnly;
     $("setNotifications").checked = settings.notifications !== false;
-    if (typeof settingsDialog.showModal === "function") settingsDialog.showModal();
-    else settingsDialog.setAttribute("open", "");
+    $("setThemeOverride").value = settings.themeOverride || "auto";
   }
 
   function updateBotHint() {
@@ -486,6 +876,23 @@
     for (let i = 0; i < tag.length; i++) h = (h * 31 + tag.charCodeAt(i)) & 0xffffffff;
     return TAG_PALETTE[Math.abs(h) % TAG_PALETTE.length];
   }
+  function renderWhen(el, time, leadMinutes) {
+    el.classList.remove("empty");
+    el.textContent = "";
+    if (!time) {
+      el.textContent = "Set time";
+      el.classList.add("empty");
+      return;
+    }
+    el.append(document.createTextNode(formatTime(time)));
+    if (typeof leadMinutes === "number") {
+      const badge = document.createElement("span");
+      badge.className = "lead-badge";
+      badge.textContent = `−${leadMinutes}m`;
+      badge.title = `Custom lead time: ${leadMinutes} minutes before`;
+      el.append(badge);
+    }
+  }
   function formatTime(hhmm) {
     const [h, m] = hhmm.split(":").map(Number);
     const d = new Date();
@@ -499,12 +906,57 @@
   }
   function showError(prefix, err) {
     console.error(prefix, err);
+    postTelemetry("tab.error", {
+      message: `${prefix}: ${err && err.message ? err.message : String(err)}`,
+      stack: err && err.stack ? String(err.stack) : "",
+    });
     const banner = $("errorBanner");
     if (banner) {
       banner.textContent = `${prefix}: ${err.message || err}`;
       banner.hidden = false;
       setTimeout(() => { banner.hidden = true; }, 5000);
     }
+  }
+
+  function postTelemetry(event, payload) {
+    try {
+      const headers = { "Content-Type": "application/json" };
+      if (authToken) headers.Authorization = `Bearer ${authToken}`;
+      fetch(`${API_BASE}/telemetry`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          event,
+          version: APP_VERSION,
+          url: location.href,
+          ...(payload || {}),
+        }),
+        keepalive: true,
+      }).catch(() => {});
+    } catch (_) {}
+  }
+
+  window.addEventListener("error", (e) => {
+    postTelemetry("tab.error", {
+      message: String(e.message || e),
+      stack: e.error && e.error.stack ? String(e.error.stack) : "",
+    });
+  });
+  window.addEventListener("unhandledrejection", (e) => {
+    const reason = e.reason || {};
+    postTelemetry("tab.unhandledrejection", {
+      message: reason.message ? String(reason.message) : String(reason),
+      stack: reason.stack ? String(reason.stack) : "",
+    });
+  });
+  function announce(msg) {
+    if (!liveRegion) return;
+    liveRegion.textContent = "";
+    setTimeout(() => { liveRegion.textContent = msg; }, 50);
+  }
+  function truncate(s, n) {
+    s = String(s || "");
+    return s.length > n ? s.slice(0, n - 1) + "…" : s;
   }
 
   // ---------- Teams init + boot ----------
@@ -531,11 +983,20 @@
         api("GET", "/reminders"),
       ]);
       Object.assign(settings, s);
+      // restore tab-only override after server settings merge
+      try {
+        const saved = localStorage.getItem("themeOverride");
+        if (saved) settings.themeOverride = saved;
+      } catch (_) {}
       hasBot = !!hb;
       reminders = rems;
       render();
     } catch (err) {
       console.error("Boot failed", err);
+      postTelemetry("tab.boot.failed", {
+        message: err && err.message ? err.message : String(err),
+        stack: err && err.stack ? String(err.stack) : "",
+      });
       const banner = $("errorBanner");
       if (banner) {
         banner.textContent = `Could not connect: ${err.message || err}`;
@@ -544,9 +1005,11 @@
     }
   }
   function applyTheme(theme) {
-    document.body.dataset.theme =
-      theme === "dark" ? "dark" :
-      theme === "contrast" ? "contrast" : "default";
+    teamsTheme = theme;
+    const effective = settings.themeOverride && settings.themeOverride !== "auto"
+      ? settings.themeOverride
+      : (theme === "dark" ? "dark" : theme === "contrast" ? "contrast" : "default");
+    document.body.dataset.theme = effective;
   }
 
   boot();
