@@ -4,8 +4,15 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Day Reminders &mdash; Licenses</title>
-  <link rel="stylesheet" href="styles.css?v=1.7.4" />
-  <link rel="stylesheet" href="licenses.css?v=1.7.4" />
+  <!-- Warm up the TCP + TLS handshake to the API and Teams CDN in parallel
+       with HTML parse, shaving ~150-300ms off the first /api/licenses call. -->
+  <link rel="preconnect" href="https://func-day-reminders-17023.azurewebsites.net" crossorigin />
+  <link rel="dns-prefetch" href="https://func-day-reminders-17023.azurewebsites.net" />
+  <link rel="preconnect" href="https://res.cdn.office.net" crossorigin />
+  <link rel="preload" as="script" href="licenses.js?v=1.7.5" />
+  <link rel="preload" as="style" href="licenses.css?v=1.7.5" />
+  <link rel="stylesheet" href="styles.css?v=1.7.5" />
+  <link rel="stylesheet" href="licenses.css?v=1.7.5" />
   <script src="https://res.cdn.office.net/teams-js/2.24.0/js/MicrosoftTeams.min.js"></script>
 </head>
 <body data-theme="default" data-page="licenses">
@@ -13,7 +20,7 @@
   <header class="topbar">
     <div class="topbar-actions">
       <div class="search-wrap">
-        <input id="searchInput" class="search-input" type="search" placeholder="Search customer, license type, notes" aria-label="Search licenses" autocomplete="off" />
+        <input id="searchInput" class="search-input" type="search" placeholder="Search" aria-label="Search customer, license type, or notes" title="Search customer, license type, or notes" autocomplete="off" />
         <button id="searchClear" class="search-clear" type="button" title="Clear search" aria-label="Clear search" hidden>&times;</button>
       </div>
       <div id="viewSwitch" class="view-switch" role="group" aria-label="View">
@@ -37,6 +44,8 @@
   <div class="layout lic-shell">
     <main class="lic-main">
       <p id="errorBanner" class="error-banner" hidden></p>
+
+      <div id="bootIndicator" class="lic-boot" aria-live="polite">Loading licenses&hellip;</div>
 
       <div id="filterPills" class="filter-pills" role="group" aria-label="Quick filters">
         <button type="button" class="filter-pill" data-quick="all" aria-pressed="true">All</button>
@@ -321,6 +330,6 @@
 
   <div id="toast" class="toast" hidden></div>
 
-  <script src="licenses.js?v=1.7.4"></script>
+  <script src="licenses.js?v=1.7.5" defer></script>
 </body>
 </html>

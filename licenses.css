@@ -1,5 +1,22 @@
 /* Day Reminders - Licenses tab specific styles. Inherits base theming from styles.css. */
 
+/* Don't let the search input shrink so small the placeholder truncates. */
+body[data-page="licenses"] .topbar-actions { gap: 8px; flex-wrap: wrap; row-gap: 10px; }
+body[data-page="licenses"] .search-input { min-width: 180px; }
+
+/* Boot indicator (shown until first /api/licenses fetch resolves). */
+.lic-boot {
+  padding: 8px 14px;
+  margin-bottom: 8px;
+  border-radius: 8px;
+  background: var(--row-hover, rgba(0, 0, 0, 0.04));
+  font-size: 13px;
+  opacity: 0.8;
+}
+.lic-boot.gone { display: none; }
+body[data-theme="dark"] .lic-boot { background: rgba(255, 255, 255, 0.06); }
+
+
 /* ---------- Two-column shell: main (table) + aside (summary/breakdowns) ---------- */
 .lic-shell {
   display: grid;

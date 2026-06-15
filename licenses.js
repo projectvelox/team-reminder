@@ -1505,6 +1505,24 @@
     document.body.dataset.theme = theme === "dark" ? "dark" : theme === "contrast" ? "contrast" : "default";
   }
 
+  // Cache /api/members in localStorage with a short TTL so the Owner picker
+  // pre-fills instantly on subsequent loads while we refresh in the background.
+  // Members change rarely (only when a new user opens Day Reminders the first time).
+  const LS_MEMBERS_CACHE = "lic.membersCache";
+  const MEMBERS_TTL_MS = 10 * 60 * 1000;
+  function loadCachedMembers() {
+    try {
+      const raw = localStorage.getItem(LS_MEMBERS_CACHE);
+      if (!raw) return null;
+      const obj = JSON.parse(raw);
+      if (!obj || !obj.at || Date.now() - obj.at > MEMBERS_TTL_MS) return null;
+      return Array.isArray(obj.members) ? obj.members : null;
+    } catch (_) { return null; }
+  }
+  function saveCachedMembers(mems) {
+    try { localStorage.setItem(LS_MEMBERS_CACHE, JSON.stringify({ at: Date.now(), members: mems })); } catch (_) {}
+  }
+
   async function boot() {
     if (!window.microsoftTeams) {
       showError("Teams SDK failed to load", new Error("microsoftTeams missing"));
@@ -1525,18 +1543,27 @@
       me.oid = ctx.user?.id || null;
       me.name = ctx.user?.userPrincipalName || ctx.user?.displayName || null;
 
-      // First call hits /api/members to register self and grab the picker list.
-      // Second call gets the licenses.
-      const [{ members: mems }, { licenses: lics }] = await Promise.all([
-        api("GET", "/members"),
-        api("GET", "/licenses"),
-      ]);
-      members = mems || [];
+      // Fast path: paint the UI with cached members while licenses fetch.
+      const cached = loadCachedMembers();
+      if (cached) members = cached;
+      wireEvents();
+
+      // Kick off both API calls in parallel; render as soon as licenses arrive.
+      const membersPromise = api("GET", "/members")
+        .then((res) => { members = res.members || []; saveCachedMembers(members); render(); })
+        .catch(() => {});
+      const { licenses: lics } = await api("GET", "/licenses");
       licenses = lics || [];
 
-      wireEvents();
+      // Hide the boot indicator now that we have data.
+      const bi = $("bootIndicator");
+      if (bi) bi.classList.add("gone");
       render();
+      // Don't await members if it's still in flight — it just refreshes the picker.
+      membersPromise;
     } catch (err) {
+      const bi = $("bootIndicator");
+      if (bi) bi.classList.add("gone");
       showError("Could not connect", err);
     }
   }
