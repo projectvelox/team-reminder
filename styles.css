@@ -928,9 +928,11 @@ button:focus-visible, .link:focus-visible, .tag-chip:focus-visible, select:focus
 /* ===== v1.4.1 — client field ===== */
 
 /* client chip: distinct from tag chips. Tags are filled colored circles;
-   client is an outlined neutral chip with a small leading marker so the two
-   are immediately distinguishable at a glance. */
+   client is a colored dashed-outlined chip with a small leading marker so the
+   two are immediately distinguishable at a glance. The per-client color is
+   provided by JS via the --client-color CSS custom property. */
 .client-chip {
+  --client-color: var(--muted);
   display: inline-flex;
   align-items: center;
   gap: 4px;
@@ -938,30 +940,30 @@ button:focus-visible, .link:focus-visible, .tag-chip:focus-visible, select:focus
   padding: 1px 8px;
   border-radius: 4px;
   background: transparent;
-  color: var(--text);
-  border: 1px dashed var(--muted);
+  color: var(--client-color);
+  border: 1px dashed var(--client-color);
   cursor: pointer;
   font-family: inherit;
   letter-spacing: .02em;
-  font-weight: 500;
+  font-weight: 600;
 }
 .client-chip::before {
   content: "▸";
   font-size: 9px;
-  color: var(--muted);
+  color: var(--client-color);
 }
 .client-chip:hover {
-  border-color: var(--accent);
-  color: var(--accent);
-}
-.client-chip:hover::before { color: var(--accent); }
-.client-chip.active {
-  background: var(--text);
-  color: var(--bg);
-  border-color: var(--text);
+  filter: brightness(1.15);
   border-style: solid;
 }
-.client-chip.active::before { color: var(--bg); }
+.client-chip.active {
+  background: var(--client-color);
+  color: #fff;
+  border-color: var(--client-color);
+  border-style: solid;
+  text-shadow: 0 0 1px rgba(0,0,0,.35);
+}
+.client-chip.active::before { color: #fff; }
 .client-chip:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;

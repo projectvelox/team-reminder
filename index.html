@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Day Reminders</title>
-  <link rel="stylesheet" href="styles.css?v=1.4.2" />
+  <link rel="stylesheet" href="styles.css?v=1.4.3" />
   <script src="https://res.cdn.office.net/teams-js/2.24.0/js/MicrosoftTeams.min.js"></script>
 </head>
 <body data-theme="default">
@@ -108,7 +108,7 @@
           <li><strong>Search:</strong> the <em>Search reminders</em> box in the top bar matches title and tags. Shortcut <code>f</code>.</li>
           <li><strong>Quick filters:</strong> use the row of pills above the list (<em>Timed</em>, <em>Anytime</em>, <em>Priority</em>, <em>Done</em>) to focus a slice fast.</li>
           <li><strong>Select multiple:</strong> click <em>Select</em> in the top bar to pick several rows and bulk-done / delete / star them.</li>
-          <li><strong>Group by tag:</strong> the top-right toggle, or press <code>g</code>.</li>
+          <li><strong>Group:</strong> the top-right toggle cycles <em>off → tag → client → off</em>. Shortcut <code>g</code>. Selection persists across reloads.</li>
           <li><strong>Mark done:</strong> tick the checkbox. Undo within 5 seconds.</li>
           <li><strong>Bot chat:</strong> open the <em>Chat</em> tab above and type <code>/help</code>, <code>/list</code>, <code>/add</code>, <code>/done</code>. <code>/add</code> accepts a date too, e.g. <code>/add 5pm tomorrow #work Send report</code>.</li>
           <li><strong>Views:</strong> the top-right segmented control switches between <em>Lines</em>, <em>Grid</em>, <em>Day</em> (hour-by-hour today), and <em>Week</em> (Mon–Sun grid). Shortcut: <code>v</code> cycles.</li>
@@ -165,6 +165,12 @@
     <form method="dialog">
       <h2>What's new</h2>
       <ul class="changelog">
+        <li><strong>v1.4.3</strong>
+          <ul>
+            <li>Client chip is now <strong>colored per client</strong> (deterministic — same client always gets the same color). Filtering on a client fills the chip with that color for strong visual feedback.</li>
+            <li>New <em>Group by client</em> mode. The top-right <em>Group</em> button now cycles <em>off → tag → client → off</em>; shortcut <code>g</code>. Group choice persists across reloads.</li>
+          </ul>
+        </li>
         <li><strong>v1.4.2</strong>
           <ul>
             <li>New <em>Week</em> view in the top-right view toggle — Mon–Sun grid of your reminders by due date. Today's column is highlighted.</li>
@@ -291,7 +297,7 @@
         <li><strong>Edit inline:</strong> click a title, date, time, or description. Enter saves, Esc cancels.</li>
         <li><strong>Reorder:</strong> drag the <span class="kbd">&#9776;</span> handle (Anytime, tag, and high-priority sections).</li>
         <li><strong>Per-row options:</strong> click <span class="kbd">&middot;&middot;&middot;</span> to set a custom lead time.</li>
-        <li><strong>Group by tag:</strong> top-right toggle or press <code>g</code>.</li>
+        <li><strong>Group:</strong> top-right toggle cycles off → tag → client → off. Press <code>g</code>.</li>
         <li><strong>Mark done:</strong> tick the checkbox. Undo within 5 seconds if you mis-click.</li>
         <li><strong>Bot chat:</strong> open the Chat tab, type <code>/help</code>, <code>/list</code>, <code>/add</code>, <code>/done</code>. <code>/add</code> takes a date too: <code>5pm tomorrow Send report</code>.</li>
         <li><strong>Shortcuts:</strong> <code>/</code> focus add, <code>g</code> toggle group, <code>?</code> open this guide.</li>
@@ -305,13 +311,13 @@
   <div id="toastRegion" class="toast-region" aria-live="polite"></div>
 
   <footer class="appfoot">
-    <span class="muted" id="versionLabel">v1.4.2</span>
+    <span class="muted" id="versionLabel">v1.4.3</span>
     <span class="muted">&middot;</span>
     <button id="openWhatsNew" class="link" type="button">What's new</button>
     <span class="muted">&middot;</span>
     <a class="link" href="https://github.com/projectvelox/team-reminder/issues" target="_blank" rel="noopener">Report an issue</a>
   </footer>
 
-  <script src="app.js?v=1.4.2"></script>
+  <script src="app.js?v=1.4.3"></script>
 </body>
 </html>

@@ -1,4 +1,4 @@
-/* Day Reminders — Teams personal tab (v1.4.2)
+/* Day Reminders — Teams personal tab (v1.4.3)
    Thin client over the bot's REST API. Auth via Teams SSO.
    Server-side bot handles all notifications (proactive Adaptive Cards in chat).
 */
@@ -8,7 +8,7 @@
   const API_BASE = "https://func-day-reminders-17023.azurewebsites.net/api";
   const DONE_AGE_MS = 24 * 60 * 60 * 1000;
   const UNDO_MS = 5000;
-  const APP_VERSION = "1.4.2";
+  const APP_VERSION = "1.4.3";
   const VIEWS = ["lines", "grid", "calendar", "week"];
   const TAG_PALETTE = [
     "#0078d4", "#107c10", "#8764b8", "#ca5010", "#c50f1f",
@@ -23,7 +23,7 @@
     weekdaysOnly: true,
     notifications: true,
     themeOverride: "auto", // tab-only, persisted in localStorage (bot doesn't care)
-    groupByTag: false,
+    groupBy: "none", // "none" | "tag" | "client" — tab-only, persisted in localStorage
     showAllDone: false,
   };
   let hasBot = false;
@@ -47,6 +47,7 @@
   const LS_CLIENT_FILTER = "clientFilter";
   const LS_SEARCH = "searchText";
   const LS_VIEW = "currentView";
+  const LS_GROUP_BY = "groupBy";
   const LS_ONBOARDED = "onboardingDismissed";
 
   try {
@@ -62,6 +63,8 @@
     if (ss) searchText = ss;
     const sv = localStorage.getItem(LS_VIEW);
     if (sv && VIEWS.includes(sv)) currentView = sv;
+    const sg = localStorage.getItem(LS_GROUP_BY);
+    if (sg && ["none", "tag", "client"].includes(sg)) settings.groupBy = sg;
   } catch (_) {}
 
   // ---------- date helpers ----------
@@ -270,12 +273,30 @@
     }
   });
 
+  // Cycle off → tag → client → off. Label + aria reflect current state so the
+  // shortcut (g) is discoverable and the toggle reads cleanly.
+  const GROUP_CYCLE = ["none", "tag", "client"];
+  function applyGroupToggleLabel() {
+    const labels = { none: "Group: off", tag: "Group: tag", client: "Group: client" };
+    const titles = {
+      none: "Not grouped — press to group by tag (shortcut: g)",
+      tag: "Grouped by tag — press to group by client",
+      client: "Grouped by client — press to ungroup",
+    };
+    groupToggle.textContent = labels[settings.groupBy] || labels.none;
+    groupToggle.title = titles[settings.groupBy] || titles.none;
+    groupToggle.setAttribute("aria-pressed", String(settings.groupBy !== "none"));
+  }
   groupToggle.addEventListener("click", () => {
-    settings.groupByTag = !settings.groupByTag;
-    groupToggle.setAttribute("aria-pressed", String(settings.groupByTag));
-    announce(settings.groupByTag ? "Grouped by tag" : "Grouped by time");
+    const idx = GROUP_CYCLE.indexOf(settings.groupBy);
+    settings.groupBy = GROUP_CYCLE[(idx + 1) % GROUP_CYCLE.length];
+    try { localStorage.setItem(LS_GROUP_BY, settings.groupBy); } catch (_) {}
+    applyGroupToggleLabel();
+    const said = { none: "Ungrouped", tag: "Grouped by tag", client: "Grouped by client" };
+    announce(said[settings.groupBy] || "Grouped");
     render();
   });
+  applyGroupToggleLabel();
 
   clearFilterBtn.addEventListener("click", clearAllFilters);
   markAllDoneBtn.addEventListener("click", markAllOpenDone);
@@ -522,8 +543,10 @@
         reminderRoot.appendChild(buildEmptyHero());
       } else if (open.length === 0 && !noFiltersActive) {
         reminderRoot.appendChild(buildEmptyState("No open reminders match these filters."));
-      } else if (settings.groupByTag) {
+      } else if (settings.groupBy === "tag") {
         renderByTag(open);
+      } else if (settings.groupBy === "client") {
+        renderByClient(open);
       } else {
         renderByTime(open);
       }
@@ -964,6 +987,30 @@
       reminderRoot.appendChild(buildSection("No tag", sortReminders(untagged), { showWhen: true, emptyText: null, draggable: true }));
     }
     if (tagNames.length === 0 && untagged.length === 0) {
+      reminderRoot.appendChild(buildSection("Today", [], { showWhen: true, emptyText: "Nothing scheduled.", meta: todayDateString, draggable: false }));
+    }
+  }
+
+  function renderByClient(items) {
+    const buckets = new Map();
+    const unassigned = [];
+    for (const r of items) {
+      const c = r.client && r.client.trim();
+      if (!c) { unassigned.push(r); continue; }
+      if (!buckets.has(c)) buckets.set(c, []);
+      buckets.get(c).push(r);
+    }
+    const clientNames = [...buckets.keys()].sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" }));
+    for (const c of clientNames) {
+      const section = buildSection(`[${c}]`, sortReminders(buckets.get(c)), { showWhen: true, emptyText: null, draggable: true });
+      const head = section.querySelector("h2");
+      if (head) head.style.color = colorForClient(c);
+      reminderRoot.appendChild(section);
+    }
+    if (unassigned.length) {
+      reminderRoot.appendChild(buildSection("No client", sortReminders(unassigned), { showWhen: true, emptyText: null, draggable: true }));
+    }
+    if (clientNames.length === 0 && unassigned.length === 0) {
       reminderRoot.appendChild(buildSection("Today", [], { showWhen: true, emptyText: "Nothing scheduled.", meta: todayDateString, draggable: false }));
     }
   }
@@ -1461,6 +1508,7 @@
     const chip = document.createElement("button");
     chip.type = "button";
     chip.className = "client-chip" + (isActive ? " active" : "");
+    chip.style.setProperty("--client-color", colorForClient(r.client));
     chip.textContent = r.client;
     chip.title = isActive
       ? `Clear client filter. Right-click or hold Shift+click to edit.`
@@ -2035,6 +2083,13 @@
   function colorForTag(tag) {
     let h = 0;
     for (let i = 0; i < tag.length; i++) h = (h * 31 + tag.charCodeAt(i)) & 0xffffffff;
+    return TAG_PALETTE[Math.abs(h) % TAG_PALETTE.length];
+  }
+  // Same palette as tags but seeded differently so a string like "Citadel" used as
+  // both a tag and a client gets visually distinct colors instead of colliding.
+  function colorForClient(name) {
+    let h = 13;
+    for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) & 0xffffffff;
     return TAG_PALETTE[Math.abs(h) % TAG_PALETTE.length];
   }
   function renderWhen(el, time, leadMinutes) {
