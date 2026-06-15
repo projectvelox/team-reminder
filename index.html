@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Day Reminders</title>
-  <link rel="stylesheet" href="styles.css?v=1.4.4" />
+  <link rel="stylesheet" href="styles.css?v=1.4.5" />
   <script src="https://res.cdn.office.net/teams-js/2.24.0/js/MicrosoftTeams.min.js"></script>
 </head>
 <body data-theme="default">
@@ -165,6 +165,11 @@
     <form method="dialog">
       <h2>What's new</h2>
       <ul class="changelog">
+        <li><strong>v1.4.5</strong>
+          <ul>
+            <li>Actually fix the Week-view text wrapping: the v1.4.4 attempt used <code>-webkit-line-clamp + -webkit-box</code> which has a legacy quirk that shrinks the box to its narrowest acceptable break point, causing the browser to break words like "Enhance" into "Enha/nce" just to make the box narrower. Switched to plain <code>max-height</code> clamping with normal word wrapping.</li>
+          </ul>
+        </li>
         <li><strong>v1.4.4</strong>
           <ul>
             <li>Fixed unreadable text wrapping in Week view: items now stack the time above the title, the title clamps to 3 lines with an ellipsis, and long words wrap on word boundaries instead of character-by-character.</li>
@@ -317,13 +322,13 @@
   <div id="toastRegion" class="toast-region" aria-live="polite"></div>
 
   <footer class="appfoot">
-    <span class="muted" id="versionLabel">v1.4.4</span>
+    <span class="muted" id="versionLabel">v1.4.5</span>
     <span class="muted">&middot;</span>
     <button id="openWhatsNew" class="link" type="button">What's new</button>
     <span class="muted">&middot;</span>
     <a class="link" href="https://github.com/projectvelox/team-reminder/issues" target="_blank" rel="noopener">Report an issue</a>
   </footer>
 
-  <script src="app.js?v=1.4.4"></script>
+  <script src="app.js?v=1.4.5"></script>
 </body>
 </html>

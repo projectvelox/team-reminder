@@ -1,4 +1,4 @@
-/* Day Reminders — Teams personal tab (v1.4.4)
+/* Day Reminders — Teams personal tab (v1.4.5)
    Thin client over the bot's REST API. Auth via Teams SSO.
    Server-side bot handles all notifications (proactive Adaptive Cards in chat).
 */
@@ -8,7 +8,7 @@
   const API_BASE = "https://func-day-reminders-17023.azurewebsites.net/api";
   const DONE_AGE_MS = 24 * 60 * 60 * 1000;
   const UNDO_MS = 5000;
-  const APP_VERSION = "1.4.4";
+  const APP_VERSION = "1.4.5";
   const VIEWS = ["lines", "grid", "calendar", "week"];
   const TAG_PALETTE = [
     "#0078d4", "#107c10", "#8764b8", "#ca5010", "#c50f1f",
