@@ -24,7 +24,7 @@ func-day-reminders-17023.azurewebsites.net  ──►  Azure Function App (Node 
                                               RK = `_user`  or  `r:<reminderId>`
 ```
 
-All Azure resources live in `rg-day-reminders`, except the Bot Service which is `global`. Storage and App Insights are in `southeastasia`, the Function App is in `eastasia` (Linux Consumption in `southeastasia` was stuck in 503 at creation; we recreated in `eastasia`).
+All Azure resources live in `rg-day-reminders`, except the Bot Service which is `global`. Storage and App Insights are in `southeastasia`, the Function App is in `eastasia` (Linux Consumption in `southeastasia` was stuck in 503 at creation; we recreated in `eastasia`). A keep-warm Logic App (`la-day-reminders-keepwarm`, southeastasia) pings `/api/ping` every 5 min during PH work hours so the Function App's HTTP triggers don't cold-start.
 
 Secrets, GUIDs, and connection strings live in the Claude memory file `project_day_reminders_secrets.md` — **never in this repo**.
 
@@ -42,6 +42,7 @@ Secrets, GUIDs, and connection strings live in the Claude memory file `project_d
 | `bot/src/functions/reminders.js` | CRUD for /api/reminders |
 | `bot/src/functions/settings.js` | GET/PUT /api/settings |
 | `bot/src/functions/scheduler.js` | Timer trigger — lead-time + EOD check-in |
+| `bot/src/functions/ping.js` | Unauthenticated `GET /api/ping` returning `"ok"` — keep-warm target for the Logic App |
 | `bot/src/lib/bot.js` | Bot adapter + `ReminderBot` activity handler + slash command parsing |
 | `bot/src/lib/store.js` | Azure Tables wrappers |
 | `bot/src/lib/auth.js` | Teams SSO JWT validation (jose + Entra JWKS) |
