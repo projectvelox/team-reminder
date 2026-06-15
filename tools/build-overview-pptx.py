@@ -2,9 +2,11 @@
 """Generate docs/DayReminders-Overview.pptx — a 9-slide deck for announcing
 Day Reminders to the team.
 
-Each screenshot slot is a real Picture object backed by a generated gray
-placeholder PNG, so users can right-click any one and choose "Change
-Picture" in PowerPoint to swap in the actual screenshot without resizing.
+Modern hero-style layout: each content slide leads with the screenshot
+sized to its native aspect ratio, with a short caption beneath. Dark
+title + closing slides for visual rhythm. Real Picture objects backed by
+the captured screenshots — placeholders only kick in when a PNG is
+missing.
 
 Re-run after capturing screenshots or after content changes:
     py tools/build-overview-pptx.py
@@ -24,9 +26,15 @@ ROOT = Path(__file__).resolve().parents[1]
 OUT = ROOT / "docs" / "DayReminders-Overview.pptx"
 SCREENSHOTS_DIR = ROOT / "docs" / "screenshots"
 
-# Map each slide's screenshot index to the real PNG filename. If the file
-# exists in docs/screenshots/, it gets embedded; otherwise a labeled
-# placeholder is generated. Slides 7 and 8 are USERGUIDE-only.
+# Palette
+ACCENT = RGBColor(0x38, 0xAE, 0xEB)
+INK_DEEP = RGBColor(0x0E, 0x1F, 0x2E)
+INK_DARK = RGBColor(0x18, 0x2C, 0x3C)
+TEXT_PRIMARY = RGBColor(0x1F, 0x2D, 0x3D)
+TEXT_MUTED = RGBColor(0x70, 0x80, 0x95)
+WHITE = RGBColor(0xFF, 0xFF, 0xFF)
+SOFT_BLUE = RGBColor(0xB0, 0xC8, 0xDC)
+
 SCREENSHOT_FILES = {
     1: "01-left-rail.png",
     2: "02-add-form.png",
@@ -36,15 +44,10 @@ SCREENSHOT_FILES = {
     6: "06-proactive-card.png",
 }
 
-# App accent + supporting colors
-ACCENT = RGBColor(0x38, 0xAE, 0xEB)
-INK_DARK = RGBColor(0x18, 0x2C, 0x3C)
-TEXT = RGBColor(0x24, 0x24, 0x24)
-MUTED = RGBColor(0x61, 0x61, 0x61)
 
+# ---------- helpers ----------
 
-def _load_font(name: str, size: int):
-    """Try the named Windows font, fall back to the default if missing."""
+def _load_font(name, size):
     try:
         return ImageFont.truetype(name, size)
     except Exception:
@@ -54,41 +57,30 @@ def _load_font(name: str, size: int):
             return ImageFont.load_default()
 
 
-def make_placeholder_png(idx: int, caption: str, w: int = 1600, h: int = 900) -> bytes:
-    """Generate a clearly-labeled gray placeholder PNG. Replaced by the user
-    via right-click → Change Picture in PowerPoint."""
-    img = Image.new("RGB", (w, h), (232, 236, 239))
+def make_placeholder_png(idx, caption, w=1600, h=900):
+    """Gray dashed-border placeholder used when a real screenshot is missing."""
+    img = Image.new("RGB", (w, h), (236, 240, 244))
     draw = ImageDraw.Draw(img)
-    # Outer dashed-ish border (drawn as repeated short segments)
-    border_color = (176, 184, 192)
+    border_color = (180, 192, 205)
     seg = 24
     for x in range(8, w - 8, seg * 2):
-        draw.line([(x, 8), (min(x + seg, w - 8), 8)], fill=border_color, width=4)
-        draw.line([(x, h - 8), (min(x + seg, w - 8), h - 8)], fill=border_color, width=4)
+        draw.line([(x, 8), (min(x + seg, w - 8), 8)], fill=border_color, width=3)
+        draw.line([(x, h - 8), (min(x + seg, w - 8), h - 8)], fill=border_color, width=3)
     for y in range(8, h - 8, seg * 2):
-        draw.line([(8, y), (8, min(y + seg, h - 8))], fill=border_color, width=4)
-        draw.line([(w - 8, y), (w - 8, min(y + seg, h - 8))], fill=border_color, width=4)
-    # Subtle diagonal hatch
-    for x in range(-h, w, 80):
-        draw.line([(x, 0), (x + h, h)], fill=(216, 222, 228), width=1)
-
-    title_font = _load_font("segoeuib.ttf", 90)
-    sub_font = _load_font("segoeui.ttf", 40)
-
+        draw.line([(8, y), (8, min(y + seg, h - 8))], fill=border_color, width=3)
+        draw.line([(w - 8, y), (w - 8, min(y + seg, h - 8))], fill=border_color, width=3)
+    title_font = _load_font("segoeuib.ttf", 96)
+    sub_font = _load_font("segoeui.ttf", 38)
     title_text = f"Screenshot {idx:02d}"
     tb = draw.textbbox((0, 0), title_text, font=title_font)
     tw, th = tb[2] - tb[0], tb[3] - tb[1]
-    draw.text(((w - tw) // 2, h // 2 - th - 30), title_text,
-              fill=(60, 75, 95), font=title_font)
-
-    # Word-wrap the caption
+    draw.text(((w - tw) // 2, h // 2 - th - 30), title_text, fill=(60, 75, 95), font=title_font)
     max_w = int(w * 0.85)
     words = caption.split()
     lines, cur = [], ""
     for word in words:
         test = (cur + " " + word).strip()
-        tw2 = draw.textbbox((0, 0), test, font=sub_font)[2]
-        if tw2 <= max_w:
+        if draw.textbbox((0, 0), test, font=sub_font)[2] <= max_w:
             cur = test
         else:
             if cur:
@@ -99,268 +91,255 @@ def make_placeholder_png(idx: int, caption: str, w: int = 1600, h: int = 900) ->
     y = h // 2 + 30
     for line in lines:
         lb = draw.textbbox((0, 0), line, font=sub_font)
-        lw, lh = lb[2] - lb[0], lb[3] - lb[1]
-        draw.text(((w - lw) // 2, y), line, fill=(85, 101, 117), font=sub_font)
-        y += int(lh * 1.4)
-
+        draw.text(((w - (lb[2] - lb[0])) // 2, y), line, fill=(110, 124, 138), font=sub_font)
+        y += int((lb[3] - lb[1]) * 1.4)
     buf = BytesIO()
     img.save(buf, format="PNG", optimize=True)
     return buf.getvalue()
 
 
-def add_title_bar(slide, prs, title: str, color=ACCENT):
-    bar = slide.shapes.add_shape(MSO_SHAPE.RECTANGLE, 0, 0, prs.slide_width, Inches(0.9))
-    bar.fill.solid()
-    bar.fill.fore_color.rgb = color
-    bar.line.fill.background()
-    tf = bar.text_frame
-    tf.margin_left = Inches(0.5)
-    tf.margin_right = Inches(0.5)
-    tf.margin_top = Inches(0.15)
-    tf.margin_bottom = Inches(0.15)
-    tf.vertical_anchor = MSO_ANCHOR.MIDDLE
-    p = tf.paragraphs[0]
-    p.text = title
-    p.font.size = Pt(28)
-    p.font.bold = True
-    p.font.color.rgb = RGBColor(0xFF, 0xFF, 0xFF)
-    p.font.name = "Segoe UI"
-
-
-def add_body_bullets(slide, prs, lines, left, top, width, height):
-    tb = slide.shapes.add_textbox(left, top, width, height)
-    tf = tb.text_frame
-    tf.word_wrap = True
-    for i, item in enumerate(lines):
-        p = tf.paragraphs[0] if i == 0 else tf.add_paragraph()
-        p.text = item
-        p.font.size = Pt(17)
-        p.font.color.rgb = TEXT
-        p.font.name = "Segoe UI"
-        p.space_after = Pt(6)
-
-
-def add_placeholder_picture(slide, prs, idx: int, caption: str,
-                            left: Emu, top: Emu, width: Emu, height: Emu):
-    # Prefer the real screenshot. Critically: fit it within the slot while
-    # preserving its native aspect ratio (centered, letterbox-style). Without
-    # this, PowerPoint stretches every screenshot to fill the slot exactly,
-    # which is what made the v1 deck look distorted.
+def fit_picture(slide, idx, caption, slot_left, slot_top, slot_w, slot_h, shadow=False):
+    """Add a picture fitted inside the slot at its native aspect ratio, centered."""
     real = SCREENSHOTS_DIR / SCREENSHOT_FILES.get(idx, "")
-    if real.exists() and real.stat().st_size > 0:
+    use_real = real.exists() and real.stat().st_size > 0
+    if use_real:
         with Image.open(real) as im:
             iw, ih = im.size
         img_ar = iw / ih
-        slot_ar = width / height
+        slot_ar = slot_w / slot_h
         if img_ar > slot_ar:
-            # Image wider than slot — fit to width, center vertically
-            w = width
-            h = int(width / img_ar)
-            l = left
-            t = top + (height - h) // 2
+            w = slot_w
+            h = int(slot_w / img_ar)
         else:
-            # Image taller than slot — fit to height, center horizontally
-            h = height
-            w = int(height * img_ar)
-            l = left + (width - w) // 2
-            t = top
-        return slide.shapes.add_picture(str(real), l, t, w, h)
-    # Placeholder fills the slot (the placeholder is a deliberate guide, not a
-    # real screenshot; stretching it is fine and keeps the slot fully marked).
-    png_bytes = make_placeholder_png(idx, caption)
-    return slide.shapes.add_picture(BytesIO(png_bytes), left, top, width, height)
+            h = slot_h
+            w = int(slot_h * img_ar)
+        l = slot_left + (slot_w - w) // 2
+        t = slot_top + (slot_h - h) // 2
+        pic = slide.shapes.add_picture(str(real), l, t, w, h)
+    else:
+        png_bytes = make_placeholder_png(idx, caption)
+        pic = slide.shapes.add_picture(BytesIO(png_bytes), slot_left, slot_top, slot_w, slot_h)
+    return pic
 
 
-def add_footer(slide, prs, text: str):
-    tb = slide.shapes.add_textbox(Inches(0.5), prs.slide_height - Inches(0.45),
-                                  prs.slide_width - Inches(1.0), Inches(0.35))
-    p = tb.text_frame.paragraphs[0]
-    p.text = text
-    p.font.size = Pt(10)
-    p.font.color.rgb = MUTED
-    p.font.name = "Segoe UI"
-    p.alignment = PP_ALIGN.RIGHT
+def add_text(slide, text, left, top, width, height, *, size=18, color=TEXT_PRIMARY, bold=False,
+             align=PP_ALIGN.LEFT, anchor=MSO_ANCHOR.TOP, name="Segoe UI"):
+    tb = slide.shapes.add_textbox(left, top, width, height)
+    tf = tb.text_frame
+    tf.word_wrap = True
+    tf.vertical_anchor = anchor
+    parts = text.split("\n") if isinstance(text, str) else text
+    for i, line in enumerate(parts):
+        p = tf.paragraphs[0] if i == 0 else tf.add_paragraph()
+        p.text = line
+        p.font.size = Pt(size)
+        p.font.color.rgb = color
+        p.font.bold = bold
+        p.font.name = name
+        p.alignment = align
+    return tb
+
+
+def add_dark_bg(slide, prs, color=INK_DEEP):
+    bg = slide.shapes.add_shape(MSO_SHAPE.RECTANGLE, 0, 0, prs.slide_width, prs.slide_height)
+    bg.fill.solid()
+    bg.fill.fore_color.rgb = color
+    bg.line.fill.background()
+
+
+def add_section_title(slide, prs, text):
+    """Top title + small accent bar underneath — replaces the v1 colored title bar."""
+    add_text(slide, text, Inches(0.7), Inches(0.55), prs.slide_width - Inches(1.4), Inches(0.8),
+             size=30, color=TEXT_PRIMARY, bold=True)
+    bar = slide.shapes.add_shape(MSO_SHAPE.RECTANGLE, Inches(0.7), Inches(1.25), Inches(0.55), Inches(0.06))
+    bar.fill.solid(); bar.fill.fore_color.rgb = ACCENT; bar.line.fill.background()
+
+
+def add_centered_caption(slide, prs, text, top=Inches(6.65), size=14, color=TEXT_MUTED):
+    add_text(slide, text, Inches(0.7), top, prs.slide_width - Inches(1.4), Inches(0.5),
+             size=size, color=color, align=PP_ALIGN.CENTER)
+
+
+def add_footer(slide, prs):
+    add_text(slide, "Day Reminders v1.4.6",
+             Inches(0.5), prs.slide_height - Inches(0.4),
+             prs.slide_width - Inches(1.0), Inches(0.3),
+             size=9, color=TEXT_MUTED, align=PP_ALIGN.RIGHT)
+
+
+# ---------- slides ----------
+
+def slide_title(prs):
+    s = prs.slides.add_slide(prs.slide_layouts[6])
+    add_dark_bg(s, prs)
+    # accent bar above the title
+    bar = s.shapes.add_shape(MSO_SHAPE.RECTANGLE, Inches(1), Inches(2.05), Inches(0.7), Inches(0.09))
+    bar.fill.solid(); bar.fill.fore_color.rgb = ACCENT; bar.line.fill.background()
+    add_text(s, "Day Reminders",
+             Inches(1), Inches(2.3), Inches(11.3), Inches(1.6),
+             size=84, color=WHITE, bold=True)
+    add_text(s, "Reminders, where you already work.",
+             Inches(1), Inches(4.0), Inches(11.3), Inches(0.8),
+             size=30, color=ACCENT)
+    add_text(s, "v1.4.6  ·  Kation Technologies  ·  June 2026",
+             Inches(1), Inches(6.6), Inches(11.3), Inches(0.5),
+             size=13, color=SOFT_BLUE)
+    return s
+
+
+def slide_pitch(prs):
+    s = prs.slides.add_slide(prs.slide_layouts[6])
+    add_text(s, "Stop forgetting things in five different apps.",
+             Inches(1), Inches(2.7), Inches(11.3), Inches(1.8),
+             size=46, color=TEXT_PRIMARY, bold=True, align=PP_ALIGN.CENTER, anchor=MSO_ANCHOR.MIDDLE)
+    add_text(s, "Day Reminders is a tab + bot inside Teams.\nYou add things; the bot pings you in chat before each one's due.",
+             Inches(1.5), Inches(4.6), Inches(10.3), Inches(1.5),
+             size=20, color=TEXT_MUTED, align=PP_ALIGN.CENTER)
+    add_footer(s, prs)
+    return s
+
+
+def slide_where_it_lives(prs):
+    s = prs.slides.add_slide(prs.slide_layouts[6])
+    add_section_title(s, prs, "Find it in your Teams left rail.")
+    # Two pictures: left-rail icon (tall/narrow) + lines view (wide)
+    pic_top = Inches(1.7)
+    pic_h = Inches(4.7)
+    gap = Inches(0.3)
+    left_w = Inches(3.6)
+    right_w = prs.slide_width - Inches(1.0) - left_w - gap
+    fit_picture(s, 1, "Teams left rail",
+                Inches(0.5), pic_top, left_w, pic_h)
+    fit_picture(s, 3, "Lines view",
+                Inches(0.5) + left_w + gap, pic_top, right_w, pic_h)
+    add_centered_caption(s, prs,
+        "Alarm-clock icon in the rail.   →   Two top tabs: Reminders (the UI) and Chat (where the bot pings you).")
+    add_footer(s, prs)
+    return s
+
+
+def slide_adding(prs):
+    s = prs.slides.add_slide(prs.slide_layouts[6])
+    add_section_title(s, prs, "Adding a reminder.")
+    fit_picture(s, 2, "Add form",
+                Inches(0.5), Inches(1.65), prs.slide_width - Inches(1.0), Inches(4.85))
+    add_centered_caption(s, prs,
+        "Title  ·  Client (autocompletes from your past)  ·  Date (defaults to today)  ·  Time (optional)  ·  + Details for notes / links / sub-tasks")
+    add_footer(s, prs)
+    return s
+
+
+def slide_three_ways(prs):
+    s = prs.slides.add_slide(prs.slide_layouts[6])
+    add_section_title(s, prs, "Three ways to add one.")
+
+    col_w = (prs.slide_width - Inches(1.4) - Inches(0.6)) // 3  # 3 cols + 2 gaps of 0.3"
+    gap = Inches(0.3)
+    col_top = Inches(2.0)
+    left0 = Inches(0.7)
+
+    columns = [
+        ("In the tab", "for thoughtful adding",
+         "Fill the form at the top of the Reminders tab — title, client, date, time, details. Hit Add."),
+        ("Mid-conversation", "for when you remember while replying",
+         "Click the · · · under any Teams message box → Day Reminders → Quick add reminder. Type, submit, back to your reply."),
+        ("In the bot chat", "for typing-fast moments",
+         "/add 5pm tomorrow #qc Review batch 14\n\nDates can be tomorrow, mon, fri, 6/20, or a full YYYY-MM-DD."),
+    ]
+    for i, (title, subtitle, body) in enumerate(columns):
+        l = left0 + (col_w + gap) * i
+        # numeric badge
+        badge = s.shapes.add_shape(MSO_SHAPE.OVAL, l, col_top, Inches(0.55), Inches(0.55))
+        badge.fill.solid(); badge.fill.fore_color.rgb = ACCENT; badge.line.fill.background()
+        tf = badge.text_frame
+        tf.vertical_anchor = MSO_ANCHOR.MIDDLE
+        p = tf.paragraphs[0]; p.text = str(i + 1); p.alignment = PP_ALIGN.CENTER
+        p.font.size = Pt(20); p.font.bold = True
+        p.font.color.rgb = WHITE; p.font.name = "Segoe UI"
+        add_text(s, title, l + Inches(0.75), col_top - Inches(0.05),
+                 col_w - Inches(0.75), Inches(0.6),
+                 size=22, color=TEXT_PRIMARY, bold=True, anchor=MSO_ANCHOR.MIDDLE)
+        add_text(s, subtitle, l, col_top + Inches(0.85), col_w, Inches(0.5),
+                 size=12, color=ACCENT, bold=True)
+        add_text(s, body, l, col_top + Inches(1.45), col_w, Inches(3.2),
+                 size=14, color=TEXT_PRIMARY)
+    add_footer(s, prs)
+    return s
+
+
+def slide_week_view(prs):
+    s = prs.slides.add_slide(prs.slide_layouts[6])
+    add_section_title(s, prs, "Am I bombarded this week, or free?")
+    fit_picture(s, 4, "Week view",
+                Inches(0.5), Inches(1.65), prs.slide_width - Inches(1.0), Inches(4.85))
+    add_centered_caption(s, prs,
+        "Mon–Sun grid by due date. Today's column highlighted. Click any empty day to add for that date.")
+    add_footer(s, prs)
+    return s
+
+
+def slide_organize(prs):
+    s = prs.slides.add_slide(prs.slide_layouts[6])
+    add_section_title(s, prs, "Group by client. Or tag. Or just leave it flat.")
+    fit_picture(s, 5, "Group by client",
+                Inches(0.5), Inches(1.65), prs.slide_width - Inches(1.0), Inches(4.85))
+    add_centered_caption(s, prs,
+        "The Group toggle cycles off → tag → client. Sections per group, each header colored to match. Click any chip to filter to just that one.")
+    add_footer(s, prs)
+    return s
+
+
+def slide_notifications(prs):
+    s = prs.slides.add_slide(prs.slide_layouts[6])
+    add_section_title(s, prs, "When it's due, a card pops in your chat.")
+    fit_picture(s, 6, "Proactive card",
+                Inches(0.5), Inches(1.65), prs.slide_width - Inches(1.0), Inches(4.85))
+    add_centered_caption(s, prs,
+        "Mark done. Or snooze 15m, 1h, Tomorrow. End-of-day check-in lists anything still open.")
+    add_footer(s, prs)
+    return s
+
+
+def slide_whats_next_and_cta(prs):
+    s = prs.slides.add_slide(prs.slide_layouts[6])
+    add_dark_bg(s, prs)
+    bar = s.shapes.add_shape(MSO_SHAPE.RECTANGLE, Inches(1), Inches(1.15), Inches(0.7), Inches(0.08))
+    bar.fill.solid(); bar.fill.fore_color.rgb = ACCENT; bar.line.fill.background()
+    add_text(s, "Try it now.",
+             Inches(1), Inches(1.4), Inches(11.3), Inches(1.3),
+             size=64, color=WHITE, bold=True)
+    add_text(s, "Alarm-clock icon in your Teams left rail.",
+             Inches(1), Inches(2.85), Inches(11.3), Inches(0.7),
+             size=26, color=ACCENT)
+    # Coming-next block
+    add_text(s, "COMING NEXT",
+             Inches(1), Inches(4.2), Inches(11.3), Inches(0.4),
+             size=13, color=SOFT_BLUE, bold=True)
+    add_text(s, "v1.5  ·  Sharing.",
+             Inches(1), Inches(4.6), Inches(11.3), Inches(0.7),
+             size=30, color=WHITE, bold=True)
+    add_text(s, "Assign reminders to teammates. Set per-tag default share lists so #QC auto-shares with the QC team without picking recipients each time.",
+             Inches(1), Inches(5.4), Inches(11.3), Inches(1.0),
+             size=16, color=SOFT_BLUE)
+    add_text(s, "Bugs, requests, 'this is annoying' → ping Josh, or drop them in the team channel.",
+             Inches(1), Inches(6.7), Inches(11.3), Inches(0.5),
+             size=14, color=SOFT_BLUE)
+    return s
 
 
 def build_deck():
     prs = Presentation()
     prs.slide_width = Inches(13.333)
     prs.slide_height = Inches(7.5)
-    blank = prs.slide_layouts[6]
-
-    # 1. Title
-    s = prs.slides.add_slide(blank)
-    bg = s.shapes.add_shape(MSO_SHAPE.RECTANGLE, 0, 0, prs.slide_width, prs.slide_height)
-    bg.fill.solid()
-    bg.fill.fore_color.rgb = INK_DARK
-    bg.line.fill.background()
-    tb = s.shapes.add_textbox(Inches(1), Inches(2.3), Inches(11), Inches(1.8))
-    p = tb.text_frame.paragraphs[0]
-    p.text = "Day Reminders"
-    p.font.size = Pt(80); p.font.bold = True
-    p.font.color.rgb = RGBColor(0xFF, 0xFF, 0xFF); p.font.name = "Segoe UI"
-    tb = s.shapes.add_textbox(Inches(1), Inches(3.9), Inches(11), Inches(0.8))
-    p = tb.text_frame.paragraphs[0]
-    p.text = "Reminders, in the place you already work."
-    p.font.size = Pt(32); p.font.color.rgb = ACCENT; p.font.name = "Segoe UI"
-    tb = s.shapes.add_textbox(Inches(1), Inches(6.4), Inches(11), Inches(0.5))
-    p = tb.text_frame.paragraphs[0]
-    p.text = "v1.4.6  ·  Kation Technologies  ·  June 2026"
-    p.font.size = Pt(14); p.font.color.rgb = RGBColor(0xB0, 0xC8, 0xDC); p.font.name = "Segoe UI"
-
-    # 2. What + Where
-    s = prs.slides.add_slide(blank)
-    add_title_bar(s, prs, "What it is")
-    add_body_bullets(s, prs, [
-        "Add what you need to remember today.",
-        "The bot pings you in chat before each one.",
-        "Mark it done from the card. Snooze it. Move on.",
-        "",
-        "No flipping to a separate app — it lives where you already work.",
-        "",
-        "Where to find it:",
-        "•  Alarm-clock icon in your Teams left rail.",
-        "•  Two top tabs: Reminders (the UI) and Chat (where the bot pings you).",
-    ], Inches(0.5), Inches(1.3), Inches(5.3), Inches(5.5))
-    add_placeholder_picture(s, prs,1, "Teams left rail with the Day Reminders icon",
-                            Inches(6.0), Inches(1.3), Inches(6.83), Inches(5.5))
-    add_footer(s, prs, "Day Reminders v1.4.6")
-
-    # 3. Adding from tab
-    s = prs.slides.add_slide(blank)
-    add_title_bar(s, prs, "Adding a reminder")
-    add_body_bullets(s, prs, [
-        "Top of the Reminders tab — fill in the add form:",
-        "•  Title — what to remember. Add #tags inline (e.g. Send report #work).",
-        "•  Client — optional, tracks which engagement; autocompletes from past clients.",
-        "•  Due date — defaults to today; pick any other day.",
-        "•  Time — optional. Leave blank for an 'anytime today' item.",
-        "•  + Details — toggle for notes, links, sub-tasks (up to 2000 chars).",
-        "",
-        "Press Add (or hit Enter in the title field).",
-    ], Inches(0.5), Inches(1.3), Inches(5.3), Inches(5.5))
-    add_placeholder_picture(s, prs,2, "The add form with title, client, date, time, and + Details expanded",
-                            Inches(6.0), Inches(1.3), Inches(6.83), Inches(5.5))
-    add_footer(s, prs, "Day Reminders v1.4.6")
-
-    # 4. Three ways to add
-    s = prs.slides.add_slide(blank)
-    add_title_bar(s, prs, "Three ways to add")
-    add_body_bullets(s, prs, [
-        "1.  From the tab — the add form covered on the previous slide.",
-        "",
-        "2.  From bot chat — type slash commands in your Day Reminders chat:",
-        "        /add 5pm tomorrow #work Send weekly report",
-        "        /list  —  see what's open today",
-        "        /done <substring>  —  mark a matching item done",
-        "        /help  —  show all commands",
-        "",
-        "3.  From any Teams chat — click the ... menu under the message box,",
-        "        pick Day Reminders → Quick add reminder, type, submit.",
-        "        Great when you're mid-conversation and remember something.",
-    ], Inches(0.6), Inches(1.3), Inches(12.0), Inches(5.5))
-    add_footer(s, prs, "Day Reminders v1.4.6")
-
-    # 5. Lines view
-    s = prs.slides.add_slide(blank)
-    add_title_bar(s, prs, "Lines view — your daily list")
-    add_body_bullets(s, prs, [
-        "Default view. One row per reminder, sorted by time.",
-        "",
-        "On each row you see:",
-        "•  Title (prefixed with [Client] if a client is set)",
-        "•  Colored chips for tags",
-        "•  Outlined dashed chip for the client (click to filter)",
-        "•  Time, with a custom lead-time badge if set",
-        "•  ⋯ menu for row options (lead time + details textarea)",
-        "",
-        "Click any title, date, time, or chip to inline-edit.",
-        "Enter saves, Esc cancels.",
-    ], Inches(0.5), Inches(1.3), Inches(5.3), Inches(5.5))
-    add_placeholder_picture(s, prs,3, "Lines view with multiple reminders showing tags, clients, and a high-priority star",
-                            Inches(6.0), Inches(1.3), Inches(6.83), Inches(5.5))
-    add_footer(s, prs, "Day Reminders v1.4.6")
-
-    # 6. Week view
-    s = prs.slides.add_slide(blank)
-    add_title_bar(s, prs, "Week view — am I bombarded or free?")
-    add_body_bullets(s, prs, [
-        "For the moment when you need to know what your whole week looks like.",
-        "",
-        "Mon–Sun grid by due date. Today's column highlighted.",
-        "Timed items stack by time within each day; anytime items at the bottom.",
-        "",
-        "Click any empty day to start adding a reminder for that date.",
-        "",
-        "Prev / Today / Next to navigate weeks. Mini Day ⇄ Week switcher in the header so you don't have to go back to the top bar to flip.",
-    ], Inches(0.5), Inches(1.3), Inches(5.3), Inches(5.5))
-    add_placeholder_picture(s, prs,4, "Week view with today highlighted and reminders stacked under several days",
-                            Inches(6.0), Inches(1.3), Inches(6.83), Inches(5.5))
-    add_footer(s, prs, "Day Reminders v1.4.6")
-
-    # 7. Tags / Clients / Group / Filter
-    s = prs.slides.add_slide(blank)
-    add_title_bar(s, prs, "Organize — tags, clients, group, filter")
-    add_body_bullets(s, prs, [
-        "Tags — type #work, #urgent, #qc directly in the title. Colored chips, click to filter.",
-        "",
-        "Clients — set per reminder. Title shows as [Client] prefix everywhere.",
-        "    Colored per client (deterministic — same client = same color across rows).",
-        "    Click chip to filter; Shift+click or right-click to inline-edit.",
-        "",
-        "Group toggle — cycles off → tag → client → off (shortcut: g).",
-        "    Sections per tag or per client, each header colored to match.",
-        "",
-        "Quick filters — All / Timed / Anytime / Priority / Done pills above the list.",
-        "    Search box top-right (shortcut: f) matches title, tags, and client.",
-    ], Inches(0.5), Inches(1.3), Inches(5.3), Inches(5.5))
-    add_placeholder_picture(s, prs,5, "Lines view with Group: client active — multiple client sections, colored headers",
-                            Inches(6.0), Inches(1.3), Inches(6.83), Inches(5.5))
-    add_footer(s, prs, "Day Reminders v1.4.6")
-
-    # 8. Notifications
-    s = prs.slides.add_slide(blank)
-    add_title_bar(s, prs, "Notifications — the proactive card")
-    add_body_bullets(s, prs, [
-        "When a timed reminder is due (or N minutes before, configurable):",
-        "•  A card lands in your Day Reminders chat.",
-        "•  Buttons: Mark done · Snooze 15m · Snooze 1h · Tomorrow.",
-        "•  Title shows as [Client] Title; description (if any) appears below.",
-        "•  Teams Activity Feed (bell icon) also gets a notification.",
-        "",
-        "End-of-day check-in:",
-        "•  At your configured EOD time the bot posts 'Are you done?' with any open items.",
-        "•  Buttons to acknowledge or snooze 15 minutes.",
-        "",
-        "Items not done by their due date auto-roll forward to today with an overdue Nd badge",
-        "(capped at 30 days so old backlog doesn't pile up).",
-    ], Inches(0.5), Inches(1.3), Inches(5.3), Inches(5.5))
-    add_placeholder_picture(s, prs,6, "A real proactive Adaptive Card with title, time, description, and the four buttons",
-                            Inches(6.0), Inches(1.3), Inches(6.83), Inches(5.5))
-    add_footer(s, prs, "Day Reminders v1.4.6")
-
-    # 9. Tips + Roadmap
-    s = prs.slides.add_slide(blank)
-    add_title_bar(s, prs, "Tips, shortcuts, what's next")
-    add_body_bullets(s, prs, [
-        "Keyboard shortcuts:",
-        "    /  focus the add field           f  focus search",
-        "    g  cycle group mode              v  cycle views",
-        "    ?  open the quick guide          Esc  clear filters / cancel edit",
-        "",
-        "Other handy bits:",
-        "•  Select multiple — top-bar button, then bulk-done / delete / star a batch.",
-        "•  Templates — + Templates pill for common reminders, one click to add.",
-        "•  Undo delete — toast hangs around for 5 seconds after every delete.",
-        "•  Settings (top-right ⚙) — EOD check-in time, default lead minutes, weekdays-only, theme.",
-        "",
-        "Coming next (v1.5): sharing. Assign reminders to teammates; set per-tag default share lists",
-        "    so #QC auto-shares with the QC team without picking recipients each time.",
-        "",
-        "Bugs, asks, 'this is annoying' feedback → drop them in the team channel or ping Josh.",
-    ], Inches(0.6), Inches(1.3), Inches(12.0), Inches(5.5))
-    add_footer(s, prs, "Day Reminders v1.4.6")
-
+    slide_title(prs)
+    slide_pitch(prs)
+    slide_where_it_lives(prs)
+    slide_adding(prs)
+    slide_three_ways(prs)
+    slide_week_view(prs)
+    slide_organize(prs)
+    slide_notifications(prs)
+    slide_whats_next_and_cta(prs)
     OUT.parent.mkdir(parents=True, exist_ok=True)
     prs.save(str(OUT))
     print(f"Wrote {OUT} ({OUT.stat().st_size:,} bytes, {len(prs.slides)} slides)")

@@ -1,43 +1,45 @@
-# Day Reminders — User Guide
+# Day Reminders — How to use it
 
-Day Reminders is a tab + bot inside Teams for the stuff you need to remember today. You add things, the bot pings you in chat before each one, you mark them done. No flipping to a separate app.
+Hey. This is a guide for Day Reminders — the tab + bot we built so reminders stop scattering across Outlook tasks, Notion, sticky notes, and DMs to yourself. It lives in Teams. You add stuff; the bot pings you in chat when it's due.
 
-> Current version: **v1.4.6**. Last updated alongside the v1.4.x release wave.
+> Current version: **v1.4.6**. Iterates fast — if something here doesn't match the app, ping me and I'll either fix the docs or the app.
 
 ---
 
-## 1. Where to find it
+## 1. Finding it
 
-Open Microsoft Teams. In the left rail, look for the **Day Reminders** alarm-clock icon. Click it to open the app.
+Open Teams. Look at the left rail — there's an alarm-clock icon labelled **Day Reminders**. Click it.
 
-You'll see two tabs at the top:
+You get two tabs at the top:
 
-- **Reminders** — the main UI where you add, edit, view, and organize.
-- **Chat** — your private chat with the Day Reminders bot, where the proactive cards land and where slash commands work.
+- **Reminders** — where you actually do stuff. Add, edit, filter, group.
+- **Chat** — your private chat with the bot. Reminder cards land here when stuff is due, and slash commands like `/add` work here.
 
 ![Teams left rail with the Day Reminders icon and the Chat / Reminders top tabs](screenshots/01-left-rail.png)
+
+If you don't see the icon, ping me — Teams sideload propagation can be slow.
 
 ---
 
 ## 2. Adding a reminder
 
-There are three ways:
+Three ways to do it. Use whichever fits the moment.
 
-### a) From the Reminders tab
+### a) Type it into the tab
 
-The add form sits at the top of the tab:
+Top of the Reminders tab there's a row of inputs. Drop your reminder text in the first one and hit **Add** (or just press Enter).
 
-- **Title** — what to remember. You can add `#tags` directly in the title (e.g. `Send report #work`).
-- **Client** — optional. Tracks which engagement this is for (e.g. `Citadel`, `NAVCo`). Autocompletes from past clients you've used.
-- **Due date** — defaults to today. Pick any other date.
-- **Time** — optional. Leave blank for an "anytime today" item.
-- **+ Details** — click to reveal a notes field for sub-tasks, links, context (up to 2000 characters).
+If you want to be more specific, here's what the other fields do:
 
-Press **Add** (or hit Enter in the title field).
+- **Title** — what to remember. Throw `#tags` right in the title (`Send report #work`) and they become colored chips you can filter by later.
+- **Client** — which engagement is this for? (Citadel, BII, whoever.) Autocompletes from clients you've used before. Shows up as `[Client] Title` on every row from then on.
+- **Date** — defaults to today. Change it if it's for later in the week.
+- **Time** — optional. Skip it for "do it sometime today" items.
+- **+ Details** — click to expand. Notes, links, sub-tasks, whatever extra context you need (up to 2000 chars).
 
 ![The add form populated with a sample title, client, date, time, and an expanded Details textarea](screenshots/02-add-form.png)
 
-### b) From bot chat (slash command)
+### b) Tell the bot in chat
 
 In the Day Reminders **Chat** tab, type:
 
@@ -45,57 +47,64 @@ In the Day Reminders **Chat** tab, type:
 /add 5pm tomorrow #work Send weekly report
 ```
 
-- The first 1–2 tokens can be a time (`5pm`, `17:00`) and/or a date (`today`, `tomorrow`, `mon`, `fri`, `6/20`, `2026-06-20`) in either order.
-- Hashtags become tags.
-- Everything else is the title.
+Time and date can show up in either order. Dates can be:
 
-Other slash commands: `/list`, `/done <substring>`, `/help`.
+- `today`, `tomorrow`
+- a weekday name: `mon`, `tue`, `wed`, `thu`, `fri`, `sat`, `sun`
+- `M/D` like `6/20`
+- or a full `YYYY-MM-DD` like `2026-06-20`
+
+Hashtags become tags. Everything else is the title.
+
+Other commands: `/list` shows what's open today, `/done <substring>` marks the matching one done, `/help` reminds you of all this.
 
 ![Bot chat showing the /help response with the full list of Day Reminders commands](screenshots/07-bot-help.png)
 
-### c) From any Teams chat (compose extension)
+### c) Quick-add from any Teams chat
 
-In any chat (your bot chat, a 1:1, a channel), click the **`...`** button under the message box, pick **Day Reminders → Quick add reminder**, type the reminder, and submit. Same parsing as `/add`.
+This one's underrated. Anywhere in Teams — a 1:1, a channel, even your bot chat — click the **`...`** button under the message box, pick **Day Reminders → Quick add reminder**, type, submit.
 
-Great for when you're mid-conversation and remember something.
+Built for the moment when you're mid-conversation with someone, they say something, and you go "I need to remember that." Stash it without leaving the chat.
 
 ![The Quick add reminder compose-extension popup ready to submit](screenshots/08-compose-extension.png)
 
 ---
 
-## 3. Organizing
+## 3. Organizing your day
 
 ### Clients
 
-Set a **Client** on a reminder and it shows everywhere as `[Client] Title` (e.g. `[Citadel] Review batch 14`). Each client gets a deterministic color, so the same client always looks the same on every row.
+Set a **Client** on a reminder and it shows everywhere as `[Client] Title` (e.g. `[Citadel] Review batch 14`). Each client gets its own color, deterministically — same client name always lands on the same color across every row.
 
-- Click a client chip to filter the list to that client.
-- **Shift+click** or **right-click** the chip to inline-edit the client (or clear it).
+- Click any client chip to filter to just that client.
+- **Shift+click** or **right-click** the chip to inline-edit. Clearing the input removes the client.
 
 ### Tags
 
-Anything you type in the title prefixed with `#` becomes a tag (`#work`, `#urgent`, `#qc`). Tags get colored chips. Click any chip to filter to that tag.
+Anything you prefix with `#` in the title becomes a tag (`#work`, `#urgent`, `#qc`). Tags get colored chips too. Click any chip to filter to that tag.
+
+Difference vs clients: tags are free-form scribbles (you can have many per reminder), clients are structured (one per reminder, with autocomplete).
 
 ### Priority
 
-Click the ☆ next to any row to mark it high priority. Pinned to the top of the list.
+Click the ☆ next to a row to mark it high priority. It pins to the top.
 
-### Dates and rollover
+### Dates and auto-rollover
 
-Every reminder has a **due date** (defaults to today). If you don't tick it done by end of day, it auto-rolls forward to today's list with an **overdue Nd** badge (cap 30 days — anything older stays where it is and won't pollute today).
+Every reminder has a due date (defaults to today). If you don't tick it done by the end of its day, it auto-rolls forward to today's list with an **overdue Nd** badge so you can see what's been sitting around.
+
+Cap is 30 days — anything older stays where it is and won't pile up on today.
 
 ---
 
-## 4. Viewing
+## 4. Viewing your list
 
-The top-right segmented control switches between four views:
+Top-right has a four-button switcher. Press **`v`** to cycle, or click:
 
-- **Lines** — classic row-by-row list. Best for triage.
-- **Grid** — compact card grid. Best for a glance summary.
-- **Day** — hour-by-hour timeline of today only. Best for time-blocking.
-- **Week** — Mon–Sun grid of reminders by due date. Today's column highlighted. Best for "how bombarded am I this week?"
-
-Shortcut: press **`v`** to cycle through views.
+- **Lines** — classic row-by-row. Best for triage.
+- **Grid** — compact cards. Best for a glance.
+- **Day** — hour-by-hour timeline of today. Best for time-blocking.
+- **Week** — Mon–Sun grid by due date. Best for "wait, am I bombarded Thursday?"
 
 ![Lines view — the default row-by-row list, today's items with [Client] prefixes and colored tag chips](screenshots/03-lines-view.png)
 
@@ -103,82 +112,88 @@ Shortcut: press **`v`** to cycle through views.
 
 ### Group toggle
 
-Next to the view switcher, the **Group** button cycles through:
+Next to the view switcher, the **Group** button cycles:
 
 1. **Group: off** — flat list.
-2. **Group: tag** — sections per tag, header colored to the tag.
-3. **Group: client** — sections per client, header colored to the client.
+2. **Group: tag** — sections per tag, header colored to match.
+3. **Group: client** — sections per client, header colored to match.
 
-Shortcut: press **`g`**.
+Shortcut: **`g`**.
 
 ### Quick filters
 
-Above the list, a row of pills: **All / Timed / Anytime / Priority / Done**. Click to narrow what's visible.
+Above the list, a row of pills: **All / Timed / Anytime / Priority / Done**. Click one to narrow what's visible.
 
 ![Lines view with Group: client active — sections per client with colored headers](screenshots/05-group-by-client.png)
 
 ---
 
-## 5. Editing
+## 5. Editing on the fly
 
-- Click any **title**, **date**, **time**, or **client chip** on a row to edit it inline. Enter saves, Esc cancels.
-- Click the chevron / `Details` element under a row to expand and read the description; click the description text to edit.
-- Click `⋯` on a row to open **Row options**, where you can set a custom lead time for that reminder and add/edit its description.
-- In Lines view, drag the `☰` handle to reorder.
+Almost everything on a row is clickable:
+
+- Click a **title** — inline-edit. Enter saves, Esc cancels.
+- Click a **date chip** or **time** — same idea.
+- Click a **client chip** — that filters. To EDIT the client, **Shift+click** or **right-click** it.
+- Click the **details chevron** under a row to expand the description, then click the text to edit.
+- Click the **`⋯` menu** for the row options dialog (custom lead time + the details textarea).
+- In Lines view, drag the **☰ handle** to reorder.
 
 ---
 
-## 6. Notifications
+## 6. The proactive card (the whole point)
 
-When a timed reminder is due (or `leadMinutes` before, default 10 min), the bot sends you an **Adaptive Card** in chat with:
+When a timed reminder is due (or your lead-time minutes before), a card lands in your Day Reminders chat:
 
-- **Mark done** — closes the reminder.
-- **Snooze 15m / 1h / Tomorrow** — push it out. "Tomorrow" also advances the due date so the rollover doesn't double-count.
+- **Title** — `[Client] Title` if a client is set.
+- **Time line** — when it's due, or "in N min."
+- **Description** — if you wrote one.
+- **Buttons** — **Mark done**, **Snooze 15m**, **Snooze 1h**, **Tomorrow**.
 
-If the reminder has a description, it shows below the title.
-
-You also get a **Teams Activity Feed notification** (the bell icon) when a reminder fires.
-
-At your configured **End-of-day** time (Settings → "End-of-day check-in time"), the bot sends an "Are you done?" card listing any reminders still open.
+You also get a **Teams Activity Feed** notification (the bell icon) when it fires.
 
 ![Proactive Adaptive Card in the Day Reminders chat with title, time, description, and the four action buttons](screenshots/06-proactive-card.png)
+
+At your configured **end-of-day** time, the bot also sends an "Are you done?" card listing anything still open.
 
 ---
 
 ## 7. Settings
 
-Click the **⚙ Settings** button (top-right). You can change:
+Hit the **⚙ Settings** button (top-right of the tab) to change:
 
 - End-of-day check-in time
-- Default lead time before each timed reminder (in minutes)
-- Weekdays only (skip Sat/Sun for the EOD card)
+- Default lead time (in minutes) before each timed reminder
+- Weekdays-only (skip Sat/Sun for the EOD card)
 - Notifications on/off
-- Appearance: match Teams theme, or lock to Light/Dark/High-contrast
+- Appearance — match Teams, or lock to Light / Dark / High-contrast
 
 ---
 
-## 8. Tips and shortcuts
+## 8. Shortcuts and tricks
 
-| Shortcut | What it does |
+| Press this | To do this |
 |---|---|
-| `/` | Focus the add field |
-| `f` | Focus the search box |
-| `g` | Cycle Group: off → tag → client |
-| `v` | Cycle views: Lines → Grid → Day → Week |
+| `/` | Jump to the add field |
+| `f` | Jump to the search box |
+| `g` | Cycle group mode (off → tag → client) |
+| `v` | Cycle views (Lines → Grid → Day → Week) |
 | `?` | Open the quick guide |
-| `Esc` | Clear filters / cancel edit |
+| `Esc` | Clear filters / cancel an inline edit |
 
-Other tips:
+A few other things worth knowing:
 
-- **Select multiple** — click `Select` in the top bar to enter bulk mode. Tick several rows, then bulk-done, bulk-delete, or toggle star.
-- **Templates** — click `+ Templates` (above the list) for a curated set of common reminders, one click to add.
-- **Search** — type in the search box (top bar) to match title, tags, or client. Persists across reloads.
-- **Undo delete** — when you delete, a toast lets you undo within 5 seconds.
+- **Select** in the top bar puts you in bulk mode — tick a bunch of rows, then bulk-done / delete / star.
+- **+ Templates** has a starter set of common reminders (standup, EOD wrap, etc.) — one click to add.
+- **Search** in the top bar matches title, tags, AND client. Sticks across reloads.
+- **Undo delete** — a toast hangs around for 5 seconds after every delete.
 
 ---
 
 ## 9. Feedback
 
-Bugs, requests, "this is annoying" — drop them in the team channel or DM Josh. This thing iterates fast.
+Bugs, requests, "this is annoying" — drop them in the team channel or DM Josh. This thing iterates fast (more than once a day on busy days).
 
-The next planned release (**v1.5**) adds **sharing**: assign individual reminders to anyone in the tenant, and configure per-tag default share lists (so `#QC` auto-shares with the QC team without picking recipients each time).
+**Coming next (v1.5):** sharing. You'll be able to assign reminders to teammates, and set per-tag default share lists so `#QC` auto-shares with the QC team without picking recipients each time.
+
+If you have feedback to shape that, now's the time.
