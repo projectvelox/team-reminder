@@ -430,6 +430,7 @@
     document.querySelectorAll(".filter-pill").forEach((p) => {
       p.setAttribute("aria-pressed", (summaryFilter ? "false" : (p.dataset.quick === quickFilter ? "true" : "false")));
     });
+    document.body.dataset.view = currentView;
     if (currentView === "calendar") {
       $("tableView").hidden = true;
       $("calendarView").hidden = false;

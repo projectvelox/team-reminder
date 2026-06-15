@@ -4,8 +4,8 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Day Reminders &mdash; Licenses</title>
-  <link rel="stylesheet" href="styles.css?v=1.7.3" />
-  <link rel="stylesheet" href="licenses.css?v=1.7.3" />
+  <link rel="stylesheet" href="styles.css?v=1.7.4" />
+  <link rel="stylesheet" href="licenses.css?v=1.7.4" />
   <script src="https://res.cdn.office.net/teams-js/2.24.0/js/MicrosoftTeams.min.js"></script>
 </head>
 <body data-theme="default" data-page="licenses">
@@ -34,34 +34,9 @@
 
   <div id="liveRegion" class="visually-hidden" aria-live="polite" aria-atomic="true"></div>
 
-  <div class="layout">
-    <main>
+  <div class="layout lic-shell">
+    <main class="lic-main">
       <p id="errorBanner" class="error-banner" hidden></p>
-
-      <section id="summaryChips" class="lic-summary" aria-label="Upcoming">
-        <button type="button" class="lic-summary-chip" data-summary="week" aria-pressed="false">
-          <span class="lic-summary-count" id="cntWeek">0</span>
-          <span class="lic-summary-label">expiring this week</span>
-        </button>
-        <button type="button" class="lic-summary-chip" data-summary="month" aria-pressed="false">
-          <span class="lic-summary-count" id="cntMonth">0</span>
-          <span class="lic-summary-label">expiring this month</span>
-        </button>
-        <button type="button" class="lic-summary-chip danger" data-summary="overdue" aria-pressed="false">
-          <span class="lic-summary-count" id="cntOverdue">0</span>
-          <span class="lic-summary-label">overdue</span>
-        </button>
-      </section>
-
-      <section id="statsStrip" class="lic-stats" aria-label="Totals">
-        <span class="lic-stat"><strong id="statLicenses">0</strong> licenses</span>
-        <span class="lic-stat-sep">·</span>
-        <span class="lic-stat"><strong id="statSeats">0</strong> seats</span>
-        <span class="lic-stat-sep">·</span>
-        <span class="lic-stat"><strong id="statCustomers">0</strong> customers</span>
-        <span class="lic-stat-sep">·</span>
-        <span class="lic-stat"><strong id="statRenewed30">0</strong> renewed last 30 days</span>
-      </section>
 
       <div id="filterPills" class="filter-pills" role="group" aria-label="Quick filters">
         <button type="button" class="filter-pill" data-quick="all" aria-pressed="true">All</button>
@@ -70,21 +45,6 @@
         <button type="button" class="filter-pill" data-quick="overdue" aria-pressed="false" title="Expired and not renewed">Overdue</button>
         <button type="button" class="filter-pill" data-quick="attention" aria-pressed="false" title="Stuck in a status >7 days or close to expiry with no status set">&#9888;&#65039; Needs attention</button>
       </div>
-
-      <section id="statusStrip" class="lic-breakdown" aria-label="By status" hidden>
-        <span class="lic-breakdown-label">Status</span>
-        <div id="statusChips" class="lic-breakdown-chips"></div>
-      </section>
-
-      <section id="ownerStrip" class="lic-breakdown" aria-label="By owner" hidden>
-        <span class="lic-breakdown-label">Owner</span>
-        <div id="ownerChips" class="lic-breakdown-chips"></div>
-      </section>
-
-      <section id="productStrip" class="lic-breakdown" aria-label="By product line" hidden>
-        <span class="lic-breakdown-label">Product</span>
-        <div id="productChips" class="lic-breakdown-chips"></div>
-      </section>
 
       <section id="tableView">
         <table id="licTable" class="lic-table" hidden>
@@ -132,6 +92,48 @@
         </div>
       </section>
     </main>
+
+    <aside class="lic-aside" aria-label="Summary and breakdowns">
+      <section id="summaryChips" class="lic-summary" aria-label="Upcoming">
+        <button type="button" class="lic-summary-chip" data-summary="week" aria-pressed="false">
+          <span class="lic-summary-count" id="cntWeek">0</span>
+          <span class="lic-summary-label">expiring this week</span>
+        </button>
+        <button type="button" class="lic-summary-chip" data-summary="month" aria-pressed="false">
+          <span class="lic-summary-count" id="cntMonth">0</span>
+          <span class="lic-summary-label">expiring this month</span>
+        </button>
+        <button type="button" class="lic-summary-chip danger" data-summary="overdue" aria-pressed="false">
+          <span class="lic-summary-count" id="cntOverdue">0</span>
+          <span class="lic-summary-label">overdue</span>
+        </button>
+      </section>
+
+      <section id="statsStrip" class="lic-stats" aria-label="Totals">
+        <span class="lic-stat"><strong id="statLicenses">0</strong> licenses</span>
+        <span class="lic-stat-sep">·</span>
+        <span class="lic-stat"><strong id="statSeats">0</strong> seats</span>
+        <span class="lic-stat-sep">·</span>
+        <span class="lic-stat"><strong id="statCustomers">0</strong> customers</span>
+        <span class="lic-stat-sep">·</span>
+        <span class="lic-stat"><strong id="statRenewed30">0</strong> renewed last 30 days</span>
+      </section>
+
+      <section id="statusStrip" class="lic-breakdown" aria-label="By status" hidden>
+        <span class="lic-breakdown-label">Status</span>
+        <div id="statusChips" class="lic-breakdown-chips"></div>
+      </section>
+
+      <section id="ownerStrip" class="lic-breakdown" aria-label="By owner" hidden>
+        <span class="lic-breakdown-label">Owner</span>
+        <div id="ownerChips" class="lic-breakdown-chips"></div>
+      </section>
+
+      <section id="productStrip" class="lic-breakdown" aria-label="By product line" hidden>
+        <span class="lic-breakdown-label">Product</span>
+        <div id="productChips" class="lic-breakdown-chips"></div>
+      </section>
+    </aside>
   </div>
 
   <!-- Add / edit drawer -->
@@ -319,6 +321,6 @@
 
   <div id="toast" class="toast" hidden></div>
 
-  <script src="licenses.js?v=1.7.3"></script>
+  <script src="licenses.js?v=1.7.4"></script>
 </body>
 </html>
