@@ -389,6 +389,7 @@ input:focus {
   gap: 8px;
   margin-top: 16px;
 }
+.row-done-toggle { margin-right: auto; }
 
 /* a11y */
 .visually-hidden {
@@ -1126,6 +1127,19 @@ button:focus-visible, .link:focus-visible, .tag-chip:focus-visible, select:focus
 .week-item.high { border-color: #f7d12c; box-shadow: inset 3px 0 0 #f7d12c; }
 .week-item.done .week-item-text { text-decoration: line-through; color: var(--muted); }
 .week-item.snoozed { border-left: 3px solid var(--accent); }
+.week-item-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 2px;
+}
+.week-item-check {
+  width: 13px;
+  height: 13px;
+  margin: 0;
+  cursor: pointer;
+  flex: 0 0 auto;
+}
 .week-item-time {
   display: block;
   font-variant-numeric: tabular-nums;
@@ -1134,7 +1148,6 @@ button:focus-visible, .link:focus-visible, .tag-chip:focus-visible, select:focus
   white-space: nowrap;
   font-weight: 600;
   letter-spacing: .02em;
-  margin-bottom: 2px;
 }
 .week-item-time.anytime { font-style: italic; opacity: .7; font-weight: 500; }
 .week-item-text {

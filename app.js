@@ -389,6 +389,12 @@
   });
 
   $("rowOptionsCancel").addEventListener("click", () => rowOptionsDialog.close());
+  $("rowOptionsDone").addEventListener("click", () => {
+    const r = reminders.find((x) => x.id === editingReminderId);
+    if (!r) { rowOptionsDialog.close(); return; }
+    rowOptionsDialog.close();
+    toggleDone(r);
+  });
   if (rowDueTomorrow) {
     rowDueTomorrow.addEventListener("click", () => {
       const base = new Date(todayPh() + "T00:00:00Z");
@@ -921,18 +927,31 @@
     if (r.done) item.classList.add("done");
     if (r.snoozedUntil && new Date(r.snoozedUntil).getTime() > Date.now()) item.classList.add("snoozed");
 
+    const head = document.createElement("div");
+    head.className = "week-item-head";
+
+    const cb = document.createElement("input");
+    cb.type = "checkbox";
+    cb.className = "checkbox week-item-check";
+    cb.checked = !!r.done;
+    cb.setAttribute("aria-label", r.done ? "Mark not done" : "Mark done");
+    cb.addEventListener("click", (e) => e.stopPropagation());
+    cb.addEventListener("change", (e) => { e.stopPropagation(); toggleDone(r); });
+
     const time = document.createElement("span");
     time.className = "week-item-time" + (r.time ? "" : " anytime");
     time.textContent = r.time ? formatTime(r.time) : "·";
+
+    head.append(cb, time);
 
     const text = document.createElement("span");
     text.className = "week-item-text";
     text.textContent = displayTitle(r);
 
-    item.append(time, text);
+    item.append(head, text);
     item.addEventListener("click", (e) => {
       e.stopPropagation();
-      if (e.target.closest("button")) return;
+      if (e.target === cb || e.target.closest("button")) return;
       openRowOptions(r);
     });
     return item;
@@ -1400,6 +1419,8 @@
     if (rowDescription) rowDescription.value = r.description || "";
     if (rowDueDate) rowDueDate.value = r.dueAt || todayPh();
     if (rowClient) rowClient.value = r.client || "";
+    const doneBtn = $("rowOptionsDone");
+    if (doneBtn) doneBtn.textContent = r.done ? "Mark not done" : "Mark done";
     openDialog(rowOptionsDialog);
   }
 
