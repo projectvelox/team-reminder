@@ -395,6 +395,9 @@
     rowOptionsDialog.close();
     toggleDone(r);
   });
+  if (rowDescription) {
+    rowDescription.addEventListener("input", () => autoGrowTextarea(rowDescription));
+  }
   if (rowDueTomorrow) {
     rowDueTomorrow.addEventListener("click", () => {
       const base = new Date(todayPh() + "T00:00:00Z");
@@ -1412,6 +1415,13 @@
     }
   }
 
+  function autoGrowTextarea(ta, maxPx) {
+    if (!ta) return;
+    ta.style.height = "auto";
+    const cap = typeof maxPx === "number" ? maxPx : 400;
+    ta.style.height = Math.min(ta.scrollHeight, cap) + "px";
+  }
+
   function openRowOptions(r) {
     editingReminderId = r.id;
     rowOptionsTitle.textContent = r.title;
@@ -1422,6 +1432,9 @@
     const doneBtn = $("rowOptionsDone");
     if (doneBtn) doneBtn.textContent = r.done ? "Mark not done" : "Mark done";
     openDialog(rowOptionsDialog);
+    // scrollHeight needs the element to be in layout — modal is shown synchronously
+    // by showModal(), but defer one frame to dodge any browser layout quirks.
+    if (rowDescription) requestAnimationFrame(() => autoGrowTextarea(rowDescription));
   }
 
   // ---------- inline edit ----------

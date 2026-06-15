@@ -390,6 +390,7 @@ input:focus {
   margin-top: 16px;
 }
 .row-done-toggle { margin-right: auto; }
+#rowDescription { resize: none; overflow-y: auto; }
 
 /* a11y */
 .visually-hidden {
