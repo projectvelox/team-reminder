@@ -1,6 +1,6 @@
 # Day Reminders
 
-A Microsoft Teams personal tab + bot for daily reminders, with proactive Adaptive Card notifications in the user's chat with the bot. Built for Kation Technologies; sideloaded as a custom org app.
+A Microsoft Teams personal tab + bot for daily reminders, with proactive Adaptive Card notifications in the user's chat with the bot. Built for Kation Technologies; sideloaded as a custom org app. As of v1.7 also includes a second tab for tenant-shared license renewal tracking.
 
 ## Why it exists
 
@@ -9,20 +9,27 @@ The user (Kation owner) wanted a lightweight personal productivity surface that 
 ## Architecture (current)
 
 ```
-projectvelox.github.io/team-reminder/  ──►  Teams static tab (HTML/JS/CSS)
+projectvelox.github.io/team-reminder/  ──►  Teams static tabs (Reminders + Licenses)
                                        └──►  Outlook taskpane (outlook.html/.js)
                                               │  Teams SSO Bearer  /  Office SSO Bearer
                                               ▼
 func-day-reminders-17023.azurewebsites.net  ──►  Azure Function App (Node 22, Linux Consumption, East Asia)
   /api/messages       ◄── Bot Service ──► Teams chat (proactive Adaptive Cards)
-  /api/reminders      ── CRUD
+  /api/reminders      ── CRUD (per-user)
   /api/settings       ── per-user prefs
+  /api/licenses       ── CRUD + bulk + renew  (tenant-shared, v1.7)
+  /api/members        ── auto-registering Owner picker source (v1.7)
   scheduler           ── Timer trigger every minute (in Asia/Manila wall-clock)
                                               │
                                               ▼
                                          Azure Table Storage  (table: dayreminders)
-                                              PK = user oid
-                                              RK = `_user`  or  `r:<reminderId>`
+                                              Per-user partitions (PK = user oid):
+                                                RK = `_user`        user metadata
+                                                RK = `_templates`   saved templates
+                                                RK = `r:<id>`       a reminder
+                                              Tenant-shared partitions (v1.7):
+                                                PK = `_licenses`, RK = `l:<id>`
+                                                PK = `_members`,  RK = `m:<oid>`
 ```
 
 All Azure resources live in `rg-day-reminders`, except the Bot Service which is `global`. Storage and App Insights are in `southeastasia`, the Function App is in `eastasia` (Linux Consumption in `southeastasia` was stuck in 503 at creation; we recreated in `eastasia`). A keep-warm Logic App (`la-day-reminders-keepwarm`, southeastasia) pings `/api/ping` every 5 min during PH work hours so the Function App's HTTP triggers don't cold-start.
@@ -33,7 +40,8 @@ Secrets, GUIDs, and connection strings live in the Claude memory file `project_d
 
 | Path | What |
 |---|---|
-| `index.html` / `app.js` / `styles.css` | The tab, served from GitHub Pages |
+| `index.html` / `app.js` / `styles.css` | The Reminders tab, served from GitHub Pages |
+| `licenses.html` / `licenses.js` / `licenses.css` | The Licenses tab (v1.7). Shares `styles.css` for base theming. |
 | `outlook.html` / `outlook.js` / `outlook.css` | Outlook add-in taskpane (new Outlook for Windows + OWA). Pre-fills a reminder from the open email, calls the same `/api/reminders`. |
 | `manifest.json` | **Unified Microsoft 365 manifest** (v1.19) — single file covering tab + bot + composeExtension + Outlook add-in. Sideloaded via Teams admin center. |
 | `outlook-manifest.xml` | Legacy Office Add-in XML manifest, kept as **per-user OWA sideload fallback only**. The unified `manifest.json` is the primary deploy path. |
@@ -43,6 +51,8 @@ Secrets, GUIDs, and connection strings live in the Claude memory file `project_d
 | `bot/src/index.js` | Entry — registers all functions |
 | `bot/src/functions/messages.js` | Bot endpoint (POST /api/messages) |
 | `bot/src/functions/reminders.js` | CRUD for /api/reminders |
+| `bot/src/functions/licenses.js` | CRUD + bulk + renew for /api/licenses (v1.7) |
+| `bot/src/functions/members.js` | Auto-registering Owner picker source (v1.7) |
 | `bot/src/functions/settings.js` | GET/PUT /api/settings |
 | `bot/src/functions/scheduler.js` | Timer trigger — lead-time + EOD check-in |
 | `bot/src/functions/ping.js` | Unauthenticated `GET /api/ping` returning `"ok"` — keep-warm target for the Logic App |
@@ -51,6 +61,41 @@ Secrets, GUIDs, and connection strings live in the Claude memory file `project_d
 | `bot/src/lib/auth.js` | Teams SSO JWT validation (jose + Entra JWKS) |
 | `bot/src/lib/cards.js` | Adaptive Card templates |
 | `dist/` | Build output, gitignored |
+
+## What ships today (v1.7.x)
+
+### v1.7.0 — Licenses tab (this release)
+
+Second static tab for tracking client license renewals as a tenant-shared dataset, distinct from per-user reminders.
+
+- **New tab "Licenses"** alongside "Reminders". Table view (default) + Calendar (Month) view via top-bar toggle. Theme + base styles inherited from `styles.css`.
+- **Tenant-shared storage**. New Azure Table partitions: `_licenses` (rows) + `_members` (the Owner picker source). Every authenticated tenant user can read and write all rows. Row has `customer, licenseType, userCount, expiryDate, ownerOid, ownerName, productLine, leadDays?, notes?, state, createdAt, lastEditedAt, lastRenewedAt`.
+- **Owner picker** = self-populating member dropdown. Every `/api/licenses` and `/api/members` call auto-registers the caller's `oid + displayName`. Workaround that avoids needing `User.ReadBasic.All` Graph consent for Microsoft Graph user search.
+- **Table view**: sortable columns (customer / type / users / expires / owner / product line). Days-left badge per row (`5d left`, `today`, `2d overdue`). Overdue rows get a red left border.
+- **Calendar (Month) view**: Mon-Sun grid, Owner-colored pills per day (deterministic hash, separate palette from client chips), 3 visible + `+N more` overflow popover. Click pill = open edit; click empty cell = add license on that date. Nav: Prev / Today / Next + **Same month next year** jump.
+- **Renewed action** with 1-year / 2-year / 3-year (triennial) presets or custom new-expiry date. Posts to `/api/licenses/{id}/renew`. Resets `lastEscalatedDays` so the escalation ladder starts fresh next cycle.
+- **Summary chips** at top of tab: "N expiring this week / N this month / N overdue", click to filter the active view.
+- **Quick filter chips**: All / Mine / This month / Overdue. Mirror of the Reminders quick-filter row.
+- **Search box**: matches customer + license type + notes + product line + owner name.
+- **Add/edit dialog** with autocomplete on customer + license type + product line (datalist sourced from existing rows), plus the Notify-N-days-before dropdown (7/14/30/60/90/Custom).
+- **Manifest**: bumped to `1.7.0`, second `staticTab` entry `dayReminders.licenses` pointing at `licenses.html`. Cache-bust `?v=1.7.0` on the tab assets.
+
+### v1.7.0 — deferred until Dei (Global Admin) consents
+
+Both pieces below need Graph permissions classified as high-privilege in Kation's consent policy. App reg manifest already has the perms requested; pending consent only.
+
+- **Monthly email digest** via `Mail.Send` (application). Sends a per-owner list of expiring licenses on the 1st of each month from `assist@kationtechnologies.com`. Configurable via `LICENSE_DIGEST_FROM` app setting.
+- **Proactive bot install for cold owners** via `TeamsAppInstallation.ReadWriteForUser.All` (application). Lets the bot drop itself into a license owner's Teams personal apps so Teams escalation cards land even if they've never opened Day Reminders. Today, escalation cards work fine for owners who've already opened the bot (because we have their `conversationRef`). This unlock also benefits v1.5 sharing.
+
+### Other v1.7.0 backlog items (in scope, not yet built)
+
+- Bulk reassign Owner (multi-select on table + Reassign action)
+- CSV import with preview + per-row Owner resolver
+- ICS calendar feed per user (`/api/licenses/ical?token=...`)
+- Teams escalation cards in the scheduler (14d → 7d → 1d → daily, with Renewed / Won't renew buttons)
+- Settings UI for per-user default `leadDays`
+
+See `project_day_reminders_v17_licenses_scope.md` in Claude memory for the full locked scope.
 
 ## What ships today (v1.6.x)
 
