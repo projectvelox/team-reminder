@@ -1,7 +1,7 @@
 {
-  "$schema": "https://developer.microsoft.com/en-us/json-schemas/teams/v1.17/MicrosoftTeams.schema.json",
-  "manifestVersion": "1.17",
-  "version": "1.4.1",
+  "$schema": "https://developer.microsoft.com/en-us/json-schemas/teams/v1.19/MicrosoftTeams.schema.json",
+  "manifestVersion": "1.19",
+  "version": "1.6.0",
   "id": "5a03bfa3-63c4-417c-b668-b02234ebc11b",
   "developer": {
     "name": "Day Reminders",
@@ -19,7 +19,7 @@
   },
   "description": {
     "short": "Personal reminders for what you need to get done today.",
-    "full": "Capture what you need to remember today, with optional times. The Day Reminders bot pings you in chat before each timed item, and at your configured end-of-day time it posts an 'Are you done?' card listing anything still open. End-of-day time, lead minutes, weekday-only mode, and notifications are all configurable from the tab's Settings dialog."
+    "full": "Capture what you need to remember today, with optional times. The Day Reminders bot pings you in chat before each timed item, and at your configured end-of-day time it posts an 'Are you done?' card listing anything still open. End-of-day time, lead minutes, weekday-only mode, and notifications are all configurable from the tab's Settings dialog. v1.6 adds an Outlook add-in: open any email and click 'Add reminder' in the action bar to create a Day Reminders task pre-filled from the email."
   },
   "accentColor": "#38AEEB",
   "staticTabs": [
@@ -80,5 +80,91 @@
     "projectvelox.github.io",
     "func-day-reminders-17023.azurewebsites.net",
     "token.botframework.com"
+  ],
+  "authorization": {
+    "permissions": {
+      "resourceSpecific": [
+        { "name": "MailboxItem.Read.User", "type": "Delegated" }
+      ]
+    }
+  },
+  "extensions": [
+    {
+      "requirements": {
+        "scopes": ["mail"],
+        "capabilities": [{ "name": "Mailbox", "minVersion": "1.5" }]
+      },
+      "runtimes": [
+        {
+          "id": "TaskPaneRuntime",
+          "type": "general",
+          "code": { "page": "https://projectvelox.github.io/team-reminder/outlook.html" },
+          "lifetime": "short",
+          "requirements": {
+            "capabilities": [{ "name": "Mailbox", "minVersion": "1.5" }],
+            "formFactors": ["desktop"]
+          },
+          "actions": [
+            {
+              "id": "ShowTaskpane",
+              "type": "openPage",
+              "displayName": "Add reminder",
+              "pinnable": false,
+              "view": "TaskPaneView",
+              "multiselect": false,
+              "supportsNoItemContext": false
+            }
+          ]
+        }
+      ],
+      "ribbons": [
+        {
+          "requirements": {
+            "scopes": ["mail"],
+            "capabilities": [{ "name": "Mailbox", "minVersion": "1.5" }],
+            "formFactors": ["desktop"]
+          },
+          "contexts": ["mailRead"],
+          "tabs": [
+            {
+              "builtInTabId": "TabDefault",
+              "groups": [
+                {
+                  "id": "msgReadGroup",
+                  "label": "Day Reminders",
+                  "controls": [
+                    {
+                      "id": "msgReadAddReminder",
+                      "type": "button",
+                      "label": "Add reminder",
+                      "icons": [
+                        { "size": 16, "url": "https://projectvelox.github.io/team-reminder/color.png" },
+                        { "size": 32, "url": "https://projectvelox.github.io/team-reminder/color.png" },
+                        { "size": 80, "url": "https://projectvelox.github.io/team-reminder/color.png" }
+                      ],
+                      "supertip": {
+                        "title": "Add to Day Reminders",
+                        "description": "Create a Day Reminders task pre-filled from this email."
+                      },
+                      "actionId": "ShowTaskpane",
+                      "overriddenByRibbonApi": false,
+                      "enabled": true
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "alternates": [
+        {
+          "alternateIcons": {
+            "icon": { "size": 64, "url": "https://projectvelox.github.io/team-reminder/color.png" },
+            "highResolutionIcon": { "size": 64, "url": "https://projectvelox.github.io/team-reminder/color.png" }
+          }
+        }
+      ]
+    }
   ]
 }

@@ -35,8 +35,8 @@ Secrets, GUIDs, and connection strings live in the Claude memory file `project_d
 |---|---|
 | `index.html` / `app.js` / `styles.css` | The tab, served from GitHub Pages |
 | `outlook.html` / `outlook.js` / `outlook.css` | Outlook add-in taskpane (new Outlook for Windows + OWA). Pre-fills a reminder from the open email, calls the same `/api/reminders`. |
-| `manifest.json` | Teams app manifest (sideload) |
-| `outlook-manifest.xml` | Office Add-in manifest for Outlook (sideload separately via Microsoft 365 admin → Integrated apps, or Outlook → My add-ins) |
+| `manifest.json` | **Unified Microsoft 365 manifest** (v1.19) — single file covering tab + bot + composeExtension + Outlook add-in. Sideloaded via Teams admin center. |
+| `outlook-manifest.xml` | Legacy Office Add-in XML manifest, kept as **per-user OWA sideload fallback only**. The unified `manifest.json` is the primary deploy path. |
 | `color.png` / `outline.png` | App icons |
 | `build.ps1` | Repackages `dist/team-reminder.zip` for sideload |
 | `bot/package.json`, `bot/host.json` | Function App project |
@@ -149,21 +149,20 @@ The `--no-build` flag skips remote build (we ship `node_modules` in the zip — 
 ```
 Outputs `dist\team-reminder.zip`. URLs are baked into `manifest.json` directly now; the optional `-BaseUrl` arg rewrites them for local-host previews.
 
-### Outlook add-in
-The Outlook add-in is a separate "app" from a host perspective. The Teams app and Outlook add-in have independent manifests and independent admin-center entries; they share a backend, an Entra app reg, and a tab/taskpane domain.
+### Outlook add-in (via unified manifest — v1.6+)
+The Outlook surface is bundled into the same `manifest.json` (unified Microsoft 365 schema, v1.19) as the Teams tab and bot. **One zip uploaded to Teams admin center deploys both Teams and Outlook surfaces** to every user assigned to the Day Reminders app. No separate admin-center workflow.
 
-Sideload `outlook-manifest.xml` via either:
-- Microsoft 365 admin center → **Settings → Integrated apps → Upload custom apps → Office Add-in → Upload XML**, or
-- (Per-user) Outlook → **Get Add-ins → My add-ins → Add a custom add-in → Add from file**.
+Why the unified manifest: Microsoft retired the Exchange `New-App -OrganizationApp` PowerShell path (Centralized Deployment), and the M365 admin center "Integrated apps → Upload custom apps → Office Add-in" flow has a locked-to-Teams dropdown in some tenants. The unified manifest is Microsoft's current GA path that avoids both.
 
-The `outlook.html` / `outlook.js` / `outlook.css` files are tab-side — they ship on every `git push` (GitHub Pages). The XML manifest only needs to be re-uploaded when you change the manifest itself (version bumps, surface changes, new commands).
+The `outlook.html` / `outlook.js` / `outlook.css` files are tab-side — they ship on every `git push` (GitHub Pages). No re-upload of the zip is required for taskpane code changes; bump `?v=` in `outlook.html` instead.
+
+`outlook-manifest.xml` is kept around as a per-user OWA sideload fallback (Outlook → Get Add-ins → My add-ins → Add from file). Use only if the unified manifest can't be deployed for some reason.
 
 ### When to bump what
 - Tab-only change → bump `?v=` in `index.html`, push. No re-upload needed.
-- Outlook taskpane change (`outlook.*`) → bump `?v=` in `outlook.html`, push. No re-upload of `outlook-manifest.xml` needed.
+- Outlook taskpane change (`outlook.*`) → bump `?v=` in `outlook.html`, push. No re-upload of the zip needed.
 - Bot-only change → publish to Function App. No re-upload needed.
-- `manifest.json` change → bump `version`, run `build.ps1`, re-upload via Teams admin center (Manage apps → Day Reminders → Update).
-- `outlook-manifest.xml` change → bump `<Version>`, re-upload via M365 admin center (Integrated apps).
+- `manifest.json` change (any surface) → bump `version`, run `build.ps1`, re-upload `dist/team-reminder.zip` via Teams admin center (Manage apps → Day Reminders → Update).
 
 ## Auth model
 
@@ -188,7 +187,8 @@ The `outlook.html` / `outlook.js` / `outlook.css` files are tab-side — they sh
 ## Teams app metadata
 
 - Manifest version is in `manifest.json` (`version` field, separate from tab `?v=` cache-bust).
+- Manifest schema: `MicrosoftTeams.schema.json` v1.19 (unified Microsoft 365 app manifest, covers Teams + Outlook surfaces in one file).
 - Bot App ID: `9f3711c1-c861-4da5-9664-6903bbe5bf05` (display name `Day Reminders Bot`).
-- Teams app ID (manifest `id`): `5a03bfa3-63c4-417c-b668-b02234ebc11b`.
-- Outlook add-in ID (`outlook-manifest.xml` `<Id>`): `29d36e10-9bd4-4c78-b66b-f6189ce9d7b5`.
+- Teams app ID (manifest `id`): `5a03bfa3-63c4-417c-b668-b02234ebc11b` — same id used by the unified manifest for both Teams and Outlook surfaces.
+- Outlook add-in id in legacy `outlook-manifest.xml` (fallback only): `29d36e10-9bd4-4c78-b66b-f6189ce9d7b5`.
 - Tenant: Kation Technologies (`705b9777-fb96-49cb-b57a-9a8fe00addad`).
