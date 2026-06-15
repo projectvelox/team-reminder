@@ -1,4 +1,4 @@
-/* Day Reminders — Teams personal tab (v1.4.0)
+/* Day Reminders — Teams personal tab (v1.4.1)
    Thin client over the bot's REST API. Auth via Teams SSO.
    Server-side bot handles all notifications (proactive Adaptive Cards in chat).
 */
@@ -8,7 +8,7 @@
   const API_BASE = "https://func-day-reminders-17023.azurewebsites.net/api";
   const DONE_AGE_MS = 24 * 60 * 60 * 1000;
   const UNDO_MS = 5000;
-  const APP_VERSION = "1.4.0";
+  const APP_VERSION = "1.4.1";
   const VIEWS = ["lines", "grid", "calendar"];
   const TAG_PALETTE = [
     "#0078d4", "#107c10", "#8764b8", "#ca5010", "#c50f1f",
@@ -29,6 +29,7 @@
   let hasBot = false;
   let authToken = null;
   let activeTagFilter = null;
+  let activeClientFilter = null;
   let quickFilter = "all"; // all | timed | anytime | high | done
   let searchText = "";
   let currentView = "lines"; // lines | grid | calendar
@@ -42,6 +43,7 @@
   const LS_THEME = "themeOverride";
   const LS_QUICK_FILTER = "quickFilter";
   const LS_TAG_FILTER = "tagFilter";
+  const LS_CLIENT_FILTER = "clientFilter";
   const LS_SEARCH = "searchText";
   const LS_VIEW = "currentView";
   const LS_ONBOARDED = "onboardingDismissed";
@@ -53,6 +55,8 @@
     if (sq && ["all", "timed", "anytime", "high", "done"].includes(sq)) quickFilter = sq;
     const st = localStorage.getItem(LS_TAG_FILTER);
     if (st) activeTagFilter = st;
+    const sc = localStorage.getItem(LS_CLIENT_FILTER);
+    if (sc) activeClientFilter = sc;
     const ss = localStorage.getItem(LS_SEARCH);
     if (ss) searchText = ss;
     const sv = localStorage.getItem(LS_VIEW);
@@ -117,6 +121,8 @@
   const titleInput = $("title");
   const timeInput = $("time");
   const dueDateInput = $("dueDate");
+  const clientInput = $("client");
+  const clientList = $("clientList");
   const descriptionInput = $("description");
   const detailsToggleBtn = $("detailsToggle");
   const settingsDialog = $("settingsDialog");
@@ -175,16 +181,18 @@
     const time = timeInput.value || null;
     const today = todayPh();
     const dueAt = dueDateInput.value || today;
+    const client = (clientInput && clientInput.value.trim().slice(0, 100)) || null;
     const description = descriptionInput.value.trim().slice(0, 2000) || null;
     const tempId = `tmp-${Date.now()}-${Math.random().toString(16).slice(2, 8)}`;
     const optimistic = {
-      id: tempId, title, time, tags, dueAt, description, rollDays: 0,
+      id: tempId, title, time, tags, dueAt, description, rollDays: 0, client,
       done: false, priority: "normal", closedAt: null, _optimistic: true,
     };
     reminders.push(optimistic);
     titleInput.value = "";
     timeInput.value = "";
     dueDateInput.value = today;
+    if (clientInput) clientInput.value = "";
     descriptionInput.value = "";
     descriptionInput.hidden = true;
     if (detailsToggleBtn) {
@@ -197,6 +205,7 @@
     try {
       const body = { title, time, tags, dueAt };
       if (description) body.description = description;
+      if (client) body.client = client;
       const created = await api("POST", "/reminders", body);
       replaceById(tempId, created.reminder);
       render();
@@ -342,7 +351,7 @@
     else if (e.key === "g" || e.key === "G") { e.preventDefault(); groupToggle.click(); }
     else if (e.key === "v" || e.key === "V") { e.preventDefault(); cycleView(); }
     else if (e.key === "?") { e.preventDefault(); openDialog(guideDialog); }
-    else if (e.key === "Escape" && (activeTagFilter || searchText || quickFilter !== "all" || bulkMode)) {
+    else if (e.key === "Escape" && (activeTagFilter || activeClientFilter || searchText || quickFilter !== "all" || bulkMode)) {
       if (bulkMode) setBulkMode(false);
       else clearAllFilters();
     }
@@ -363,16 +372,21 @@
     const norm = (s) => String(s || "").toLowerCase();
     const searchNorm = norm(searchText.trim());
 
-    // Cascade: !pendingDelete -> tag -> search
+    // Cascade: !pendingDelete -> tag -> client -> search
     let visible = reminders.filter((r) => !pendingDeletes.has(r.id));
     if (activeTagFilter) {
       const tagNorm = norm(activeTagFilter);
       visible = visible.filter((r) => (r.tags || []).some((t) => norm(t) === tagNorm));
     }
+    if (activeClientFilter) {
+      const cNorm = norm(activeClientFilter);
+      visible = visible.filter((r) => norm(r.client) === cNorm);
+    }
     if (searchNorm) {
       visible = visible.filter((r) =>
         norm(r.title).includes(searchNorm) ||
-        (r.tags || []).some((t) => norm(t).includes(searchNorm))
+        (r.tags || []).some((t) => norm(t).includes(searchNorm)) ||
+        norm(r.client).includes(searchNorm)
       );
     }
 
@@ -384,12 +398,13 @@
     const olderDoneCount = doneAll.length - recentDone.length;
 
     reminderRoot.innerHTML = "";
+    populateClientList();
     updateFilterBanner();
     updateQuickFilterPills();
     updateViewSwitch();
 
     const totalNonPending = reminders.filter((r) => !pendingDeletes.has(r.id)).length;
-    const noFiltersActive = !activeTagFilter && !searchNorm && quickFilter === "all";
+    const noFiltersActive = !activeTagFilter && !activeClientFilter && !searchNorm && quickFilter === "all";
 
     // Calendar view bypasses the section/quick-filter structure entirely
     // for the "all" / "timed" / "anytime" cases — it shows ALL open items
@@ -1229,17 +1244,19 @@
     });
   }
 
-  // Builds the title-meta row (due-date chip + overdue badge) shown inside a reminder's
-  // title-wrap. Returns null if there's nothing to show (item is for today and not rolled).
+  // Builds the title-meta row (client chip + due-date chip + overdue badge) shown
+  // inside a reminder's title-wrap. Returns null if there's nothing to show.
   function buildTitleMeta(r) {
     const today = todayPh();
     const due = r.dueAt || r.createdDate || null;
-    const showChip = due && due !== today;
+    const showDueChip = due && due !== today;
     const showBadge = (r.rollDays || 0) > 0;
-    if (!showChip && !showBadge) return null;
+    const showClient = !!(r.client && r.client.trim());
+    if (!showDueChip && !showBadge && !showClient) return null;
     const meta = document.createElement("div");
     meta.className = "title-meta";
-    if (showChip) {
+    if (showClient) meta.appendChild(buildClientChip(r));
+    if (showDueChip) {
       const chip = document.createElement("button");
       chip.type = "button";
       chip.className = "due-chip " + (due < today ? "past" : "future");
@@ -1256,6 +1273,95 @@
       meta.appendChild(badge);
     }
     return meta;
+  }
+
+  // Client chip: distinct from tag chips. Clicking toggles the client filter
+  // (matches the tag-chip filter UX). Long-press / right-click would be nice
+  // for inline-edit but for now we surface edit via the bot row options dialog
+  // and let the chip stay one-purpose (filter).
+  function buildClientChip(r) {
+    const isActive = activeClientFilter && activeClientFilter.toLowerCase() === r.client.toLowerCase();
+    const chip = document.createElement("button");
+    chip.type = "button";
+    chip.className = "client-chip" + (isActive ? " active" : "");
+    chip.textContent = r.client;
+    chip.title = isActive
+      ? `Clear client filter. Right-click or hold Shift+click to edit.`
+      : `Filter to client "${r.client}". Right-click or hold Shift+click to edit.`;
+    chip.addEventListener("click", (e) => {
+      e.stopPropagation();
+      // Shift+click or Alt+click → edit, plain click → filter toggle
+      if (e.shiftKey || e.altKey) {
+        startClientEdit(r, chip);
+        return;
+      }
+      setClientFilter(isActive ? null : r.client);
+    });
+    chip.addEventListener("contextmenu", (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      startClientEdit(r, chip);
+    });
+    return chip;
+  }
+
+  // Inline-edit a reminder's client. Uses the same datalist as the add form so
+  // autocomplete works. Blank submission clears the client.
+  function startClientEdit(r, host) {
+    if (host.querySelector("input")) return;
+    const input = document.createElement("input");
+    input.type = "text";
+    input.setAttribute("list", "clientList");
+    input.maxLength = 100;
+    input.value = r.client || "";
+    input.className = "inline-edit";
+    input.placeholder = "Client (blank to clear)";
+    const original = host.textContent;
+    host.textContent = "";
+    host.appendChild(input);
+    input.focus();
+    input.select();
+    let committed = false;
+    const commit = async () => {
+      if (committed) return;
+      committed = true;
+      const newClient = input.value.trim().slice(0, 100) || null;
+      if (newClient === (r.client || null)) { host.textContent = original; return; }
+      const prev = r.client;
+      r.client = newClient;
+      render();
+      try {
+        const updated = await api("PATCH", `/reminders/${r.id}`, { client: newClient || "" });
+        replaceLocal(updated.reminder);
+        render();
+      } catch (err) {
+        r.client = prev;
+        render();
+        showError("Could not change client", err);
+      }
+    };
+    input.addEventListener("blur", commit);
+    input.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") { e.preventDefault(); input.blur(); }
+      else if (e.key === "Escape") { committed = true; host.textContent = original; }
+    });
+  }
+
+  // Refresh the <datalist> for client autocomplete from the unique non-empty
+  // client values across all current reminders (sorted alphabetically).
+  function populateClientList() {
+    if (!clientList) return;
+    const set = new Set();
+    for (const r of reminders) {
+      if (r.client && r.client.trim()) set.add(r.client.trim());
+    }
+    const sorted = [...set].sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" }));
+    clientList.textContent = "";
+    for (const c of sorted) {
+      const opt = document.createElement("option");
+      opt.value = c;
+      clientList.appendChild(opt);
+    }
   }
 
   // Builds the collapsible description block shown under each reminder row.
@@ -1351,10 +1457,15 @@
       const tn = norm(activeTagFilter);
       v = v.filter((r) => (r.tags || []).some((t) => norm(t) === tn));
     }
+    if (activeClientFilter) {
+      const cn = norm(activeClientFilter);
+      v = v.filter((r) => norm(r.client) === cn);
+    }
     if (sn) {
       v = v.filter((r) =>
         norm(r.title).includes(sn) ||
-        (r.tags || []).some((t) => norm(t).includes(sn))
+        (r.tags || []).some((t) => norm(t).includes(sn)) ||
+        norm(r.client).includes(sn)
       );
     }
     return v;
@@ -1428,6 +1539,16 @@
     else announce("Tag filter cleared");
     render();
   }
+  function setClientFilter(client) {
+    activeClientFilter = client;
+    try {
+      if (client) localStorage.setItem(LS_CLIENT_FILTER, client);
+      else localStorage.removeItem(LS_CLIENT_FILTER);
+    } catch (_) {}
+    if (client) announce(`Filtered to client ${client}`);
+    else announce("Client filter cleared");
+    render();
+  }
   function setQuickFilter(key) {
     if (!["all", "timed", "anytime", "high", "done"].includes(key)) return;
     quickFilter = key;
@@ -1444,12 +1565,14 @@
   }
   function clearAllFilters() {
     activeTagFilter = null;
+    activeClientFilter = null;
     quickFilter = "all";
     searchText = "";
     if (searchInput) searchInput.value = "";
     if (searchClear) searchClear.hidden = true;
     try {
       localStorage.removeItem(LS_TAG_FILTER);
+      localStorage.removeItem(LS_CLIENT_FILTER);
       localStorage.removeItem(LS_SEARCH);
       localStorage.setItem(LS_QUICK_FILTER, "all");
     } catch (_) {}
@@ -1465,6 +1588,7 @@
       crumbs.push({ kind: "quick", text: labels[quickFilter] });
     }
     if (activeTagFilter) crumbs.push({ kind: "tag", text: `#${activeTagFilter}` });
+    if (activeClientFilter) crumbs.push({ kind: "client", text: `client: ${activeClientFilter}` });
     if (searchText) crumbs.push({ kind: "search", text: `"${truncate(searchText, 30)}"` });
     if (crumbs.length === 0) {
       filterBanner.hidden = true;
@@ -1623,7 +1747,7 @@
     const today = todayPh();
     const tempId = `tmp-${Date.now()}-${Math.random().toString(16).slice(2, 8)}`;
     const optimistic = {
-      id: tempId, title, time: t.time || null, tags, dueAt: today, description: null, rollDays: 0,
+      id: tempId, title, time: t.time || null, tags, dueAt: today, description: null, rollDays: 0, client: null,
       done: false, priority: "normal", closedAt: null, _optimistic: true,
     };
     reminders.push(optimistic);

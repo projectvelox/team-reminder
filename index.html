@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Day Reminders</title>
-  <link rel="stylesheet" href="styles.css?v=1.4.0" />
+  <link rel="stylesheet" href="styles.css?v=1.4.1" />
   <script src="https://res.cdn.office.net/teams-js/2.24.0/js/MicrosoftTeams.min.js"></script>
 </head>
 <body data-theme="default">
@@ -37,7 +37,8 @@
         <div>
           <h3>Welcome to Day Reminders</h3>
           <ol>
-            <li>Type a task above and press <strong>Add</strong>. Optional: pick a date and a time.</li>
+            <li>Type a task above and press <strong>Add</strong>. Optional: pick a date, time, and client.</li>
+            <li>Set a <strong>Client</strong> to track which engagement this is for. Autocompletes from your past clients; shows as a chip on each row and in the proactive card.</li>
             <li>Click <strong>+ Details</strong> to add notes (links, context, sub-tasks) below the title.</li>
             <li>Add <code>#tags</code> in the title (e.g. <code>Send report #work</code>) to group your day.</li>
             <li>Open the <strong>Chat</strong> tab to get proactive nudges in Teams; type <code>/help</code> there for shortcuts.</li>
@@ -50,10 +51,12 @@
         <form id="addForm" autocomplete="off">
           <div class="add-row">
             <input id="title" type="text" placeholder="What do you need to remember? (try #tags inline, e.g. Send report #work)" aria-label="Reminder text. Press slash anywhere to focus this field." required />
+            <input id="client" type="text" list="clientList" placeholder="Client (optional)" maxlength="100" autocomplete="off" title="Client (e.g. Citadel, NAVCo). Type to autocomplete from your past clients." aria-label="Client" />
             <input id="dueDate" type="date" title="Due date (default today)" aria-label="Due date, defaults to today" />
             <input id="time" type="time" title="Optional time" aria-label="Optional time" />
             <button type="submit" class="btn primary">Add</button>
           </div>
+          <datalist id="clientList"></datalist>
           <div class="add-extras">
             <button id="detailsToggle" type="button" class="btn ghost small details-toggle" aria-expanded="false" aria-controls="description">+ Details</button>
             <textarea id="description" class="description-input" maxlength="2000" placeholder="Optional details: what is this for, links, context, sub-tasks..." rows="3" hidden></textarea>
@@ -91,6 +94,7 @@
       <section class="card">
         <h2 class="guide-title">Quick guide</h2>
         <ul class="guide-list">
+          <li><strong>Client:</strong> set a client per reminder. Autocompletes from your past clients. Click the client chip on any row to filter to that client; click it again to clear.</li>
           <li><strong>Pick a date:</strong> use the date input next to time. Defaults to today. Items not done by their due date auto-roll forward (up to 30 days) and show an <em>overdue Nd</em> badge.</li>
           <li><strong>Add details:</strong> click <em>+ Details</em> under the add form (or the chevron on a row) to attach notes, links, or sub-tasks. Shows in the proactive card too.</li>
           <li><strong>Add tags:</strong> type <code>#work</code> or <code>#urgent</code> directly in the title, e.g. <code>Send report #work</code>.</li>
@@ -159,6 +163,14 @@
     <form method="dialog">
       <h2>What's new</h2>
       <ul class="changelog">
+        <li><strong>v1.4.1</strong>
+          <ul>
+            <li>New <em>Client</em> field per reminder. Optional, autocompletes from your past clients (no master list to maintain).</li>
+            <li>Distinct outlined chip on each row so clients stay visually separate from tags. Click the chip to filter to that client; click again to clear.</li>
+            <li>Client name renders in the proactive Adaptive Card under the title (e.g. <em>Client: Citadel</em>).</li>
+            <li>Inline-edit the client by clicking its chip; clearing the input removes it.</li>
+          </ul>
+        </li>
         <li><strong>v1.4.0</strong>
           <ul>
             <li>New <em>Due date</em> field on each reminder — pick a date in the add form, or click the date chip on a row to change it. Defaults to today.</li>
@@ -258,6 +270,7 @@
     <form method="dialog">
       <h2>Quick guide</h2>
       <ul class="guide-list">
+        <li><strong>Client:</strong> per-reminder client with autocomplete. Click the client chip on a row to filter.</li>
         <li><strong>Pick a date:</strong> next to time. Defaults to today. Undone items auto-roll forward (cap 30 days) with an <em>overdue Nd</em> badge.</li>
         <li><strong>Add details:</strong> click <em>+ Details</em> under the add form, or the chevron on a row, for notes / links / sub-tasks. Shows in the proactive card.</li>
         <li><strong>Add tags:</strong> type <code>#work</code> directly in the title, e.g. <code>Send report #work</code>.</li>
@@ -280,13 +293,13 @@
   <div id="toastRegion" class="toast-region" aria-live="polite"></div>
 
   <footer class="appfoot">
-    <span class="muted" id="versionLabel">v1.4.0</span>
+    <span class="muted" id="versionLabel">v1.4.1</span>
     <span class="muted">&middot;</span>
     <button id="openWhatsNew" class="link" type="button">What's new</button>
     <span class="muted">&middot;</span>
     <a class="link" href="https://github.com/projectvelox/team-reminder/issues" target="_blank" rel="noopener">Report an issue</a>
   </footer>
 
-  <script src="app.js?v=1.4.0"></script>
+  <script src="app.js?v=1.4.1"></script>
 </body>
 </html>

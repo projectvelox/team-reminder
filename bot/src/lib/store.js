@@ -124,6 +124,7 @@ function entityToReminder(e) {
     dueAt: e.dueAt || e.createdDate || null,
     description: e.description || null,
     rollDays: typeof e.rollDays === 'number' ? e.rollDays : 0,
+    client: e.client || null,
   };
 }
 
@@ -167,6 +168,7 @@ async function upsertReminder(oid, r) {
     dueAt: r.dueAt || null,
     description: r.description || null,
     rollDays: typeof r.rollDays === 'number' ? r.rollDays : 0,
+    client: r.client || null,
   }, 'Replace');
 }
 

@@ -50,12 +50,14 @@ app.http('remindersCollection', {
       ? body.dueAt : store.todayKey();
     const description = typeof body.description === 'string' && body.description.trim()
       ? body.description.trim().slice(0, 2000) : null;
+    const client = typeof body.client === 'string' && body.client.trim()
+      ? body.client.trim().slice(0, 100) : null;
 
     const id = (globalThis.crypto?.randomUUID?.()) || `id-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
     const order = typeof body.order === 'number' && isFinite(body.order) ? body.order : null;
     const leadMinutes = typeof body.leadMinutes === 'number' && body.leadMinutes >= 0 && body.leadMinutes <= 240
       ? Math.floor(body.leadMinutes) : null;
-    const reminder = { id, title, time, done: false, firedAt: null, createdDate: store.todayKey(), closedAt: null, tags, priority, order, leadMinutes, snoozedUntil: null, dueAt, description, rollDays: 0 };
+    const reminder = { id, title, time, done: false, firedAt: null, createdDate: store.todayKey(), closedAt: null, tags, priority, order, leadMinutes, snoozedUntil: null, dueAt, description, rollDays: 0, client };
     await store.upsertReminder(user.oid, reminder);
     return json(201, { reminder });
   },
@@ -120,6 +122,11 @@ app.http('remindersItem', {
       existing.description = null;
     } else if (typeof body.description === 'string') {
       existing.description = body.description.trim().slice(0, 2000) || null;
+    }
+    if (body.client === null || body.client === '') {
+      existing.client = null;
+    } else if (typeof body.client === 'string') {
+      existing.client = body.client.trim().slice(0, 100) || null;
     }
     await store.upsertReminder(user.oid, existing);
     return json(200, { reminder: existing });

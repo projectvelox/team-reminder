@@ -50,9 +50,10 @@ Secrets, GUIDs, and connection strings live in the Claude memory file `project_d
 
 ## What ships today (v1.4.x)
 
-- Add / delete / done-toggle / inline-edit (title, **date**, time, **description**)
+- Add / delete / done-toggle / inline-edit (title, **date**, time, **description**, **client**)
 - **`dueAt` per reminder** (date, defaults to today) with auto-rollover of undone past-due items (cap 30 days) and an *overdue Nd* badge
 - **`description` field** per reminder (plain text, ≤2000 chars), rendered in the tab and in the proactive Adaptive Card
+- **`client` field** per reminder (freeform, ≤100 chars). Autocompletes from past clients used by the user — no master list. Renders as a distinct dashed-outlined chip (visually separated from the colored tag chips). Click chip to filter to that client; Shift+click or right-click to inline-edit. Shown in the proactive card as `Client: <name>`.
 - Hashtag-in-title parses to tags; colored chips
 - High-priority star, pinned to top of list
 - Group-by-tag view toggle (acts as project sections)
