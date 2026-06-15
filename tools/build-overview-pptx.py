@@ -22,6 +22,19 @@ from PIL import Image, ImageDraw, ImageFont
 
 ROOT = Path(__file__).resolve().parents[1]
 OUT = ROOT / "docs" / "DayReminders-Overview.pptx"
+SCREENSHOTS_DIR = ROOT / "docs" / "screenshots"
+
+# Map each slide's screenshot index to the real PNG filename. If the file
+# exists in docs/screenshots/, it gets embedded; otherwise a labeled
+# placeholder is generated. Slides 7 and 8 are USERGUIDE-only.
+SCREENSHOT_FILES = {
+    1: "01-left-rail.png",
+    2: "02-add-form.png",
+    3: "03-lines-view.png",
+    4: "04-week-view.png",
+    5: "05-group-by-client.png",
+    6: "06-proactive-card.png",
+}
 
 # App accent + supporting colors
 ACCENT = RGBColor(0x38, 0xAE, 0xEB)
@@ -129,6 +142,10 @@ def add_body_bullets(slide, prs, lines, left, top, width, height):
 
 def add_placeholder_picture(slide, prs, idx: int, caption: str,
                             left: Emu, top: Emu, width: Emu, height: Emu):
+    # Prefer the real screenshot if it's been dropped into docs/screenshots/.
+    real = SCREENSHOTS_DIR / SCREENSHOT_FILES.get(idx, "")
+    if real.exists() and real.stat().st_size > 0:
+        return slide.shapes.add_picture(str(real), left, top, width, height)
     png_bytes = make_placeholder_png(idx, caption)
     return slide.shapes.add_picture(BytesIO(png_bytes), left, top, width, height)
 

@@ -15,7 +15,7 @@ You'll see two tabs at the top:
 - **Reminders** — the main UI where you add, edit, view, and organize.
 - **Chat** — your private chat with the Day Reminders bot, where the proactive cards land and where slash commands work.
 
-> _Screenshot: the Day Reminders icon in the Teams left rail and the two top tabs._
+![Teams left rail with the Day Reminders icon and the Chat / Reminders top tabs](screenshots/01-left-rail.png)
 
 ---
 
@@ -35,7 +35,7 @@ The add form sits at the top of the tab:
 
 Press **Add** (or hit Enter in the title field).
 
-> _Screenshot: the add form with all fields visible — title, client, date, time, the + Details toggle expanded with sample text._
+![The add form populated with a sample title, client, date, time, and an expanded Details textarea](screenshots/02-add-form.png)
 
 ### b) From bot chat (slash command)
 
@@ -51,7 +51,7 @@ In the Day Reminders **Chat** tab, type:
 
 Other slash commands: `/list`, `/done <substring>`, `/help`.
 
-> _Screenshot: bot chat showing a /add command typed and the bot's "Added: ..." confirmation._
+![Bot chat showing the /help response with the full list of Day Reminders commands](screenshots/07-bot-help.png)
 
 ### c) From any Teams chat (compose extension)
 
@@ -59,7 +59,7 @@ In any chat (your bot chat, a 1:1, a channel), click the **`...`** button under 
 
 Great for when you're mid-conversation and remember something.
 
-> _Screenshot: the compose-extension popup with "Quick add reminder" filled in._
+![The Quick add reminder compose-extension popup ready to submit](screenshots/08-compose-extension.png)
 
 ---
 
@@ -97,9 +97,9 @@ The top-right segmented control switches between four views:
 
 Shortcut: press **`v`** to cycle through views.
 
-> _Screenshot: the four-button view switcher in the top bar (Lines / Grid / Day / Week)._
+![Lines view — the default row-by-row list, today's items with [Client] prefixes and colored tag chips](screenshots/03-lines-view.png)
 
-> _Screenshot: the Week view showing several days with reminders stacked under date headers._
+![Week view — Mon to Sun grid with today's column highlighted and reminders stacked under each day](screenshots/04-week-view.png)
 
 ### Group toggle
 
@@ -114,6 +114,8 @@ Shortcut: press **`g`**.
 ### Quick filters
 
 Above the list, a row of pills: **All / Timed / Anytime / Priority / Done**. Click to narrow what's visible.
+
+![Lines view with Group: client active — sections per client with colored headers](screenshots/05-group-by-client.png)
 
 ---
 
@@ -139,7 +141,7 @@ You also get a **Teams Activity Feed notification** (the bell icon) when a remin
 
 At your configured **End-of-day** time (Settings → "End-of-day check-in time"), the bot sends an "Are you done?" card listing any reminders still open.
 
-> _Screenshot: a sample proactive Adaptive Card with title, time, description, and the four buttons._
+![Proactive Adaptive Card in the Day Reminders chat with title, time, description, and the four action buttons](screenshots/06-proactive-card.png)
 
 ---
 
