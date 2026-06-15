@@ -20,9 +20,10 @@ body[data-theme="dark"] .lic-boot { background: rgba(255, 255, 255, 0.06); }
 /* ---------- Two-column shell: main (table) + aside (summary/breakdowns) ---------- */
 .lic-shell {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 300px;
-  gap: 24px;
+  grid-template-columns: minmax(0, 1fr) 260px;
+  gap: 20px;
   align-items: start;
+  max-width: none;
 }
 .lic-main { min-width: 0; }
 .lic-aside {
@@ -348,21 +349,52 @@ body[data-theme="dark"] .lic-group-header td {
   border-collapse: separate;
   border-spacing: 0;
   margin-top: 12px;
+  font-size: 13px;
+  table-layout: auto;
 }
 .lic-table th, .lic-table td {
   text-align: left;
-  padding: 10px 12px;
+  padding: 8px 10px;
   border-bottom: 1px solid var(--border, #e4e4e4);
   vertical-align: middle;
 }
 .lic-table th {
-  font-size: 12px;
+  font-size: 11px;
   text-transform: uppercase;
   letter-spacing: 0.04em;
   opacity: 0.7;
   background: var(--card-bg, transparent);
   position: sticky;
   top: 0;
+  white-space: nowrap;
+}
+
+/* Column-specific sizing so wrapping happens where it should
+   (license type, customer) and never where it should not (date, users, status). */
+.lic-table th:nth-child(1), .lic-table td:nth-child(1) { /* Customer */
+  min-width: 130px;
+  max-width: 180px;
+}
+.lic-table th:nth-child(2), .lic-table td:nth-child(2) { /* License type */
+  min-width: 160px;
+}
+.lic-table th:nth-child(3), .lic-table td:nth-child(3) { /* Users */
+  width: 1%; white-space: nowrap; text-align: right;
+}
+.lic-table th:nth-child(4), .lic-table td:nth-child(4) { /* Expires */
+  white-space: nowrap; width: 1%;
+}
+.lic-table th:nth-child(5), .lic-table td:nth-child(5) { /* Owner */
+  white-space: nowrap;
+}
+.lic-table th:nth-child(6), .lic-table td:nth-child(6) { /* Product line */
+  width: 1%; white-space: nowrap;
+}
+.lic-table th:nth-child(7), .lic-table td:nth-child(7) { /* Status */
+  width: 1%; white-space: nowrap;
+}
+.lic-table th:nth-child(8), .lic-table td:nth-child(8) { /* Actions */
+  width: 1%; white-space: nowrap; text-align: right;
 }
 .lic-table th.sortable { cursor: pointer; user-select: none; }
 .lic-table th.sortable:hover { color: var(--accent, #38AEEB); }
@@ -382,7 +414,12 @@ body[data-theme="dark"] .lic-group-header td {
 .lic-table tbody tr:hover { background: var(--row-hover, rgba(0, 120, 212, 0.06)); }
 .lic-table td.num { text-align: right; font-variant-numeric: tabular-nums; }
 .lic-table td.actions { text-align: right; white-space: nowrap; }
-.lic-table td.actions .btn { margin-left: 4px; }
+.lic-table td.actions .btn {
+  margin-left: 4px;
+  padding: 4px 9px;
+  font-size: 12px;
+  min-height: 26px;
+}
 .lic-table tr.overdue td:first-child { border-left: 3px solid #c50f1f; }
 .lic-table tr.overdue td:first-child { padding-left: 9px; }
 .lic-table tr.abandoned td { opacity: 0.55; }
@@ -390,13 +427,13 @@ body[data-theme="dark"] .lic-group-header td {
 /* Owner pill */
 .owner-pill {
   display: inline-block;
-  padding: 3px 10px;
+  padding: 2px 9px;
   border-radius: 999px;
   color: #fff;
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 600;
   white-space: nowrap;
-  max-width: 180px;
+  max-width: 160px;
   overflow: hidden;
   text-overflow: ellipsis;
   vertical-align: middle;
@@ -413,16 +450,17 @@ body[data-theme="dark"] .lic-group-header td {
   opacity: 0.85;
 }
 
-/* Days-left badge */
+/* Days-left badge. Keeps inline with the date when there's room; wraps to a new line only in narrow cells. */
 .lic-day-badge {
   display: inline-block;
-  margin-left: 8px;
-  padding: 1px 8px;
+  margin-left: 6px;
+  padding: 1px 7px;
   border-radius: 999px;
   background: var(--badge-bg, rgba(0, 0, 0, 0.06));
-  font-size: 11px;
+  font-size: 10px;
   font-weight: 600;
   opacity: 0.85;
+  vertical-align: middle;
 }
 .lic-day-badge.overdue {
   background: rgba(197, 15, 31, 0.15);
