@@ -4,3 +4,4 @@ require('./functions/reminders');
 require('./functions/settings');
 require('./functions/scheduler');
 require('./functions/telemetry');
+require('./functions/ping');

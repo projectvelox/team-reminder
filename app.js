@@ -1,4 +1,4 @@
-/* Day Reminders — Teams personal tab (v1.4.5)
+/* Day Reminders — Teams personal tab (v1.4.6)
    Thin client over the bot's REST API. Auth via Teams SSO.
    Server-side bot handles all notifications (proactive Adaptive Cards in chat).
 */
@@ -8,7 +8,7 @@
   const API_BASE = "https://func-day-reminders-17023.azurewebsites.net/api";
   const DONE_AGE_MS = 24 * 60 * 60 * 1000;
   const UNDO_MS = 5000;
-  const APP_VERSION = "1.4.5";
+  const APP_VERSION = "1.4.6";
   const VIEWS = ["lines", "grid", "calendar", "week"];
   const TAG_PALETTE = [
     "#0078d4", "#107c10", "#8764b8", "#ca5010", "#c50f1f",
@@ -175,6 +175,7 @@
   const rowOptionsForm = $("rowOptionsForm");
   const rowOptionsTitle = $("rowOptionsTitle");
   const rowLeadMinutes = $("rowLeadMinutes");
+  const rowDescription = $("rowDescription");
   const searchInput = $("searchInput");
   const searchClear = $("searchClear");
   const bulkToggleBtn = $("bulkToggle");
@@ -375,19 +376,29 @@
       if (isNaN(n)) { showError("Lead time must be 0 to 240", new Error("invalid")); return; }
       nextLead = n;
     }
-    const prev = r.leadMinutes;
+    const nextDescRaw = rowDescription ? rowDescription.value.trim().slice(0, 2000) : "";
+    const nextDesc = nextDescRaw || null;
+    const prevLead = r.leadMinutes;
+    const prevDesc = r.description;
+    const leadChanged = prevLead !== nextLead;
+    const descChanged = (prevDesc || null) !== nextDesc;
     r.leadMinutes = nextLead;
+    r.description = nextDesc;
     rowOptionsDialog.close();
-    render();
+    if (leadChanged || descChanged) render();
+    if (!leadChanged && !descChanged) return;
     try {
-      const updated = await api("PATCH", `/reminders/${r.id}`, { leadMinutes: nextLead });
+      const patch = {};
+      if (leadChanged) patch.leadMinutes = nextLead;
+      if (descChanged) patch.description = nextDesc || "";
+      const updated = await api("PATCH", `/reminders/${r.id}`, patch);
       replaceLocal(updated.reminder);
-      render();
-      announce(nextLead === null ? "Lead time reset to default" : `Lead time set to ${nextLead} minutes`);
+      announce("Saved");
     } catch (err) {
-      r.leadMinutes = prev;
+      r.leadMinutes = prevLead;
+      r.description = prevDesc;
       render();
-      showError("Could not save lead time", err);
+      showError("Could not save options", err);
     }
   });
 
@@ -669,7 +680,8 @@
     foot.appendChild(more);
 
     card.appendChild(foot);
-    card.appendChild(buildDescriptionBlock(r));
+    const cardDesc = buildDescriptionBlock(r);
+    if (cardDesc) card.appendChild(cardDesc);
     return card;
   }
 
@@ -1252,7 +1264,8 @@
     del.addEventListener("click", () => removeReminder(r));
 
     li.append(handle, star, cb, titleWrap, when, more, del);
-    li.appendChild(buildDescriptionBlock(r));
+    const desc = buildDescriptionBlock(r);
+    if (desc) li.appendChild(desc);
     if (draggable) attachDragHandlers(li, r);
     return li;
   }
@@ -1334,6 +1347,7 @@
     editingReminderId = r.id;
     rowOptionsTitle.textContent = r.title;
     rowLeadMinutes.value = typeof r.leadMinutes === "number" ? String(r.leadMinutes) : "";
+    if (rowDescription) rowDescription.value = r.description || "";
     openDialog(rowOptionsDialog);
   }
 
@@ -1368,7 +1382,9 @@
         if (wantTagMerge) patch.tags = r.tags;
         const updated = await api("PATCH", `/reminders/${r.id}`, patch);
         replaceLocal(updated.reminder);
-        render();
+        // Skipped post-API render: optimistic render above already painted the
+        // new title/tags; server response matches except for server timestamps
+        // we don't display in this row.
       } catch (err) {
         r.title = prevTitle;
         r.tags = prevTags;
@@ -1404,7 +1420,6 @@
       try {
         const updated = await api("PATCH", `/reminders/${r.id}`, { time: newTime });
         replaceLocal(updated.reminder);
-        render();
       } catch (err) {
         r.time = prevTime;
         render();
@@ -1442,7 +1457,6 @@
       try {
         const updated = await api("PATCH", `/reminders/${r.id}`, { dueAt: newDue });
         replaceLocal(updated.reminder);
-        render();
       } catch (err) {
         r.dueAt = prev;
         r.rollDays = prevRoll;
@@ -1480,7 +1494,6 @@
       try {
         const updated = await api("PATCH", `/reminders/${r.id}`, { description: newDesc || "" });
         replaceLocal(updated.reminder);
-        render();
       } catch (err) {
         r.description = prev;
         render();
@@ -1584,7 +1597,6 @@
       try {
         const updated = await api("PATCH", `/reminders/${r.id}`, { client: newClient || "" });
         replaceLocal(updated.reminder);
-        render();
       } catch (err) {
         r.client = prev;
         render();
@@ -1599,7 +1611,9 @@
   }
 
   // Refresh the <datalist> for client autocomplete from the unique non-empty
-  // client values across all current reminders (sorted alphabetically).
+  // client values across all current reminders. Fingerprinted so repeat calls
+  // with unchanged client set are no-ops (perf — called from render()).
+  let _clientListFingerprint = null;
   function populateClientList() {
     if (!clientList) return;
     const set = new Set();
@@ -1607,6 +1621,9 @@
       if (r.client && r.client.trim()) set.add(r.client.trim());
     }
     const sorted = [...set].sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" }));
+    const fp = sorted.join("|");
+    if (fp === _clientListFingerprint) return;
+    _clientListFingerprint = fp;
     clientList.textContent = "";
     for (const c of sorted) {
       const opt = document.createElement("option");
@@ -1615,20 +1632,22 @@
     }
   }
 
-  // Builds the collapsible description block shown under each reminder row.
-  // Always returns an element so users can add a description by clicking on the
-  // empty placeholder; collapsed by default to keep the list scannable.
+  // Builds the collapsible description block shown under a reminder row when
+  // the reminder has a description. Returns null when empty to skip rendering
+  // an entire <details> element per row (perf — saves ~100+ DOM nodes per
+  // render in typical use). To ADD a description to an existing reminder, use
+  // the "..." row options dialog which now has a description textarea.
   function buildDescriptionBlock(r) {
+    if (!r.description || !r.description.trim()) return null;
     const det = document.createElement("details");
     det.className = "description-block";
     const sum = document.createElement("summary");
-    sum.textContent = r.description ? "Details" : "+ Add details";
-    if (!r.description) sum.style.opacity = "0.55";
+    sum.textContent = "Details";
     det.appendChild(sum);
     const body = document.createElement("div");
-    body.className = "description-body" + (r.description ? "" : " empty");
-    body.textContent = r.description || "Click to add notes, links, sub-tasks...";
-    body.title = r.description ? "Click to edit" : "Click to add details";
+    body.className = "description-body";
+    body.textContent = r.description;
+    body.title = "Click to edit";
     body.addEventListener("click", (e) => { e.stopPropagation(); startDescriptionEdit(r, body); });
     det.appendChild(body);
     return det;
@@ -1675,7 +1694,6 @@
     try {
       const updated = await api("PATCH", `/reminders/${r.id}`, { done: r.done });
       replaceLocal(updated.reminder);
-      render();
     } catch (err) {
       r.done = prevDone;
       r.closedAt = prevClosedAt;
@@ -1692,7 +1710,6 @@
     try {
       const updated = await api("PATCH", `/reminders/${r.id}`, { priority: next });
       replaceLocal(updated.reminder);
-      render();
     } catch (err) {
       r.priority = prev;
       render();
@@ -2106,17 +2123,29 @@
     const sb = [...(b || [])].sort();
     return sa.every((v, i) => v === sb[i]);
   }
+  // Memoized — same tag string always hashes to the same palette index, so
+  // caching avoids the per-character loop on every render with many rows.
+  const _tagColorCache = new Map();
   function colorForTag(tag) {
+    const hit = _tagColorCache.get(tag);
+    if (hit) return hit;
     let h = 0;
     for (let i = 0; i < tag.length; i++) h = (h * 31 + tag.charCodeAt(i)) & 0xffffffff;
-    return TAG_PALETTE[Math.abs(h) % TAG_PALETTE.length];
+    const color = TAG_PALETTE[Math.abs(h) % TAG_PALETTE.length];
+    _tagColorCache.set(tag, color);
+    return color;
   }
   // Same palette as tags but seeded differently so a string like "Citadel" used as
   // both a tag and a client gets visually distinct colors instead of colliding.
+  const _clientColorCache = new Map();
   function colorForClient(name) {
+    const hit = _clientColorCache.get(name);
+    if (hit) return hit;
     let h = 13;
     for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) & 0xffffffff;
-    return TAG_PALETTE[Math.abs(h) % TAG_PALETTE.length];
+    const color = TAG_PALETTE[Math.abs(h) % TAG_PALETTE.length];
+    _clientColorCache.set(name, color);
+    return color;
   }
   function renderWhen(el, time, leadMinutes) {
     el.classList.remove("empty");
@@ -2159,7 +2188,6 @@
     try {
       const updated = await api("PATCH", `/reminders/${r.id}`, { snoozedUntil: null });
       replaceLocal(updated.reminder);
-      render();
       announce(`Cleared snooze on ${r.title}`);
     } catch (err) {
       r.snoozedUntil = prev;

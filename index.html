@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Day Reminders</title>
-  <link rel="stylesheet" href="styles.css?v=1.4.5" />
+  <link rel="stylesheet" href="styles.css?v=1.4.6" />
   <script src="https://res.cdn.office.net/teams-js/2.24.0/js/MicrosoftTeams.min.js"></script>
 </head>
 <body data-theme="default">
@@ -165,6 +165,15 @@
     <form method="dialog">
       <h2>What's new</h2>
       <ul class="changelog">
+        <li><strong>v1.4.6</strong>
+          <ul>
+            <li>Performance: rows without a description no longer render an empty <em>details</em> block (saves ~100+ DOM nodes per render in typical use). To add or edit a description on an existing reminder, click the <span class="kbd">⋯</span> menu — the row options dialog now has a <em>Details</em> textarea.</li>
+            <li>Performance: client autocomplete datalist now skips DOM rebuild when the unique client set hasn't changed since last render.</li>
+            <li>Performance: skip the redundant post-API re-render after most inline edits (title, time, date, description, client, done, priority, snooze, lead time). The optimistic render already showed the new state; the server response usually matches.</li>
+            <li>Performance: memoized <code>colorForTag</code> / <code>colorForClient</code> so repeat lookups are O(1).</li>
+            <li>Plus a separate Azure Logic App keep-warm ping every 5 min (PH hours) so the Function App doesn't cold-start when no-one's used it for a while.</li>
+          </ul>
+        </li>
         <li><strong>v1.4.5</strong>
           <ul>
             <li>Actually fix the Week-view text wrapping: the v1.4.4 attempt used <code>-webkit-line-clamp + -webkit-box</code> which has a legacy quirk that shrinks the box to its narrowest acceptable break point, causing the browser to break words like "Enhance" into "Enha/nce" just to make the box narrower. Switched to plain <code>max-height</code> clamping with normal word wrapping.</li>
@@ -276,6 +285,11 @@
       </label>
       <p class="hint">Override how many minutes before the time you want to be reminded. Leave blank to use your default from Settings.</p>
 
+      <label class="row" style="grid-template-columns: 1fr;">
+        <span>Details (optional)</span>
+        <textarea id="rowDescription" maxlength="2000" rows="3" placeholder="Notes, links, sub-tasks..." aria-label="Reminder details"></textarea>
+      </label>
+
       <div class="dialog-actions">
         <button type="button" id="rowOptionsCancel" class="btn ghost">Cancel</button>
         <button type="submit" class="btn primary">Save</button>
@@ -322,13 +336,13 @@
   <div id="toastRegion" class="toast-region" aria-live="polite"></div>
 
   <footer class="appfoot">
-    <span class="muted" id="versionLabel">v1.4.5</span>
+    <span class="muted" id="versionLabel">v1.4.6</span>
     <span class="muted">&middot;</span>
     <button id="openWhatsNew" class="link" type="button">What's new</button>
     <span class="muted">&middot;</span>
     <a class="link" href="https://github.com/projectvelox/team-reminder/issues" target="_blank" rel="noopener">Report an issue</a>
   </footer>
 
-  <script src="app.js?v=1.4.5"></script>
+  <script src="app.js?v=1.4.6"></script>
 </body>
 </html>
