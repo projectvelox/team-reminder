@@ -1,4 +1,4 @@
-/* Day Reminders — Teams personal tab (v1.4.3)
+/* Day Reminders — Teams personal tab (v1.4.4)
    Thin client over the bot's REST API. Auth via Teams SSO.
    Server-side bot handles all notifications (proactive Adaptive Cards in chat).
 */
@@ -8,7 +8,7 @@
   const API_BASE = "https://func-day-reminders-17023.azurewebsites.net/api";
   const DONE_AGE_MS = 24 * 60 * 60 * 1000;
   const UNDO_MS = 5000;
-  const APP_VERSION = "1.4.3";
+  const APP_VERSION = "1.4.4";
   const VIEWS = ["lines", "grid", "calendar", "week"];
   const TAG_PALETTE = [
     "#0078d4", "#107c10", "#8764b8", "#ca5010", "#c50f1f",
@@ -673,10 +673,15 @@
     return card;
   }
 
-  // ---------- calendar view ----------
+  // ---------- calendar view (Day) ----------
   function buildCalendarLayout(items) {
     const section = document.createElement("section");
     section.className = "card calendar";
+
+    const header = document.createElement("div");
+    header.className = "calendar-header";
+    header.appendChild(makeDayWeekSwitcher("calendar"));
+    section.appendChild(header);
 
     const timed = items.filter((r) => !!r.time);
     const anytime = items.filter((r) => !r.time);
@@ -739,6 +744,27 @@
 
     return section;
   }
+  // Mini segmented switcher for Day ⇄ Week. Rendered inside both views so the
+  // user can flip between them without going to the top-bar view-switch.
+  function makeDayWeekSwitcher(active) {
+    const wrap = document.createElement("div");
+    wrap.className = "day-week-switch";
+    wrap.setAttribute("role", "group");
+    wrap.setAttribute("aria-label", "Day or week");
+    const mk = (key, label, title) => {
+      const b = document.createElement("button");
+      b.type = "button";
+      b.textContent = label;
+      b.title = title;
+      b.setAttribute("aria-pressed", String(active === key));
+      b.addEventListener("click", () => { if (active !== key) setView(key); });
+      return b;
+    };
+    wrap.appendChild(mk("calendar", "Day", "Hour-by-hour today"));
+    wrap.appendChild(mk("week", "Week", "Mon–Sun grid"));
+    return wrap;
+  }
+
   // ---------- week view ----------
   function buildWeekLayout(items, days) {
     const section = document.createElement("section");
@@ -768,7 +794,7 @@
     next.textContent = "Next ›";
     next.title = "Next week";
     next.addEventListener("click", () => setWeek(weekOffset + 1));
-    nav.append(prev, range, todayBtn, next);
+    nav.append(makeDayWeekSwitcher("week"), prev, range, todayBtn, next);
     section.appendChild(nav);
 
     const grid = document.createElement("div");

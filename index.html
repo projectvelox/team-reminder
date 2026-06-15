@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Day Reminders</title>
-  <link rel="stylesheet" href="styles.css?v=1.4.3" />
+  <link rel="stylesheet" href="styles.css?v=1.4.4" />
   <script src="https://res.cdn.office.net/teams-js/2.24.0/js/MicrosoftTeams.min.js"></script>
 </head>
 <body data-theme="default">
@@ -165,6 +165,12 @@
     <form method="dialog">
       <h2>What's new</h2>
       <ul class="changelog">
+        <li><strong>v1.4.4</strong>
+          <ul>
+            <li>Fixed unreadable text wrapping in Week view: items now stack the time above the title, the title clamps to 3 lines with an ellipsis, and long words wrap on word boundaries instead of character-by-character.</li>
+            <li>Added a small <em>Day | Week</em> switcher inside both the Day and Week views so you can flip between them without going up to the top-bar view-switch.</li>
+          </ul>
+        </li>
         <li><strong>v1.4.3</strong>
           <ul>
             <li>Client chip is now <strong>colored per client</strong> (deterministic — same client always gets the same color). Filtering on a client fills the chip with that color for strong visual feedback.</li>
@@ -311,13 +317,13 @@
   <div id="toastRegion" class="toast-region" aria-live="polite"></div>
 
   <footer class="appfoot">
-    <span class="muted" id="versionLabel">v1.4.3</span>
+    <span class="muted" id="versionLabel">v1.4.4</span>
     <span class="muted">&middot;</span>
     <button id="openWhatsNew" class="link" type="button">What's new</button>
     <span class="muted">&middot;</span>
     <a class="link" href="https://github.com/projectvelox/team-reminder/issues" target="_blank" rel="noopener">Report an issue</a>
   </footer>
 
-  <script src="app.js?v=1.4.3"></script>
+  <script src="app.js?v=1.4.4"></script>
 </body>
 </html>
