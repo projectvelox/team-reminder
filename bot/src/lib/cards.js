@@ -102,4 +102,34 @@ function menuCard(intro) {
   };
 }
 
-module.exports = { reminderCard, eodCard, menuCard };
+// License renewal follow-up card. Sent to the Owner N days after they marked the
+// license as Notice sent or Awaiting customer, prompting them to update status.
+function licenseFollowUpCard(license, daysSince) {
+  const statusLabel = license.status === 'noticeSent' ? 'Notice sent' :
+                      license.status === 'awaitingCustomer' ? 'Awaiting customer' :
+                      license.status === 'customerConfirmed' ? 'Customer confirmed' :
+                      license.status;
+  const tabDeepLink = `https://teams.microsoft.com/l/entity/5a03bfa3-63c4-417c-b668-b02234ebc11b/dayReminders.licenses`;
+  return {
+    contentType: 'application/vnd.microsoft.card.adaptive',
+    content: {
+      $schema: 'http://adaptivecards.io/schemas/adaptive-card.json',
+      type: 'AdaptiveCard',
+      version: '1.4',
+      body: [
+        { type: 'TextBlock', text: 'License renewal follow-up', weight: 'Bolder', size: 'Small', color: 'Accent' },
+        { type: 'TextBlock', text: `${license.customer}, ${license.licenseType}`, weight: 'Bolder', size: 'Medium', wrap: true },
+        { type: 'TextBlock', text: `Status: ${statusLabel}, set ${daysSince} day${daysSince === 1 ? '' : 's'} ago. Any update?`, isSubtle: true, wrap: true, spacing: 'Small' },
+        ...(license.notes ? [{ type: 'TextBlock', text: license.notes, wrap: true, spacing: 'Small' }] : []),
+      ],
+      actions: [
+        { type: 'Action.Submit', title: 'Customer confirmed', data: { action: 'licenseSetStatus', licenseId: license.id, status: 'customerConfirmed' } },
+        { type: 'Action.Submit', title: 'Mark renewed (+1y)', data: { action: 'licenseRenew', licenseId: license.id, years: 1 } },
+        { type: 'Action.Submit', title: 'Snooze 7 days', data: { action: 'licenseFollowUpSnooze', licenseId: license.id, days: 7 } },
+        { type: 'Action.OpenUrl', title: 'Open in tab', url: tabDeepLink },
+      ],
+    },
+  };
+}
+
+module.exports = { reminderCard, eodCard, menuCard, licenseFollowUpCard };

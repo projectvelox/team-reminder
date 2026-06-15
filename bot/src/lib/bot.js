@@ -326,6 +326,57 @@ class ReminderBot extends TeamsActivityHandler {
       );
     } else if (data.action === 'menuHelp') {
       await this._sendHelp(context);
+    } else if (data.action === 'licenseSetStatus' && data.licenseId && data.status) {
+      const lic = await store.getLicense(data.licenseId);
+      if (!lic) { await context.sendActivity("That license isn't in the tracker anymore."); return; }
+      const VALID = ['notStarted', 'noticeSent', 'awaitingCustomer', 'customerConfirmed', 'renewed'];
+      if (!VALID.includes(data.status)) return;
+      const now = new Date().toISOString();
+      const prev = lic.status;
+      lic.status = data.status;
+      lic.statusChangedAt = now;
+      lic.statusChangedByOid = oid;
+      lic.statusChangedByName = context.activity.from?.name || null;
+      lic.lastFollowUpAt = null;
+      lic.lastEditedAt = now;
+      lic.lastEditedByOid = oid;
+      lic.lastEditedByName = context.activity.from?.name || null;
+      lic.events = Array.isArray(lic.events) ? lic.events : [];
+      lic.events.push({ at: now, byOid: oid, byName: context.activity.from?.name || null, type: 'statusChanged', detail: `${prev} -> ${data.status} (via card)` });
+      if (lic.events.length > 50) lic.events = lic.events.slice(-50);
+      await store.upsertLicense(lic);
+      await context.sendActivity(`Updated: ${lic.customer}, ${lic.licenseType}. Status is now ${data.status}.`);
+    } else if (data.action === 'licenseRenew' && data.licenseId) {
+      const lic = await store.getLicense(data.licenseId);
+      if (!lic) { await context.sendActivity("That license isn't in the tracker anymore."); return; }
+      const years = (data.years === 1 || data.years === 2 || data.years === 3) ? data.years : 1;
+      const base = lic.expiryDate && /^\d{4}-\d{2}-\d{2}$/.test(lic.expiryDate)
+        ? new Date(lic.expiryDate + 'T00:00:00Z') : new Date();
+      base.setUTCFullYear(base.getUTCFullYear() + years);
+      const newExpiry = base.toISOString().slice(0, 10);
+      const now = new Date().toISOString();
+      lic.expiryDate = newExpiry;
+      lic.status = 'renewed';
+      lic.statusChangedAt = now;
+      lic.statusChangedByOid = oid;
+      lic.statusChangedByName = context.activity.from?.name || null;
+      lic.lastRenewedAt = now;
+      lic.lastFollowUpAt = null;
+      lic.lastEscalatedDays = null;
+      lic.lastEditedAt = now;
+      lic.lastEditedByOid = oid;
+      lic.lastEditedByName = context.activity.from?.name || null;
+      lic.events = Array.isArray(lic.events) ? lic.events : [];
+      lic.events.push({ at: now, byOid: oid, byName: context.activity.from?.name || null, type: 'renewed', detail: `+${years}y to ${newExpiry} (via card)` });
+      if (lic.events.length > 50) lic.events = lic.events.slice(-50);
+      await store.upsertLicense(lic);
+      await context.sendActivity(`Renewed: ${lic.customer}, ${lic.licenseType}. New expiry ${newExpiry}.`);
+    } else if (data.action === 'licenseFollowUpSnooze' && data.licenseId) {
+      const lic = await store.getLicense(data.licenseId);
+      if (!lic) return;
+      lic.lastFollowUpAt = new Date().toISOString();
+      await store.upsertLicense(lic);
+      await context.sendActivity(`OK, I will check in again on this in 7 days.`);
     }
   }
 

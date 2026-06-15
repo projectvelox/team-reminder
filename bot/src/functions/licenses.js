@@ -39,6 +39,18 @@ function newId() {
 
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 
+function appendEvent(license, type, user, detail) {
+  if (!Array.isArray(license.events)) license.events = [];
+  license.events.push({
+    at: new Date().toISOString(),
+    byOid: user.oid,
+    byName: user.name || null,
+    type,
+    detail: detail || null,
+  });
+  if (license.events.length > 50) license.events = license.events.slice(-50);
+}
+
 // Validate + coerce a license payload. Returns either { license: {...} } or { error: "..." }.
 // `existing` is the current row when patching; null when creating.
 function validatePayload(body, existing) {
@@ -114,6 +126,20 @@ function validatePayload(body, existing) {
     out.state = 'active';
   }
 
+  if (body.status !== undefined) {
+    if (!store.LICENSE_STATUSES.includes(body.status)) return { error: `status must be one of ${store.LICENSE_STATUSES.join(', ')}` };
+    out.status = body.status;
+  } else if (!existing) {
+    out.status = 'notStarted';
+  }
+
+  if (body.renewalCycle !== undefined) {
+    if (!store.RENEWAL_CYCLES.includes(body.renewalCycle)) return { error: `renewalCycle must be one of ${store.RENEWAL_CYCLES.join(', ')}` };
+    out.renewalCycle = body.renewalCycle;
+  } else if (!existing) {
+    out.renewalCycle = 'annual';
+  }
+
   return { license: out };
 }
 
@@ -149,8 +175,14 @@ app.http('licensesCollection', {
       lastEditedByOid: user.oid,
       lastEditedByName: user.name || null,
       lastRenewedAt: null,
+      lastFollowUpAt: null,
       lastEscalatedDays: null,
+      statusChangedAt: now,
+      statusChangedByOid: user.oid,
+      statusChangedByName: user.name || null,
+      events: [],
     };
+    appendEvent(license, 'created', user, `${license.customer} · ${license.licenseType}`);
     await store.upsertLicense(license);
     return json(201, { license });
   },
@@ -182,15 +214,32 @@ app.http('licensesItem', {
     const result = validatePayload(body, existing);
     if (result.error) return json(400, { error: result.error });
 
+    const now = new Date().toISOString();
     const merged = {
       ...result.license,
-      lastEditedAt: new Date().toISOString(),
+      lastEditedAt: now,
       lastEditedByOid: user.oid,
       lastEditedByName: user.name || null,
     };
-    // Clear escalation tracking if expiry moved forward (manual edit case).
+    // Clear escalation + follow-up tracking when expiry moves forward.
     if (existing.expiryDate !== merged.expiryDate) {
       merged.lastEscalatedDays = null;
+    }
+    // Status transition: stamp + log + reset follow-up timer.
+    if (existing.status !== merged.status) {
+      merged.statusChangedAt = now;
+      merged.statusChangedByOid = user.oid;
+      merged.statusChangedByName = user.name || null;
+      merged.lastFollowUpAt = null;
+      appendEvent(merged, 'statusChanged', user, `${existing.status} -> ${merged.status}`);
+    }
+    // Owner reassignment is worth logging.
+    if (existing.ownerOid !== merged.ownerOid) {
+      appendEvent(merged, 'ownerChanged', user, `${existing.ownerName || existing.ownerOid || '(none)'} -> ${merged.ownerName || merged.ownerOid || '(none)'}`);
+    }
+    // Expiry change worth logging too.
+    if (existing.expiryDate !== merged.expiryDate) {
+      appendEvent(merged, 'expiryChanged', user, `${existing.expiryDate || '?'} -> ${merged.expiryDate || '?'}`);
     }
     await store.upsertLicense(merged);
     return json(200, { license: merged });
@@ -235,12 +284,18 @@ app.http('licensesRenew', {
       ...existing,
       expiryDate: newExpiry,
       state: 'active',
+      status: 'renewed',
+      statusChangedAt: now,
+      statusChangedByOid: user.oid,
+      statusChangedByName: user.name || null,
       lastRenewedAt: now,
+      lastFollowUpAt: null,
       lastEditedAt: now,
       lastEditedByOid: user.oid,
       lastEditedByName: user.name || null,
       lastEscalatedDays: null,
     };
+    appendEvent(merged, 'renewed', user, `expiry advanced to ${newExpiry}`);
     await store.upsertLicense(merged);
     return json(200, { license: merged });
   },

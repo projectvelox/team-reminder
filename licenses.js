@@ -7,6 +7,16 @@
 
   const API_BASE = "https://func-day-reminders-17023.azurewebsites.net/api";
   const DEFAULT_LEAD_DAYS = 14;
+  const STATUSES = ["notStarted", "noticeSent", "awaitingCustomer", "customerConfirmed", "renewed"];
+  const STATUS_LABEL = {
+    notStarted: "Not started",
+    noticeSent: "Notice sent",
+    awaitingCustomer: "Awaiting customer",
+    customerConfirmed: "Customer confirmed",
+    renewed: "Renewed",
+  };
+  const CYCLE_YEARS = { annual: 1, biennial: 2, triennial: 3 };
+  const CYCLE_LABEL = { annual: "1/1", biennial: "Y?/2", triennial: "Y?/3" };
   // Owner pill palette, seeded differently from client-chip palette in styles.css so
   // a name reused as both client and owner doesn't get the same color in both contexts.
   const OWNER_PALETTE = [
@@ -24,9 +34,10 @@
 
   let currentView = "table";
   let summaryFilter = null; // null | 'week' | 'month' | 'overdue'
-  let quickFilter = "all";  // 'all' | 'mine' | 'month' | 'overdue'
+  let quickFilter = "all";  // 'all' | 'mine' | 'month' | 'overdue' | 'attention'
   let ownerFilter = null;   // null | ownerOid — set by owner breakdown chip
   let productFilter = null; // null | productLine string — set by product breakdown chip
+  let statusFilter = null;  // null | status — set by status breakdown chip
   let groupBy = "none";     // 'none' | 'customer' | 'ownerName' | 'productLine'
   let searchText = "";
   let sortKey = "expiryDate";
@@ -47,7 +58,7 @@
     const v = localStorage.getItem(LS_VIEW);
     if (v === "table" || v === "calendar") currentView = v;
     const q = localStorage.getItem(LS_QUICK);
-    if (["all", "mine", "month", "overdue"].includes(q)) quickFilter = q;
+    if (["all", "mine", "month", "overdue", "attention"].includes(q)) quickFilter = q;
     const s = localStorage.getItem(LS_SORT);
     if (s) {
       const [k, d] = s.split(":");
@@ -156,10 +167,29 @@
     }
     else if (f === "overdue") ok = d !== null && d < 0 && lic.state !== "abandoned";
     else if (f === "week") ok = d !== null && d >= 0 && d <= 7;
-    // additive owner & product breakdown filters
+    else if (f === "attention") ok = needsAttention(lic, today);
+    // additive owner / product / status breakdown filters
     if (ok && ownerFilter && lic.ownerOid !== ownerFilter) ok = false;
     if (ok && productFilter && lic.productLine !== productFilter) ok = false;
+    if (ok && statusFilter && lic.status !== statusFilter) ok = false;
     return ok;
+  }
+
+  // A row "needs attention" if:
+  //   - it's stuck in noticeSent or awaitingCustomer for > 7 days since last status change, OR
+  //   - status is notStarted AND expiry is within 30 days, OR
+  //   - status is customerConfirmed AND expiry is in the past (i.e. confirmed but never marked renewed).
+  function needsAttention(lic, today) {
+    if (lic.state === "abandoned") return false;
+    const d = daysBetween(today, lic.expiryDate);
+    if (lic.status === "noticeSent" || lic.status === "awaitingCustomer") {
+      if (!lic.statusChangedAt) return false;
+      const days = Math.floor((Date.now() - Date.parse(lic.statusChangedAt)) / 86400000);
+      return days >= 7;
+    }
+    if (lic.status === "notStarted") return d !== null && d <= 30;
+    if (lic.status === "customerConfirmed") return d !== null && d < 0;
+    return false;
   }
   function matchesSearch(lic) {
     if (!searchText) return true;
@@ -177,6 +207,9 @@
     const k = sortKey;
     const dir = sortDir;
     return [...list].sort((a, b) => {
+      if (k === "status") {
+        return (STATUSES.indexOf(a.status || "notStarted") - STATUSES.indexOf(b.status || "notStarted")) * dir;
+      }
       const va = a[k] == null ? "" : a[k];
       const vb = b[k] == null ? "" : b[k];
       if (typeof va === "number" && typeof vb === "number") return (va - vb) * dir;
@@ -279,6 +312,42 @@
     }
   }
 
+  function renderStatusChips() {
+    const map = new Map();
+    for (const l of licenses) {
+      if (l.state === "abandoned") continue;
+      const s = l.status || "notStarted";
+      map.set(s, (map.get(s) || 0) + 1);
+    }
+    const strip = $("statusStrip");
+    const wrap = $("statusChips");
+    wrap.innerHTML = "";
+    if (!map.size) { strip.hidden = true; return; }
+    strip.hidden = false;
+    // Keep canonical pipeline order.
+    for (const status of STATUSES) {
+      const count = map.get(status);
+      if (!count) continue;
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "lic-breakdown-chip";
+      btn.setAttribute("aria-pressed", statusFilter === status ? "true" : "false");
+      const pill = document.createElement("span");
+      pill.className = `status-pill status-${status}`;
+      pill.textContent = STATUS_LABEL[status];
+      btn.appendChild(pill);
+      const cnt = document.createElement("span");
+      cnt.className = "chip-count";
+      cnt.textContent = count;
+      btn.appendChild(cnt);
+      btn.addEventListener("click", () => {
+        statusFilter = statusFilter === status ? null : status;
+        render();
+      });
+      wrap.appendChild(btn);
+    }
+  }
+
   function renderProductChips() {
     const map = new Map(); // productLine -> count
     for (const l of licenses) {
@@ -351,6 +420,7 @@
     refreshDataLists();
     renderOwnerChips();
     renderProductChips();
+    renderStatusChips();
     document.querySelectorAll("#viewSwitch .view-btn").forEach((b) => {
       b.setAttribute("aria-pressed", b.dataset.view === currentView ? "true" : "false");
     });
@@ -379,7 +449,20 @@
     if (lic.state === "abandoned") tr.classList.add("abandoned");
 
     const tdCustomer = document.createElement("td");
-    tdCustomer.textContent = lic.customer || "";
+    const custBtn = document.createElement("button");
+    custBtn.type = "button";
+    custBtn.className = "customer-link";
+    custBtn.textContent = lic.customer || "";
+    custBtn.addEventListener("click", (e) => { e.stopPropagation(); openCustomerDialog(lic.customer); });
+    tdCustomer.appendChild(custBtn);
+    // Y-of-N badge for non-annual cycles
+    if (lic.renewalCycle && lic.renewalCycle !== "annual") {
+      const badge = document.createElement("span");
+      badge.className = "cycle-badge";
+      badge.textContent = lic.renewalCycle === "biennial" ? "biennial" : "triennial";
+      badge.title = `Renewal cycle: ${lic.renewalCycle}`;
+      tdCustomer.appendChild(badge);
+    }
     tr.appendChild(tdCustomer);
 
     const tdType = document.createElement("td");
@@ -422,6 +505,15 @@
     }
     tr.appendChild(tdProd);
 
+    // Status pill column
+    const tdStatus = document.createElement("td");
+    const sPill = document.createElement("span");
+    const statusVal = lic.status || "notStarted";
+    sPill.className = `status-pill status-${statusVal}`;
+    sPill.textContent = STATUS_LABEL[statusVal] || statusVal;
+    tdStatus.appendChild(sPill);
+    tr.appendChild(tdStatus);
+
     const tdActions = document.createElement("td");
     tdActions.className = "actions";
     const editBtn = document.createElement("button");
@@ -430,6 +522,13 @@
     editBtn.textContent = "Edit";
     editBtn.addEventListener("click", (e) => { e.stopPropagation(); openEditDialog(lic); });
     tdActions.appendChild(editBtn);
+    const emailBtn = document.createElement("button");
+    emailBtn.type = "button";
+    emailBtn.className = "btn ghost small";
+    emailBtn.textContent = "Email";
+    emailBtn.title = "Open Outlook with a pre-filled renewal notice to the customer";
+    emailBtn.addEventListener("click", (e) => { e.stopPropagation(); emailCustomer(lic); });
+    tdActions.appendChild(emailBtn);
     const renewBtn = document.createElement("button");
     renewBtn.type = "button";
     renewBtn.className = "btn primary small";
@@ -446,7 +545,7 @@
     const tr = document.createElement("tr");
     tr.className = "lic-group-header";
     const td = document.createElement("td");
-    td.colSpan = 7;
+    td.colSpan = 8;
     const seats = group.reduce((s, l) => s + (typeof l.userCount === "number" ? l.userCount : 0), 0);
     td.textContent = label || "(none)";
     const meta = document.createElement("span");
@@ -585,10 +684,14 @@
     refreshOwnerSelect();
     $("licOwner").value = me.oid || "";
     $("licProductLine").value = "";
+    $("licStatus").value = "notStarted";
+    $("licRenewalCycle").value = "annual";
     $("licLeadDays").value = "";
     $("licLeadDaysCustom").value = "";
     $("licLeadDaysCustom").hidden = true;
     $("licNotes").value = "";
+    $("licActivity").hidden = true;
+    $("licEmailBtn").hidden = true;
     $("licRenewBtn").hidden = true;
     $("licDeleteBtn").hidden = true;
     $("licDialog").showModal();
@@ -608,6 +711,8 @@
     refreshOwnerSelect();
     $("licOwner").value = lic.ownerOid || "";
     $("licProductLine").value = lic.productLine || "";
+    $("licStatus").value = lic.status || "notStarted";
+    $("licRenewalCycle").value = lic.renewalCycle || "annual";
     if (lic.leadDays === null || lic.leadDays === undefined) {
       $("licLeadDays").value = "";
       $("licLeadDaysCustom").hidden = true;
@@ -620,10 +725,40 @@
       $("licLeadDaysCustom").value = lic.leadDays;
     }
     $("licNotes").value = lic.notes || "";
+    renderActivityLog(lic);
+    $("licEmailBtn").hidden = false;
     $("licRenewBtn").hidden = false;
     $("licDeleteBtn").hidden = false;
     $("licDialog").showModal();
     $("licCustomer").focus();
+  }
+
+  function renderActivityLog(lic) {
+    const events = Array.isArray(lic.events) ? lic.events : [];
+    const list = $("licActivityList");
+    list.innerHTML = "";
+    if (!events.length) { $("licActivity").hidden = true; return; }
+    $("licActivity").hidden = false;
+    // newest first
+    const sorted = [...events].sort((a, b) => (b.at || "").localeCompare(a.at || ""));
+    for (const ev of sorted.slice(0, 30)) {
+      const li = document.createElement("li");
+      const when = document.createElement("span");
+      when.className = "lic-activity-when";
+      when.textContent = ev.at ? new Date(ev.at).toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }) : "";
+      const who = document.createElement("span");
+      who.className = "lic-activity-who";
+      who.textContent = ev.byName || "(unknown)";
+      const action = document.createElement("span");
+      const verbMap = { created: "added the license", statusChanged: "changed status", ownerChanged: "reassigned owner", expiryChanged: "moved expiry", renewed: "marked renewed" };
+      const verb = verbMap[ev.type] || ev.type;
+      action.textContent = ` ${verb}${ev.detail ? ": " + ev.detail : ""}`;
+      li.appendChild(when);
+      li.appendChild(document.createTextNode(" "));
+      li.appendChild(who);
+      li.appendChild(action);
+      list.appendChild(li);
+    }
   }
   function closeEditDialog() {
     $("licDialog").close();
@@ -649,6 +784,8 @@
       ownerOid,
       ownerName: owner ? (owner.displayName || owner.upn || "") : null,
       productLine: $("licProductLine").value.trim() || null,
+      status: $("licStatus").value || "notStarted",
+      renewalCycle: $("licRenewalCycle").value || "annual",
       leadDays,
       notes: $("licNotes").value.trim() || null,
     };
@@ -694,15 +831,95 @@
     renewTargetId = id;
     const lic = licenses.find((l) => l.id === id);
     if (!lic) return;
-    // Default custom date = current expiry + 1 year
+    // Default custom date = current expiry advanced by the license's renewal cycle.
+    const years = CYCLE_YEARS[lic.renewalCycle] || 1;
     if (lic.expiryDate) {
       const d = parseISO(lic.expiryDate);
       if (d) {
-        d.setUTCFullYear(d.getUTCFullYear() + 1);
+        d.setUTCFullYear(d.getUTCFullYear() + years);
         $("renewCustomDate").value = d.toISOString().slice(0, 10);
       }
     }
     $("renewDialog").showModal();
+  }
+
+  // ---------- email customer ----------
+  function emailCustomer(lic) {
+    const ownerName = lic.ownerName || me.name || "";
+    const subject = `Renewal reminder: ${lic.licenseType} expires ${fmtShortDate(lic.expiryDate)}`;
+    const body =
+      `Hi ${lic.customer || "team"},\n\n` +
+      `This is a friendly reminder that your subscription for ${lic.licenseType} (${lic.userCount} users) is set to expire on ${fmtShortDate(lic.expiryDate)}.\n\n` +
+      `Please let us know if you would like to:\n` +
+      `  1. Renew at the current ${lic.userCount} users\n` +
+      `  2. Adjust the seat count\n` +
+      `  3. Make any other changes\n\n` +
+      `Looking forward to hearing from you.\n\n` +
+      `Best regards,\n${ownerName}\n`;
+    const url = `mailto:?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+    window.open(url, "_blank");
+    // Bump status if currently notStarted (the click implies you sent the notice).
+    if (lic.status === "notStarted") {
+      api("PATCH", `/licenses/${lic.id}`, { status: "noticeSent" })
+        .then(({ license }) => {
+          licenses = licenses.map((l) => l.id === license.id ? license : l);
+          render();
+          toast(`Status set to Notice sent.`);
+        })
+        .catch((err) => showError("Status update failed", err));
+    }
+  }
+
+  // ---------- customer 360 drawer ----------
+  function openCustomerDialog(customer) {
+    if (!customer) return;
+    const norm = customer.trim().toLowerCase();
+    const rows = licenses.filter((l) => (l.customer || "").trim().toLowerCase() === norm);
+    if (!rows.length) return;
+    $("customerDialogTitle").textContent = customer;
+    const seats = rows.reduce((s, l) => s + (l.userCount || 0), 0);
+    const active = rows.filter((l) => l.state !== "abandoned" && l.status !== "renewed").length;
+    const renewedCount = rows.filter((l) => l.status === "renewed").length;
+    const today = todayPh();
+    const nextExpiry = rows
+      .filter((l) => l.state !== "abandoned" && l.expiryDate && l.expiryDate >= today)
+      .map((l) => l.expiryDate)
+      .sort()[0];
+    const summary = $("customerDialogSummary");
+    summary.innerHTML = "";
+    function stat(label, val) {
+      const s = document.createElement("div");
+      s.innerHTML = `<strong>${val}</strong>${label}`;
+      summary.appendChild(s);
+    }
+    stat(" licenses", rows.length);
+    stat(" total seats", seats.toLocaleString());
+    stat(" open", active);
+    stat(" renewed", renewedCount);
+    if (nextExpiry) stat(" next expiry", fmtShortDate(nextExpiry));
+
+    const ul = $("customerDialogList");
+    ul.innerHTML = "";
+    const sorted = [...rows].sort((a, b) => (a.expiryDate || "").localeCompare(b.expiryDate || ""));
+    for (const lic of sorted) {
+      const li = document.createElement("li");
+      const title = document.createElement("div");
+      title.className = "cl-title";
+      title.textContent = lic.licenseType;
+      li.appendChild(title);
+      const meta = document.createElement("div");
+      meta.className = "cl-meta";
+      meta.textContent = `${lic.userCount || 0} users · expires ${fmtShortDate(lic.expiryDate)} · owner ${lic.ownerName || "—"}`;
+      li.appendChild(meta);
+      const pill = document.createElement("span");
+      const sv = lic.status || "notStarted";
+      pill.className = `status-pill status-${sv}`;
+      pill.textContent = STATUS_LABEL[sv] || sv;
+      li.appendChild(pill);
+      li.addEventListener("click", () => { $("customerDialog").close(); openEditDialog(lic); });
+      ul.appendChild(li);
+    }
+    $("customerDialog").showModal();
   }
   async function confirmRenew(years, customDate) {
     if (!renewTargetId) return;
@@ -841,6 +1058,13 @@
     $("licRenewBtn").addEventListener("click", () => {
       if (editingId) openRenewDialog(editingId);
     });
+    $("licEmailBtn").addEventListener("click", () => {
+      const lic = licenses.find((l) => l.id === editingId);
+      if (lic) emailCustomer(lic);
+    });
+
+    // Customer 360 dialog
+    $("customerDialogClose").addEventListener("click", () => $("customerDialog").close());
 
     // Custom lead days toggle
     $("licLeadDays").addEventListener("change", () => {

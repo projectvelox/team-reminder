@@ -37,6 +37,122 @@
   opacity: 0.85;
 }
 
+/* Status pill (table cell + breakdown chips). Status enum order matters for sort + visual hierarchy. */
+.status-pill {
+  display: inline-block;
+  padding: 2px 10px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: none;
+  letter-spacing: 0;
+  white-space: nowrap;
+  border: 1px solid transparent;
+}
+.status-pill.status-notStarted        { background: rgba(138, 136, 134, 0.18); color: #605e5c; border-color: rgba(138, 136, 134, 0.4); }
+.status-pill.status-noticeSent        { background: rgba(210, 146, 0, 0.18);   color: #7a5400; border-color: rgba(210, 146, 0, 0.4); }
+.status-pill.status-awaitingCustomer  { background: rgba(202, 80, 16, 0.18);   color: #ca5010; border-color: rgba(202, 80, 16, 0.4); }
+.status-pill.status-customerConfirmed { background: rgba(0, 120, 212, 0.18);   color: #005a9e; border-color: rgba(0, 120, 212, 0.4); }
+.status-pill.status-renewed           { background: rgba(16, 124, 16, 0.18);   color: #0b5a0b; border-color: rgba(16, 124, 16, 0.4); }
+body[data-theme="dark"] .status-pill.status-notStarted        { color: #d6d6d6; }
+body[data-theme="dark"] .status-pill.status-noticeSent        { color: #f0c040; }
+body[data-theme="dark"] .status-pill.status-awaitingCustomer  { color: #ff8c4a; }
+body[data-theme="dark"] .status-pill.status-customerConfirmed { color: #4ba8ee; }
+body[data-theme="dark"] .status-pill.status-renewed           { color: #5dbb5d; }
+
+/* Y-of-N badge for non-annual renewal cycles. */
+.cycle-badge {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-size: 10px;
+  font-weight: 700;
+  background: rgba(135, 100, 184, 0.18);
+  color: #8764b8;
+  border: 1px solid rgba(135, 100, 184, 0.4);
+}
+body[data-theme="dark"] .cycle-badge { color: #b18ed8; }
+
+/* Clickable customer link in table */
+.customer-link {
+  background: none;
+  border: none;
+  padding: 0;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+  text-decoration: underline dotted;
+  text-underline-offset: 3px;
+}
+.customer-link:hover { color: var(--accent, #38AEEB); }
+
+/* Activity log inside edit dialog */
+.lic-activity {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border, #e4e4e4);
+}
+.lic-activity-title {
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  opacity: 0.7;
+  margin: 0 0 8px;
+}
+.lic-activity-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  max-height: 140px;
+  overflow-y: auto;
+  font-size: 12px;
+}
+.lic-activity-list li {
+  padding: 4px 0;
+  border-bottom: 1px solid var(--border, #f0f0f0);
+}
+.lic-activity-list li:last-child { border-bottom: none; }
+.lic-activity-when { opacity: 0.65; }
+.lic-activity-who { font-weight: 600; }
+
+/* Customer 360 drawer */
+.customer-summary {
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+  padding: 10px 0;
+  margin-bottom: 12px;
+  border-bottom: 1px solid var(--border, #e4e4e4);
+  font-size: 13px;
+}
+.customer-summary strong { font-size: 16px; display: block; margin-bottom: 2px; }
+.customer-license-list {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 12px;
+  max-height: 50vh;
+  overflow-y: auto;
+}
+.customer-license-list li {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  gap: 12px;
+  align-items: center;
+  padding: 10px 8px;
+  border-bottom: 1px solid var(--border, #e4e4e4);
+  cursor: pointer;
+}
+.customer-license-list li:hover { background: var(--row-hover, rgba(0, 0, 0, 0.04)); }
+.customer-license-list li:last-child { border-bottom: none; }
+.customer-license-list .cl-title { font-weight: 600; }
+.customer-license-list .cl-meta { font-size: 12px; opacity: 0.75; }
+body[data-theme="dark"] .lic-activity-list li,
+body[data-theme="dark"] .customer-summary,
+body[data-theme="dark"] .customer-license-list li,
+body[data-theme="dark"] .lic-activity { border-color: #3d3d42; }
+
 /* Stats strip (totals) */
 .lic-stats {
   display: flex;
@@ -106,8 +222,9 @@
   font-size: 11px;
 }
 .lic-breakdown-chip .chip-next {
-  opacity: 0.65;
+  opacity: 0.7;
   font-size: 11px;
+  margin-left: 2px;
 }
 body[data-theme="dark"] .lic-breakdown-chip .chip-count {
   background: rgba(255, 255, 255, 0.12);
@@ -466,17 +583,46 @@ body[data-theme="dark"] .lic-group-header td {
   z-index: 1000;
 }
 
-/* Dark theme nudges */
+/* Dark theme nudges (Teams dark theme: bg #1f1f1f, surfaces #2b2b30, dividers #4a4a4f). */
 body[data-theme="dark"] .lic-summary-chip,
+body[data-theme="dark"] .lic-breakdown-chip,
 body[data-theme="dark"] .lic-dialog,
 body[data-theme="dark"] .lic-cal-header,
-body[data-theme="dark"] .lic-cal-cell {
+body[data-theme="dark"] .lic-cal-cell,
+body[data-theme="dark"] #importFile {
   --card-bg: #2b2b30;
-  --border: #4a4a4f;
+  --border: #3d3d42;
 }
 body[data-theme="dark"] .lic-cal-cell.muted {
   --card-bg: #232328;
 }
 body[data-theme="dark"] .lic-table th {
   background: #2b2b30;
+  border-bottom-color: #3d3d42;
+}
+body[data-theme="dark"] .lic-table td {
+  border-bottom-color: #3d3d42;
+}
+body[data-theme="dark"] .lic-empty {
+  border-color: #3d3d42;
+}
+body[data-theme="dark"] .lic-breakdown-chip .chip-next {
+  opacity: 0.78;
+}
+body[data-theme="dark"] .product-tag {
+  border-color: #5a5a60;
+}
+body[data-theme="dark"] .import-table select {
+  --card-bg: #2b2b30;
+  --border: #3d3d42;
+}
+
+/* Industry-standard focus-visible rings on interactive elements (WCAG 2.4.7). */
+.lic-summary-chip:focus-visible,
+.lic-breakdown-chip:focus-visible,
+.lic-cal-pill:focus-visible,
+.lic-cal-more:focus-visible,
+.view-btn:focus-visible {
+  outline: 2px solid var(--accent, #38AEEB);
+  outline-offset: 2px;
 }

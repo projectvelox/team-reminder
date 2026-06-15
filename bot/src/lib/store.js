@@ -250,7 +250,15 @@ function todayKey() {
 
 const LICENSE_PARTITION = '_licenses';
 
+const LICENSE_STATUSES = ['notStarted', 'noticeSent', 'awaitingCustomer', 'customerConfirmed', 'renewed'];
+const RENEWAL_CYCLES = ['annual', 'biennial', 'triennial'];
+
 function entityToLicense(e) {
+  let events = [];
+  if (e.events) {
+    try { const parsed = JSON.parse(e.events); if (Array.isArray(parsed)) events = parsed.slice(-50); }
+    catch { events = []; }
+  }
   return {
     id: e.rowKey.slice(2),
     customer: e.customer || '',
@@ -263,6 +271,11 @@ function entityToLicense(e) {
     leadDays: typeof e.leadDays === 'number' ? e.leadDays : null,
     notes: e.notes || null,
     state: e.state === 'abandoned' ? 'abandoned' : 'active',
+    status: LICENSE_STATUSES.includes(e.status) ? e.status : 'notStarted',
+    statusChangedAt: e.statusChangedAt || null,
+    statusChangedByOid: e.statusChangedByOid || null,
+    statusChangedByName: e.statusChangedByName || null,
+    renewalCycle: RENEWAL_CYCLES.includes(e.renewalCycle) ? e.renewalCycle : 'annual',
     createdAt: e.createdAt || null,
     createdByOid: e.createdByOid || null,
     createdByName: e.createdByName || null,
@@ -270,7 +283,9 @@ function entityToLicense(e) {
     lastEditedByOid: e.lastEditedByOid || null,
     lastEditedByName: e.lastEditedByName || null,
     lastRenewedAt: e.lastRenewedAt || null,
+    lastFollowUpAt: e.lastFollowUpAt || null,
     lastEscalatedDays: typeof e.lastEscalatedDays === 'number' ? e.lastEscalatedDays : null,
+    events,
   };
 }
 
@@ -310,6 +325,11 @@ async function upsertLicense(license) {
     leadDays: typeof license.leadDays === 'number' ? license.leadDays : null,
     notes: license.notes || null,
     state: license.state === 'abandoned' ? 'abandoned' : 'active',
+    status: LICENSE_STATUSES.includes(license.status) ? license.status : 'notStarted',
+    statusChangedAt: license.statusChangedAt || null,
+    statusChangedByOid: license.statusChangedByOid || null,
+    statusChangedByName: license.statusChangedByName || null,
+    renewalCycle: RENEWAL_CYCLES.includes(license.renewalCycle) ? license.renewalCycle : 'annual',
     createdAt: license.createdAt || null,
     createdByOid: license.createdByOid || null,
     createdByName: license.createdByName || null,
@@ -317,7 +337,9 @@ async function upsertLicense(license) {
     lastEditedByOid: license.lastEditedByOid || null,
     lastEditedByName: license.lastEditedByName || null,
     lastRenewedAt: license.lastRenewedAt || null,
+    lastFollowUpAt: license.lastFollowUpAt || null,
     lastEscalatedDays: typeof license.lastEscalatedDays === 'number' ? license.lastEscalatedDays : null,
+    events: JSON.stringify(Array.isArray(license.events) ? license.events.slice(-50) : []),
   }, 'Replace');
 }
 
@@ -382,6 +404,8 @@ async function listMembers() {
 
 module.exports = {
   DEFAULT_SETTINGS,
+  LICENSE_STATUSES,
+  RENEWAL_CYCLES,
   getUser,
   upsertUser,
   iterateUsersWithConversationRefs,

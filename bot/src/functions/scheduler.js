@@ -10,7 +10,7 @@
 const { app } = require('@azure/functions');
 const { MessageFactory } = require('botbuilder');
 const { adapter } = require('../lib/bot');
-const { reminderCard, eodCard } = require('../lib/cards');
+const { reminderCard, eodCard, licenseFollowUpCard } = require('../lib/cards');
 const store = require('../lib/store');
 const { sendReminderActivity } = require('../lib/graph');
 
@@ -150,6 +150,13 @@ async function processUser(appId, user, ph, context) {
     }
   }
 
+  // 1b) License follow-up cards for warm owners.
+  // Fires once every 7 days for licenses stuck in noticeSent or awaitingCustomer
+  // status. Only during work hours (9 AM-6 PM PH) so we don't ping at midnight.
+  if (ph.minutesOfDay >= 9 * 60 && ph.minutesOfDay < 18 * 60) {
+    await processLicenseFollowUps(appId, user, context);
+  }
+
   // 2) end-of-day check-in
   const isWeekend = ph.weekday === 'Sat' || ph.weekday === 'Sun';
   if (user.settings?.weekdaysOnly && isWeekend) return;
@@ -161,6 +168,40 @@ async function processUser(appId, user, ph, context) {
   const open = reminders.filter((r) => !r.done);
   await sendProactive(appId, user, MessageFactory.attachment(eodCard(open)));
   await store.upsertUser(user.oid, { lastEodDate: ph.date });
+}
+
+// Find licenses where this user is the owner, status is noticeSent or
+// awaitingCustomer, the status hasn't changed in >= 7 days, and we haven't
+// already followed up in the last 7 days. Send a follow-up card per match
+// and stamp lastFollowUpAt so we don't re-fire for another week.
+async function processLicenseFollowUps(appId, user, context) {
+  const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
+  const now = Date.now();
+  let licenses;
+  try { licenses = await store.listLicenses(); }
+  catch (err) { context.error(`[scheduler] listLicenses failed: ${err?.message || err}`); return; }
+  const owned = licenses.filter((l) =>
+    l.ownerOid === user.oid &&
+    l.state !== 'abandoned' &&
+    (l.status === 'noticeSent' || l.status === 'awaitingCustomer')
+  );
+  for (const lic of owned) {
+    const anchorIso = lic.lastFollowUpAt || lic.statusChangedAt;
+    if (!anchorIso) continue;
+    const anchorMs = Date.parse(anchorIso);
+    if (isNaN(anchorMs)) continue;
+    if (now - anchorMs < SEVEN_DAYS_MS) continue;
+    const statusChangedMs = lic.statusChangedAt ? Date.parse(lic.statusChangedAt) : now;
+    const daysSinceStatus = Math.floor((now - statusChangedMs) / (24 * 60 * 60 * 1000));
+    try {
+      await sendProactive(appId, user, MessageFactory.attachment(licenseFollowUpCard(lic, daysSinceStatus)));
+      lic.lastFollowUpAt = new Date().toISOString();
+      await store.upsertLicense(lic);
+      context.log(`[scheduler] license follow-up sent for ${lic.id} (${lic.customer}, ${lic.licenseType}) days=${daysSinceStatus}`);
+    } catch (err) {
+      context.error(`[scheduler] license follow-up failed for ${lic.id}: ${err?.message || err}`);
+    }
+  }
 }
 
 async function sendProactive(appId, user, activity) {

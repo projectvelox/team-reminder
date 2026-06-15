@@ -4,8 +4,8 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Day Reminders &mdash; Licenses</title>
-  <link rel="stylesheet" href="styles.css?v=1.7.2" />
-  <link rel="stylesheet" href="licenses.css?v=1.7.2" />
+  <link rel="stylesheet" href="styles.css?v=1.7.3" />
+  <link rel="stylesheet" href="licenses.css?v=1.7.3" />
   <script src="https://res.cdn.office.net/teams-js/2.24.0/js/MicrosoftTeams.min.js"></script>
 </head>
 <body data-theme="default" data-page="licenses">
@@ -68,7 +68,13 @@
         <button type="button" class="filter-pill" data-quick="mine" aria-pressed="false" title="Licenses you own">Mine</button>
         <button type="button" class="filter-pill" data-quick="month" aria-pressed="false" title="Expiring this calendar month">This month</button>
         <button type="button" class="filter-pill" data-quick="overdue" aria-pressed="false" title="Expired and not renewed">Overdue</button>
+        <button type="button" class="filter-pill" data-quick="attention" aria-pressed="false" title="Stuck in a status >7 days or close to expiry with no status set">&#9888;&#65039; Needs attention</button>
       </div>
+
+      <section id="statusStrip" class="lic-breakdown" aria-label="By status" hidden>
+        <span class="lic-breakdown-label">Status</span>
+        <div id="statusChips" class="lic-breakdown-chips"></div>
+      </section>
 
       <section id="ownerStrip" class="lic-breakdown" aria-label="By owner" hidden>
         <span class="lic-breakdown-label">Owner</span>
@@ -90,6 +96,7 @@
               <th class="sortable" data-sort="expiryDate" aria-sort="ascending">Expires</th>
               <th class="sortable" data-sort="ownerName">Owner</th>
               <th class="sortable" data-sort="productLine">Product line</th>
+              <th class="sortable" data-sort="status">Status</th>
               <th></th>
             </tr>
           </thead>
@@ -168,6 +175,27 @@
         <datalist id="productLineList"></datalist>
       </label>
 
+      <div class="lic-row">
+        <label class="lic-field">
+          <span class="lic-label">Status</span>
+          <select id="licStatus">
+            <option value="notStarted">Not started</option>
+            <option value="noticeSent">Notice sent</option>
+            <option value="awaitingCustomer">Awaiting customer</option>
+            <option value="customerConfirmed">Customer confirmed</option>
+            <option value="renewed">Renewed</option>
+          </select>
+        </label>
+        <label class="lic-field">
+          <span class="lic-label">Renewal cycle</span>
+          <select id="licRenewalCycle">
+            <option value="annual">Annual (default)</option>
+            <option value="biennial">Biennial (2-year)</option>
+            <option value="triennial">Triennial (3-year)</option>
+          </select>
+        </label>
+      </div>
+
       <label class="lic-field">
         <span class="lic-label">Notify me how many days before expiry?</span>
         <select id="licLeadDays">
@@ -187,8 +215,14 @@
         <textarea id="licNotes" maxlength="2000" placeholder="Renewal contact, multi-year context, etc." rows="3"></textarea>
       </label>
 
+      <section id="licActivity" class="lic-activity" hidden>
+        <h3 class="lic-activity-title">Activity</h3>
+        <ol id="licActivityList" class="lic-activity-list"></ol>
+      </section>
+
       <div class="lic-dialog-actions">
         <button type="button" class="btn primary" id="licSaveBtn">Save</button>
+        <button type="button" class="btn ghost" id="licEmailBtn" hidden>Email customer&hellip;</button>
         <button type="button" class="btn ghost" id="licRenewBtn" hidden>Mark renewed&hellip;</button>
         <button type="button" class="btn ghost" id="licDeleteBtn" hidden>Delete</button>
         <button type="button" class="btn ghost" id="licCancelBtn">Cancel</button>
@@ -215,6 +249,16 @@
         <button type="button" class="btn ghost" id="renewCancel">Cancel</button>
       </div>
     </form>
+  </dialog>
+
+  <!-- Customer 360 drawer -->
+  <dialog id="customerDialog" class="lic-dialog">
+    <h2 id="customerDialogTitle">Customer</h2>
+    <div id="customerDialogSummary" class="customer-summary"></div>
+    <ol id="customerDialogList" class="customer-license-list"></ol>
+    <div class="lic-dialog-actions">
+      <button type="button" class="btn ghost" id="customerDialogClose">Close</button>
+    </div>
   </dialog>
 
   <!-- Day-detail popover (Calendar view) -->
@@ -275,6 +319,6 @@
 
   <div id="toast" class="toast" hidden></div>
 
-  <script src="licenses.js?v=1.7.2"></script>
+  <script src="licenses.js?v=1.7.3"></script>
 </body>
 </html>
