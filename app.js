@@ -207,8 +207,14 @@
       detailsToggleBtn.setAttribute("aria-expanded", String(next));
       detailsToggleBtn.textContent = next ? "− Details" : "+ Details";
       descriptionInput.hidden = !next;
-      if (next) descriptionInput.focus();
+      if (next) {
+        descriptionInput.focus();
+        autoGrowTextarea(descriptionInput);
+      }
     });
+  }
+  if (descriptionInput) {
+    descriptionInput.addEventListener("input", () => autoGrowTextarea(descriptionInput));
   }
 
   addForm.addEventListener("submit", async (e) => {

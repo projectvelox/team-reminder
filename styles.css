@@ -877,7 +877,7 @@ button:focus-visible, .link:focus-visible, .tag-chip:focus-visible, select:focus
   align-items: center;
 }
 .details-toggle[aria-expanded="true"] { border-color: var(--accent); color: var(--accent); }
-.description-input { font-size: 13px; flex: 1 1 100%; }
+.description-input { font-size: 13px; flex: 1 1 100%; resize: none; overflow-y: auto; }
 
 /* list row: allow a second grid row for description block */
 .list li {
