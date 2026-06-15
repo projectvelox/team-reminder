@@ -77,12 +77,25 @@ Secrets, GUIDs, and connection strings live in the Claude memory file `project_d
 - EOD check-in card at configurable time
 - Activity Feed notification when a reminder fires (Teams bell)
 
-### v1.5 additions (this release)
+### v1.5 additions
 
 - **Recurring reminders** — `repeat: none | daily | weekdays | weekly` per reminder. Set via the row options dialog. "Mark done" on a recurring reminder advances `dueAt` to the next occurrence and leaves it open. Recurring items are auto-advanced (not piled up as overdue) during the daily rollover.
 - **Quiet hours** — per-user `quietStart` / `quietEnd` HH:MM in Settings. Scheduler short-circuits all proactive sends (lead-time, snooze fires, EOD) while in-window. Wrap-around windows (e.g. 22:00–07:00) are supported. The lead-time fire window is widened to `[target-lead, target+60min]` so a reminder whose original window fell entirely inside quiet hours still fires at most an hour late.
 - **Per-user templates** — `GET / PUT /api/templates` stores up to 100 templates per user under RowKey `_templates`. Tab dialog shows "Your templates" above "Built-in". Row options dialog has a *Save as template* button. Each saved template captures title, time, client, description, leadMinutes, tags.
 - **Bulk PATCH** — `POST /api/reminders/bulk` with `{ ids, patch }`. Tab's *Mark all done*, bulk done, and bulk priority now do a single round-trip instead of one PATCH per reminder.
+
+### v1.5.1 — non-developer friendliness pass (this release)
+
+Audit-driven release applying the new "target = non-developers" rule (see Claude memory `feedback_target_audience_non_devs.md`). Every dev-style syntax surface got a UI-control equivalent as the primary path; typing shortcuts remain for power users but never as the only way.
+
+- **Sub-tasks (checklist)** — new structured field `subtasks: [{ id, text, done }]` per reminder (up to 50). Row options dialog has a Checklist editor section (add input + per-row checkbox + text input + delete; Enter inserts the next row; Backspace on empty removes). On the row itself, a "2/5" chip in title-meta and a "▸ Checklist (2/5)" chevron expand the list inline with click-to-toggle checkboxes that PATCH live. Proactive Adaptive Card renders sub-tasks as `☐` / `☑` lines. Replaced the earlier "could be markdown" instinct after user pushback on syntax-based UX.
+- **Tag chip picker** — `<input>` + chip display below the add row and inside the row options dialog. Autocompletes from past tags via a shared `tagList` datalist. Enter / Tab / `,` commits a chip; Backspace on empty removes the last chip. Typing `#tag` inline in the title still works (merged with picker tags via `mergeTags`).
+- **Lead time as duration dropdown** — Settings + row options now use `<select>` with presets (0 / 5 / 10 / 15 / 30 / 60 / 120 min) plus *Custom…* that reveals the existing number field. Internal storage is still `leadMinutes`, so no API change.
+- **Bot fallback action card** — new `menuCard()` in `cards.js`. Sent on install, on `/help`, and as the fallback when the user @mentions the bot or sends non-command text. Buttons: *Add a reminder*, *What's on my list?*, *Mark something done*, *Show me how*. Handlers in `_handleCardAction`: `menuList` calls `_listOpen`, `menuHelp` re-sends the help card, `menuAdd` / `menuDone` print example-led hints.
+- **Built-in templates cleanup** — `TEMPLATES` array now stores `tags: [...]` separately instead of `#tag` in the title. The tag still renders as a chip on the row via the same chip path.
+- **Copy polish** — *Timed* filter pill → *Scheduled*. *+ Details* button → *+ Notes*. Title placeholder no longer mentions `#tags inline`. Empty-list hero replaced its hash-tag example seeds with clean titles + a *Browse templates* button. Quick guide rewritten to lead with the picker UI, not the syntax. Onboarding card reordered to introduce the picker before mentioning power-user shortcuts.
+
+Cache-bust to `v=1.5.1` on `styles.css` and `app.js`.
 
 ## Backlog
 

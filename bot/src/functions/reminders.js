@@ -58,7 +58,17 @@ app.http('remindersCollection', {
     const leadMinutes = typeof body.leadMinutes === 'number' && body.leadMinutes >= 0 && body.leadMinutes <= 240
       ? Math.floor(body.leadMinutes) : null;
     const repeat = body.repeat === 'daily' || body.repeat === 'weekdays' || body.repeat === 'weekly' ? body.repeat : 'none';
-    const reminder = { id, title, time, done: false, firedAt: null, createdDate: store.todayKey(), closedAt: null, tags, priority, order, leadMinutes, snoozedUntil: null, dueAt, description, rollDays: 0, client, repeat };
+    const subtasks = Array.isArray(body.subtasks)
+      ? body.subtasks
+          .filter((s) => s && typeof s === 'object' && typeof s.text === 'string' && s.text.trim())
+          .map((s) => ({
+            id: typeof s.id === 'string' && s.id ? s.id : `s-${Math.random().toString(36).slice(2, 10)}`,
+            text: String(s.text).trim().slice(0, 500),
+            done: !!s.done,
+          }))
+          .slice(0, 50)
+      : [];
+    const reminder = { id, title, time, done: false, firedAt: null, createdDate: store.todayKey(), closedAt: null, tags, priority, order, leadMinutes, snoozedUntil: null, dueAt, description, rollDays: 0, client, repeat, subtasks };
     await store.upsertReminder(user.oid, reminder);
     return json(201, { reminder });
   },
@@ -140,6 +150,16 @@ function applyPatch(existing, body) {
   if (body.repeat === null || body.repeat === 'none') existing.repeat = 'none';
   else if (body.repeat === 'daily' || body.repeat === 'weekdays' || body.repeat === 'weekly') {
     existing.repeat = body.repeat;
+  }
+  if (Array.isArray(body.subtasks)) {
+    existing.subtasks = body.subtasks
+      .filter((s) => s && typeof s === 'object' && typeof s.text === 'string' && s.text.trim())
+      .map((s) => ({
+        id: typeof s.id === 'string' && s.id ? s.id : `s-${Math.random().toString(36).slice(2, 10)}`,
+        text: String(s.text).trim().slice(0, 500),
+        done: !!s.done,
+      }))
+      .slice(0, 50);
   }
 }
 

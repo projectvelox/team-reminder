@@ -18,6 +18,12 @@ function reminderCard(reminder, leadMinutes) {
         { type: 'TextBlock', text: reminder.client ? `[${reminder.client}] ${reminder.title}` : reminder.title, weight: 'Bolder', size: 'Medium', wrap: true },
         { type: 'TextBlock', text: subtitle, isSubtle: true, spacing: 'None' },
         ...(reminder.description ? [{ type: 'TextBlock', text: reminder.description, wrap: true, spacing: 'Small' }] : []),
+        ...(Array.isArray(reminder.subtasks) && reminder.subtasks.length > 0
+          ? [{ type: 'TextBlock',
+               text: reminder.subtasks.map((s) => `${s.done ? '☑' : '☐'} ${s.text}`).join('\n'),
+               wrap: true,
+               spacing: 'Small' }]
+          : []),
       ],
       actions: [
         { type: 'Action.Submit', title: "Mark done", data: { action: 'markDone', reminderId: reminder.id } },
@@ -73,4 +79,27 @@ function formatTime(hhmm) {
   return d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
 }
 
-module.exports = { reminderCard, eodCard };
+// Fallback action card sent when the user @mentions the bot, sends free text, or types /help.
+// Lets non-technical users tap a button instead of remembering slash commands.
+function menuCard(intro) {
+  return {
+    contentType: 'application/vnd.microsoft.card.adaptive',
+    content: {
+      $schema: 'http://adaptivecards.io/schemas/adaptive-card.json',
+      type: 'AdaptiveCard',
+      version: '1.4',
+      body: [
+        { type: 'TextBlock', text: 'Day Reminders', weight: 'Bolder', size: 'Small', color: 'Accent' },
+        { type: 'TextBlock', text: intro || "What can I help with?", wrap: true },
+      ],
+      actions: [
+        { type: 'Action.Submit', title: 'Add a reminder', data: { action: 'menuAdd' } },
+        { type: 'Action.Submit', title: "What's on my list?", data: { action: 'menuList' } },
+        { type: 'Action.Submit', title: 'Mark something done', data: { action: 'menuDone' } },
+        { type: 'Action.Submit', title: 'Show me how', data: { action: 'menuHelp' } },
+      ],
+    },
+  };
+}
+
+module.exports = { reminderCard, eodCard, menuCard };

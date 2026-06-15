@@ -18,6 +18,9 @@
   // ---------- state ----------
   let reminders = [];
   let userTemplates = []; // per-user templates loaded from /api/templates
+  const expandedSubtasks = new Set(); // reminder ids whose inline checklist is expanded
+  let addFormTags = []; // chips currently in the add-form tag picker
+  let dialogTags = []; // chips currently in the row options dialog tag picker
   let settings = {
     eodTime: "17:00",
     leadMinutes: 10,
@@ -136,18 +139,19 @@
     }, 150);
   }
 
-  // templates: title + optional time (24h). Times use user's wall clock interpretation.
+  // templates: title + optional time (24h). Tags go in their own array so they
+  // render as chips rather than appearing as visible "#tag" syntax in titles.
   const TEMPLATES = [
-    { title: "Standup #work", time: "10:00" },
-    { title: "Daily review #review", time: "17:00" },
-    { title: "Lunch #personal", time: "12:30" },
-    { title: "Hydration #wellness", time: "11:00" },
-    { title: "PR review window #work", time: "14:00" },
-    { title: "End-of-day wrap #review", time: "17:30" },
-    { title: "1:1 prep #work", time: "16:00" },
-    { title: "Inbox zero #work", time: "" },
-    { title: "Weekly planning #planning", time: "" },
-    { title: "Walk break #wellness", time: "15:00" },
+    { title: "Standup", time: "10:00", tags: ["work"] },
+    { title: "Daily review", time: "17:00", tags: ["review"] },
+    { title: "Lunch", time: "12:30", tags: ["personal"] },
+    { title: "Hydration", time: "11:00", tags: ["wellness"] },
+    { title: "PR review window", time: "14:00", tags: ["work"] },
+    { title: "End-of-day wrap", time: "17:30", tags: ["review"] },
+    { title: "1:1 prep", time: "16:00", tags: ["work"] },
+    { title: "Inbox zero", time: "", tags: ["work"] },
+    { title: "Weekly planning", time: "", tags: ["planning"] },
+    { title: "Walk break", time: "15:00", tags: ["wellness"] },
   ];
 
   // ---------- DOM ----------
@@ -218,10 +222,90 @@
     descriptionInput.addEventListener("input", () => autoGrowTextarea(descriptionInput));
   }
 
+  // ---------- tag picker (add form + dialog share the same chip helpers) ----------
+  function normalizeTag(raw) {
+    if (!raw) return "";
+    return String(raw).trim().replace(/^#+/, "").replace(/\s+/g, "-").slice(0, 32);
+  }
+  function addTagToPicker(raw, target) {
+    const t = normalizeTag(raw);
+    if (!t) return;
+    const list = target === "dialog" ? dialogTags : addFormTags;
+    if (list.some((x) => x.toLowerCase() === t.toLowerCase())) return;
+    if (list.length >= 8) return;
+    list.push(t);
+    if (target === "dialog") renderDialogTagChips();
+    else renderAddFormTagChips();
+  }
+  function removeTagFromPicker(t, target) {
+    const list = target === "dialog" ? dialogTags : addFormTags;
+    const idx = list.findIndex((x) => x.toLowerCase() === t.toLowerCase());
+    if (idx < 0) return;
+    list.splice(idx, 1);
+    if (target === "dialog") renderDialogTagChips();
+    else renderAddFormTagChips();
+  }
+  function renderTagChipsInto(container, list, target) {
+    container.textContent = "";
+    for (const t of list) {
+      const chip = document.createElement("span");
+      chip.className = "picker-chip";
+      chip.style.background = colorForTag(t);
+      const txt = document.createElement("span");
+      txt.textContent = t;
+      const x = document.createElement("button");
+      x.type = "button";
+      x.className = "picker-chip-x";
+      x.textContent = "×";
+      x.title = `Remove ${t}`;
+      x.setAttribute("aria-label", `Remove tag ${t}`);
+      x.addEventListener("click", () => removeTagFromPicker(t, target));
+      chip.append(txt, x);
+      container.appendChild(chip);
+    }
+  }
+  function renderAddFormTagChips() {
+    const c = $("addTagChips");
+    if (c) renderTagChipsInto(c, addFormTags, "add");
+  }
+  function renderDialogTagChips() {
+    const c = $("rowTagChips");
+    if (c) renderTagChipsInto(c, dialogTags, "dialog");
+  }
+  // Wire the add-form picker input
+  const addTagInput = $("addTagInput");
+  if (addTagInput) {
+    addTagInput.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" || e.key === "," || e.key === "Tab") {
+        if (addTagInput.value.trim()) {
+          e.preventDefault();
+          addTagToPicker(addTagInput.value, "add");
+          addTagInput.value = "";
+        }
+      } else if (e.key === "Backspace" && addTagInput.value === "" && addFormTags.length > 0) {
+        e.preventDefault();
+        removeTagFromPicker(addFormTags[addFormTags.length - 1], "add");
+      }
+    });
+    addTagInput.addEventListener("blur", () => {
+      if (addTagInput.value.trim()) {
+        addTagToPicker(addTagInput.value, "add");
+        addTagInput.value = "";
+      }
+    });
+  }
+
   addForm.addEventListener("submit", async (e) => {
     e.preventDefault();
-    const { title, tags } = extractTagsFromTitle(titleInput.value.trim());
+    // Capture any half-typed tag the user hadn't committed yet, then merge picker tags.
+    const pickerInput = $("addTagInput");
+    if (pickerInput && pickerInput.value.trim()) {
+      addTagToPicker(pickerInput.value.trim());
+      pickerInput.value = "";
+    }
+    const { title, tags: titleTags } = extractTagsFromTitle(titleInput.value.trim());
     if (!title) return;
+    const tags = mergeTags(addFormTags, titleTags);
     const time = timeInput.value || null;
     const today = todayPh();
     const dueAt = dueDateInput.value || today;
@@ -239,9 +323,11 @@
     if (clientInput) clientInput.value = "";
     descriptionInput.value = "";
     descriptionInput.hidden = true;
+    addFormTags = [];
+    renderAddFormTagChips();
     if (detailsToggleBtn) {
       detailsToggleBtn.setAttribute("aria-expanded", "false");
-      detailsToggleBtn.textContent = "+ Details";
+      detailsToggleBtn.textContent = "+ Notes";
     }
     titleInput.focus();
     render();
@@ -262,11 +348,28 @@
 
   $("openSettings").addEventListener("click", () => openDialog(settingsDialog, openSettings));
   $("settingsCancel").addEventListener("click", () => settingsDialog.close());
+  $("setLeadPreset").addEventListener("change", (e) => {
+    const val = e.target.value;
+    const customRow = $("setLeadCustomRow");
+    if (val === "custom") {
+      customRow.hidden = false;
+      const cur = $("setLeadMinutes");
+      if (cur && (!cur.value || LEAD_PRESETS.includes(parseInt(cur.value, 10)))) cur.value = "20";
+      cur.focus();
+    } else {
+      customRow.hidden = true;
+      $("setLeadMinutes").value = val;
+    }
+  });
   settingsForm.addEventListener("submit", async (e) => {
     e.preventDefault();
+    const presetVal = $("setLeadPreset").value;
+    const lead = presetVal === "custom"
+      ? clampInt($("setLeadMinutes").value, 0, 240, settings.leadMinutes)
+      : clampInt(presetVal, 0, 240, settings.leadMinutes);
     const next = {
       eodTime: $("setEodTime").value || settings.eodTime,
-      leadMinutes: clampInt($("setLeadMinutes").value, 0, 240, settings.leadMinutes),
+      leadMinutes: lead,
       weekdaysOnly: $("setWeekdaysOnly").checked,
       notifications: $("setNotifications").checked,
       quietStart: $("setQuietStart").value || null,
@@ -398,6 +501,23 @@
   });
 
   $("rowOptionsCancel").addEventListener("click", () => rowOptionsDialog.close());
+  const rowLeadPreset = $("rowLeadPreset");
+  if (rowLeadPreset) {
+    rowLeadPreset.addEventListener("change", (e) => {
+      const val = e.target.value;
+      const customRow = $("rowLeadCustomRow");
+      if (val === "custom") {
+        if (customRow) customRow.hidden = false;
+        if (rowLeadMinutes && (!rowLeadMinutes.value || LEAD_PRESETS.includes(parseInt(rowLeadMinutes.value, 10)))) {
+          rowLeadMinutes.value = "20";
+        }
+        rowLeadMinutes.focus();
+      } else {
+        if (customRow) customRow.hidden = true;
+        if (rowLeadMinutes) rowLeadMinutes.value = val;
+      }
+    });
+  }
   $("rowOptionsDone").addEventListener("click", () => {
     const r = reminders.find((x) => x.id === editingReminderId);
     if (!r) { rowOptionsDialog.close(); return; }
@@ -409,6 +529,43 @@
     if (!r) { rowOptionsDialog.close(); return; }
     rowOptionsDialog.close();
     saveAsTemplate(r);
+  });
+  const rowTagInput = $("rowTagInput");
+  if (rowTagInput) {
+    rowTagInput.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" || e.key === "," || e.key === "Tab") {
+        if (rowTagInput.value.trim()) {
+          e.preventDefault();
+          addTagToPicker(rowTagInput.value, "dialog");
+          rowTagInput.value = "";
+        }
+      } else if (e.key === "Backspace" && rowTagInput.value === "" && dialogTags.length > 0) {
+        e.preventDefault();
+        removeTagFromPicker(dialogTags[dialogTags.length - 1], "dialog");
+      }
+    });
+    rowTagInput.addEventListener("blur", () => {
+      if (rowTagInput.value.trim()) {
+        addTagToPicker(rowTagInput.value, "dialog");
+        rowTagInput.value = "";
+      }
+    });
+  }
+
+  const rowSubtaskNew = $("rowSubtaskNew");
+  const rowSubtaskAdd = $("rowSubtaskAdd");
+  function addSubtaskFromInput() {
+    if (!rowSubtaskNew) return;
+    const text = rowSubtaskNew.value.trim();
+    if (!text) return;
+    dialogSubtasks.push({ id: `s-${Math.random().toString(36).slice(2, 10)}`, text, done: false });
+    rowSubtaskNew.value = "";
+    renderDialogSubtasks();
+    rowSubtaskNew.focus();
+  }
+  if (rowSubtaskAdd) rowSubtaskAdd.addEventListener("click", addSubtaskFromInput);
+  if (rowSubtaskNew) rowSubtaskNew.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") { e.preventDefault(); addSubtaskFromInput(); }
   });
   if (rowDescription) {
     rowDescription.addEventListener("input", () => autoGrowTextarea(rowDescription));
@@ -427,12 +584,20 @@
     e.preventDefault();
     const r = reminders.find((x) => x.id === editingReminderId);
     if (!r) { rowOptionsDialog.close(); return; }
-    const raw = rowLeadMinutes.value.trim();
     let nextLead = null;
-    if (raw !== "") {
-      const n = clampInt(raw, 0, 240, NaN);
-      if (isNaN(n)) { showError("Lead time must be 0 to 240", new Error("invalid")); return; }
-      nextLead = n;
+    const presetSel = $("rowLeadPreset");
+    const presetVal = presetSel ? presetSel.value : "";
+    if (presetVal === "") {
+      nextLead = null; // use default
+    } else if (presetVal === "custom") {
+      const raw = rowLeadMinutes.value.trim();
+      if (raw !== "") {
+        const n = clampInt(raw, 0, 240, NaN);
+        if (isNaN(n)) { showError("Lead time must be 0 to 240", new Error("invalid")); return; }
+        nextLead = n;
+      }
+    } else {
+      nextLead = clampInt(presetVal, 0, 240, null);
     }
     const nextDescRaw = rowDescription ? rowDescription.value.trim().slice(0, 2000) : "";
     const nextDesc = nextDescRaw || null;
@@ -441,26 +606,48 @@
     const nextClient = nextClientRaw || null;
     const repeatSel = $("rowRepeat");
     const nextRepeat = repeatSel && ["daily", "weekdays", "weekly"].includes(repeatSel.value) ? repeatSel.value : "none";
+    // Pick up any half-typed sub-task in the add input so the user doesn't lose it.
+    const newSub = $("rowSubtaskNew");
+    if (newSub && newSub.value.trim()) {
+      dialogSubtasks.push({ id: `s-${Math.random().toString(36).slice(2, 10)}`, text: newSub.value.trim(), done: false });
+      newSub.value = "";
+    }
+    const nextSubtasks = dialogSubtasks
+      .filter((s) => s.text && s.text.trim())
+      .map((s) => ({ id: s.id, text: s.text.trim().slice(0, 500), done: !!s.done }));
+    // Pick up any half-typed tag.
+    const tagInputEl2 = $("rowTagInput");
+    if (tagInputEl2 && tagInputEl2.value.trim()) {
+      addTagToPicker(tagInputEl2.value, "dialog");
+      tagInputEl2.value = "";
+    }
+    const nextTags = dialogTags.slice();
     const prevLead = r.leadMinutes;
     const prevDesc = r.description;
     const prevDue = r.dueAt;
     const prevRoll = r.rollDays;
     const prevClient = r.client;
     const prevRepeat = r.repeat || "none";
+    const prevSubtasks = Array.isArray(r.subtasks) ? r.subtasks : [];
+    const prevTags = Array.isArray(r.tags) ? r.tags.slice() : [];
     const dueInitial = prevDue || todayPh();
     const leadChanged = prevLead !== nextLead;
     const descChanged = (prevDesc || null) !== nextDesc;
     const dueChanged = nextDue !== dueInitial;
     const clientChanged = (prevClient || null) !== nextClient;
     const repeatChanged = prevRepeat !== nextRepeat;
+    const subtasksChanged = JSON.stringify(prevSubtasks) !== JSON.stringify(nextSubtasks);
+    const tagsChanged = JSON.stringify(prevTags) !== JSON.stringify(nextTags);
     r.leadMinutes = nextLead;
     r.description = nextDesc;
     if (dueChanged) { r.dueAt = nextDue; r.rollDays = 0; }
     r.client = nextClient;
     r.repeat = nextRepeat;
+    if (subtasksChanged) r.subtasks = nextSubtasks;
+    if (tagsChanged) r.tags = nextTags;
     rowOptionsDialog.close();
-    if (leadChanged || descChanged || dueChanged || clientChanged || repeatChanged) render();
-    if (!leadChanged && !descChanged && !dueChanged && !clientChanged && !repeatChanged) return;
+    if (leadChanged || descChanged || dueChanged || clientChanged || repeatChanged || subtasksChanged || tagsChanged) render();
+    if (!leadChanged && !descChanged && !dueChanged && !clientChanged && !repeatChanged && !subtasksChanged && !tagsChanged) return;
     try {
       const patch = {};
       if (leadChanged) patch.leadMinutes = nextLead;
@@ -468,6 +655,8 @@
       if (dueChanged) patch.dueAt = nextDue;
       if (clientChanged) patch.client = nextClient || "";
       if (repeatChanged) patch.repeat = nextRepeat;
+      if (subtasksChanged) patch.subtasks = nextSubtasks;
+      if (tagsChanged) patch.tags = nextTags;
       const updated = await api("PATCH", `/reminders/${r.id}`, patch);
       replaceLocal(updated.reminder);
       announce("Saved");
@@ -478,6 +667,8 @@
       r.rollDays = prevRoll;
       r.client = prevClient;
       r.repeat = prevRepeat;
+      r.subtasks = prevSubtasks;
+      r.tags = prevTags;
       render();
       showError("Could not save options", err);
     }
@@ -543,6 +734,7 @@
 
     reminderRoot.innerHTML = "";
     populateClientList();
+    populateTagList();
     updateFilterBanner();
     updateQuickFilterPills();
     updateViewSwitch();
@@ -1040,36 +1232,39 @@
     const card = document.createElement("section");
     card.className = "card empty-hero";
     const h2 = document.createElement("h2");
-    h2.textContent = "Nothing on the list yet";
+    h2.textContent = "Nothing on your list yet";
     const p = document.createElement("p");
-    p.textContent = "Try one of these to get started, or type your own above.";
+    p.textContent = "Type your first reminder in the box above, or tap one of these to start. You can pick a date, time, client, and tags too.";
     const examples = document.createElement("div");
     examples.className = "examples";
     const seeds = [
-      "Send report 9:00 #work",
-      "Call doctor #personal",
-      "Standup 10:00 #team",
-      "Review PRs #work",
+      { title: "Send weekly report", time: "17:00", tag: "work" },
+      { title: "Daily standup", time: "10:00", tag: "team" },
+      { title: "Review PRs", time: "", tag: "work" },
+      { title: "Call doctor", time: "", tag: "personal" },
     ];
     for (const s of seeds) {
       const b = document.createElement("button");
       b.type = "button";
       b.className = "example";
-      b.textContent = s;
+      b.textContent = s.time ? `${s.title} at ${formatTime(s.time)}` : s.title;
       b.addEventListener("click", () => {
-        let text = s;
-        const m = text.match(/\b(\d{1,2}:\d{2})\b/);
-        if (m) {
-          const [h, mm] = m[1].split(":");
-          timeInput.value = `${h.padStart(2, "0")}:${mm}`;
-          text = text.replace(m[0], "").replace(/\s+/g, " ").trim();
+        titleInput.value = s.title;
+        if (s.time) timeInput.value = s.time;
+        if (s.tag) {
+          addFormTags = [s.tag];
+          renderAddFormTagChips();
         }
-        titleInput.value = text;
         titleInput.focus();
       });
       examples.appendChild(b);
     }
-    card.append(h2, p, examples);
+    const browseAll = document.createElement("button");
+    browseAll.type = "button";
+    browseAll.className = "btn ghost small empty-templates-btn";
+    browseAll.textContent = "Browse templates";
+    browseAll.addEventListener("click", () => openDialog(templatesDialog, buildTemplateGrid));
+    card.append(h2, p, examples, browseAll);
     return card;
   }
 
@@ -1361,8 +1556,68 @@
     li.append(handle, star, cb, titleWrap, when, more, del);
     const desc = buildDescriptionBlock(r);
     if (desc) li.appendChild(desc);
+    const subs = buildSubtaskBlock(r);
+    if (subs) li.appendChild(subs);
     if (draggable) attachDragHandlers(li, r);
     return li;
+  }
+
+  // Inline checklist under a row. Read-only text + interactive checkboxes that
+  // PATCH the reminder when toggled. Editing text/order/delete still lives in
+  // the row options dialog (⋯).
+  function buildSubtaskBlock(r) {
+    const list = Array.isArray(r.subtasks) ? r.subtasks : [];
+    if (list.length === 0) return null;
+    const det = document.createElement("details");
+    det.className = "subtask-block";
+    const open = expandedSubtasks.has(r.id);
+    if (open) det.open = true;
+    det.addEventListener("toggle", () => {
+      if (det.open) expandedSubtasks.add(r.id);
+      else expandedSubtasks.delete(r.id);
+    });
+    const sum = document.createElement("summary");
+    const doneCount = list.filter((s) => s.done).length;
+    sum.textContent = `Checklist (${doneCount}/${list.length})`;
+    det.appendChild(sum);
+    const body = document.createElement("ul");
+    body.className = "subtask-list";
+    for (const s of list) {
+      const li = document.createElement("li");
+      li.className = "subtask-item" + (s.done ? " done" : "");
+      const cb = document.createElement("input");
+      cb.type = "checkbox";
+      cb.className = "checkbox";
+      cb.checked = !!s.done;
+      cb.setAttribute("aria-label", s.done ? `Mark sub-task not done: ${s.text}` : `Mark sub-task done: ${s.text}`);
+      cb.addEventListener("change", () => toggleSubtask(r, s.id));
+      const txt = document.createElement("span");
+      txt.className = "subtask-text";
+      txt.textContent = s.text;
+      li.append(cb, txt);
+      body.appendChild(li);
+    }
+    det.appendChild(body);
+    return det;
+  }
+
+  async function toggleSubtask(r, subId) {
+    const list = Array.isArray(r.subtasks) ? r.subtasks : [];
+    const idx = list.findIndex((s) => s.id === subId);
+    if (idx < 0) return;
+    const snapshot = list.map((s) => ({ ...s }));
+    const next = list.map((s) => ({ ...s }));
+    next[idx].done = !next[idx].done;
+    r.subtasks = next;
+    render();
+    try {
+      const updated = await api("PATCH", `/reminders/${r.id}`, { subtasks: next });
+      replaceLocal(updated.reminder);
+    } catch (err) {
+      r.subtasks = snapshot;
+      render();
+      showError("Could not update sub-task", err);
+    }
   }
 
   function attachDragHandlers(li, r) {
@@ -1449,6 +1704,20 @@
     editingReminderId = r.id;
     rowOptionsTitle.textContent = r.title;
     rowLeadMinutes.value = typeof r.leadMinutes === "number" ? String(r.leadMinutes) : "";
+    const presetSel = $("rowLeadPreset");
+    const customRow = $("rowLeadCustomRow");
+    if (presetSel) {
+      if (typeof r.leadMinutes !== "number") {
+        presetSel.value = "";
+        if (customRow) customRow.hidden = true;
+      } else if (LEAD_PRESETS.includes(r.leadMinutes)) {
+        presetSel.value = String(r.leadMinutes);
+        if (customRow) customRow.hidden = true;
+      } else {
+        presetSel.value = "custom";
+        if (customRow) customRow.hidden = false;
+      }
+    }
     if (rowDescription) rowDescription.value = r.description || "";
     if (rowDueDate) rowDueDate.value = r.dueAt || todayPh();
     if (rowClient) rowClient.value = r.client || "";
@@ -1456,10 +1725,74 @@
     if (repeatSel) repeatSel.value = r.repeat && r.repeat !== "none" ? r.repeat : "none";
     const doneBtn = $("rowOptionsDone");
     if (doneBtn) doneBtn.textContent = r.done ? "Mark not done" : (r.repeat && r.repeat !== "none" ? "Done (advance)" : "Mark done");
+    // Snapshot subtasks for in-dialog editing. Persisted on Save.
+    dialogSubtasks = Array.isArray(r.subtasks) ? r.subtasks.map((s) => ({ ...s })) : [];
+    renderDialogSubtasks();
+    const newInput = $("rowSubtaskNew");
+    if (newInput) newInput.value = "";
+    // Snapshot tags. Persisted on Save.
+    dialogTags = Array.isArray(r.tags) ? r.tags.map(String) : [];
+    renderDialogTagChips();
+    const tagInputEl = $("rowTagInput");
+    if (tagInputEl) tagInputEl.value = "";
     openDialog(rowOptionsDialog);
-    // scrollHeight needs the element to be in layout — modal is shown synchronously
-    // by showModal(), but defer one frame to dodge any browser layout quirks.
     if (rowDescription) requestAnimationFrame(() => autoGrowTextarea(rowDescription));
+  }
+
+  let dialogSubtasks = [];
+  function renderDialogSubtasks() {
+    const list = $("rowSubtasks");
+    if (!list) return;
+    list.textContent = "";
+    dialogSubtasks.forEach((s, idx) => {
+      const row = document.createElement("div");
+      row.className = "subtask-edit-row";
+
+      const cb = document.createElement("input");
+      cb.type = "checkbox";
+      cb.className = "checkbox";
+      cb.checked = !!s.done;
+      cb.setAttribute("aria-label", s.done ? "Mark sub-task not done" : "Mark sub-task done");
+      cb.addEventListener("change", () => { s.done = cb.checked; });
+
+      const input = document.createElement("input");
+      input.type = "text";
+      input.className = "subtask-text-input";
+      input.value = s.text;
+      input.maxLength = 500;
+      input.setAttribute("aria-label", "Sub-task text");
+      input.addEventListener("input", () => { s.text = input.value; });
+      input.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") {
+          e.preventDefault();
+          dialogSubtasks.splice(idx + 1, 0, { id: `s-${Math.random().toString(36).slice(2, 10)}`, text: "", done: false });
+          renderDialogSubtasks();
+          const next = list.querySelectorAll(".subtask-text-input")[idx + 1];
+          if (next) next.focus();
+        } else if (e.key === "Backspace" && input.value === "") {
+          e.preventDefault();
+          dialogSubtasks.splice(idx, 1);
+          renderDialogSubtasks();
+          const prevInput = list.querySelectorAll(".subtask-text-input")[idx - 1];
+          if (prevInput) { prevInput.focus(); prevInput.setSelectionRange(prevInput.value.length, prevInput.value.length); }
+          else { const nu = $("rowSubtaskNew"); if (nu) nu.focus(); }
+        }
+      });
+
+      const del = document.createElement("button");
+      del.type = "button";
+      del.className = "subtask-delete";
+      del.title = "Delete sub-task";
+      del.setAttribute("aria-label", "Delete sub-task");
+      del.textContent = "×";
+      del.addEventListener("click", () => {
+        dialogSubtasks.splice(idx, 1);
+        renderDialogSubtasks();
+      });
+
+      row.append(cb, input, del);
+      list.appendChild(row);
+    });
   }
 
   // ---------- inline edit ----------
@@ -1627,10 +1960,20 @@
     const showBadge = (r.rollDays || 0) > 0;
     const showClient = !!(r.client && r.client.trim());
     const showRepeat = r.repeat && r.repeat !== "none";
-    if (!showDueChip && !showBadge && !showClient && !showRepeat) return null;
+    const subCount = Array.isArray(r.subtasks) ? r.subtasks.length : 0;
+    const subDone = subCount > 0 ? r.subtasks.filter((s) => s.done).length : 0;
+    const showSubChip = subCount > 0;
+    if (!showDueChip && !showBadge && !showClient && !showRepeat && !showSubChip) return null;
     const meta = document.createElement("div");
     meta.className = "title-meta";
     if (showClient) meta.appendChild(buildClientChip(r));
+    if (showSubChip) {
+      const chip = document.createElement("span");
+      chip.className = "subtask-chip" + (subDone === subCount ? " complete" : "");
+      chip.textContent = `☑ ${subDone}/${subCount}`;
+      chip.title = subDone === subCount ? "All sub-tasks done" : `${subDone} of ${subCount} sub-tasks done`;
+      meta.appendChild(chip);
+    }
     if (showRepeat) {
       const tag = document.createElement("span");
       tag.className = "repeat-badge";
@@ -1749,6 +2092,26 @@
       const opt = document.createElement("option");
       opt.value = c;
       clientList.appendChild(opt);
+    }
+  }
+
+  let _tagListFingerprint = null;
+  function populateTagList() {
+    const tagList = $("tagList");
+    if (!tagList) return;
+    const set = new Set();
+    for (const r of reminders) {
+      for (const t of r.tags || []) if (t && t.trim()) set.add(t.trim());
+    }
+    const sorted = [...set].sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" }));
+    const fp = sorted.join("|");
+    if (fp === _tagListFingerprint) return;
+    _tagListFingerprint = fp;
+    tagList.textContent = "";
+    for (const t of sorted) {
+      const opt = document.createElement("option");
+      opt.value = t;
+      tagList.appendChild(opt);
     }
   }
 
@@ -2276,9 +2639,21 @@
     if (typeof dlg.showModal === "function") dlg.showModal();
     else dlg.setAttribute("open", "");
   }
+  // Preset values shown in the duration dropdowns. Any other minutes value falls
+  // back to "custom" with the number field visible.
+  const LEAD_PRESETS = [0, 5, 10, 15, 30, 60, 120];
+  function leadMinutesToPresetValue(n) {
+    if (typeof n !== "number") return "";
+    return LEAD_PRESETS.includes(n) ? String(n) : "custom";
+  }
+
   function openSettings() {
     $("setEodTime").value = settings.eodTime;
-    $("setLeadMinutes").value = settings.leadMinutes;
+    const settingsLead = typeof settings.leadMinutes === "number" ? settings.leadMinutes : 10;
+    const settingsPreset = leadMinutesToPresetValue(settingsLead) || "10";
+    $("setLeadPreset").value = settingsPreset;
+    $("setLeadMinutes").value = settingsLead;
+    $("setLeadCustomRow").hidden = settingsPreset !== "custom";
     $("setWeekdaysOnly").checked = !!settings.weekdaysOnly;
     $("setNotifications").checked = settings.notifications !== false;
     $("setQuietStart").value = settings.quietStart || "";

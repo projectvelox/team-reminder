@@ -112,6 +112,21 @@ function entityToReminder(e) {
     if (!Array.isArray(tags)) tags = [];
   }
   const repeat = e.repeat === 'daily' || e.repeat === 'weekdays' || e.repeat === 'weekly' ? e.repeat : 'none';
+  let subtasks = [];
+  if (e.subtasks) {
+    try {
+      const parsed = JSON.parse(e.subtasks);
+      if (Array.isArray(parsed)) {
+        subtasks = parsed
+          .filter((s) => s && typeof s === 'object' && typeof s.text === 'string')
+          .map((s) => ({
+            id: typeof s.id === 'string' && s.id ? s.id : `s-${Math.random().toString(36).slice(2, 10)}`,
+            text: String(s.text).slice(0, 500),
+            done: !!s.done,
+          }));
+      }
+    } catch { subtasks = []; }
+  }
   return {
     id: e.rowKey.slice(2),
     title: e.title,
@@ -130,6 +145,7 @@ function entityToReminder(e) {
     rollDays: typeof e.rollDays === 'number' ? e.rollDays : 0,
     client: e.client || null,
     repeat,
+    subtasks,
   };
 }
 
@@ -175,6 +191,7 @@ async function upsertReminder(oid, r) {
     rollDays: typeof r.rollDays === 'number' ? r.rollDays : 0,
     client: r.client || null,
     repeat: r.repeat === 'daily' || r.repeat === 'weekdays' || r.repeat === 'weekly' ? r.repeat : 'none',
+    subtasks: JSON.stringify(Array.isArray(r.subtasks) ? r.subtasks.slice(0, 50) : []),
   }, 'Replace');
 }
 

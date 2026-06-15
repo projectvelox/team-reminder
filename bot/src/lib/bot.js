@@ -9,9 +9,11 @@ const {
   ConfigurationBotFrameworkAuthentication,
   TeamsActivityHandler,
   TurnContext,
+  MessageFactory,
 } = require('botbuilder');
 
 const store = require('./store');
+const { menuCard } = require('./cards');
 
 function parseTimeToken(token) {
   if (!token) return null;
@@ -205,8 +207,9 @@ class ReminderBot extends TeamsActivityHandler {
       if (botAdded) {
         await this._registerUser(context);
         await context.sendActivity(
-          "Hi! I'm Day Reminders. Open the Reminders tab to add what you need to get done today — I'll ping you here before each one, and at your end-of-day time I'll check in to see if you're done."
+          "Hi! I'm Day Reminders. Open the **Reminders** tab to add what you need to get done today, or tap a button below — I'll ping you here before each one, and at your end-of-day time I'll check in."
         );
+        await context.sendActivity(MessageFactory.attachment(menuCard("Quick actions:")));
       }
       await next();
     });
@@ -228,7 +231,11 @@ class ReminderBot extends TeamsActivityHandler {
         const rest = raw.slice(raw.toLowerCase().indexOf(' ') + 1).trim();
         await this._addFromCommand(context, oid, rest);
       } else if (raw) {
-        await context.sendActivity("Try **/add 5pm Send report**, **/list**, **/done report**, or **/help**. Or open the Reminders tab.");
+        // Free-text fallback: show the action card so non-technical users
+        // don't need to know slash commands exist.
+        await context.sendActivity(MessageFactory.attachment(
+          menuCard("I didn't catch a command in that. Pick something below, or open the **Reminders** tab.")
+        ));
       }
       await next();
     });
@@ -302,6 +309,23 @@ class ReminderBot extends TeamsActivityHandler {
       user.eodSnoozedUntil = Date.now() + 15 * 60 * 1000;
       await store.upsertUser(oid, user);
       await context.sendActivity("OK — I'll nudge you again in 15 min.");
+    } else if (data.action === 'menuAdd') {
+      await context.sendActivity(
+        "Type your reminder here and I'll create it. Examples:\n" +
+        "* `Send report at 5pm`\n" +
+        "* `Review proposal tomorrow 10am`\n" +
+        "* `Standup mon 9am`\n\n" +
+        "Or open the **Reminders** tab and use the form at the top."
+      );
+    } else if (data.action === 'menuList') {
+      await this._listOpen(context, oid);
+    } else if (data.action === 'menuDone') {
+      await context.sendActivity(
+        "Tell me what to close. Type `done` followed by a word or two from the reminder. " +
+        "For example: `done report` will close the next reminder whose title or notes contain \"report\"."
+      );
+    } else if (data.action === 'menuHelp') {
+      await this._sendHelp(context);
     }
   }
 
@@ -348,18 +372,15 @@ class ReminderBot extends TeamsActivityHandler {
   }
 
   async _sendHelp(context) {
-    await context.sendActivity(
-      "**Day Reminders commands**\n" +
-      "* **/add** [time] [date] [#tag] *title* (e.g. `/add 5pm tomorrow #work Send weekly report`)\n" +
-      "  Date can be `today`, `tomorrow`, a weekday (`mon`, `fri`...), `6/20`, or `2026-06-20`. Time and date can appear in either order.\n" +
-      "* **/list** to see what's open today\n" +
-      "* **/done** *substring* to mark a matching item done (matches title, tags, client, or notes; e.g. `/done report`)\n" +
-      "* **/help** to see this again\n\n" +
-      "**On the proactive card**: Mark done, Snooze 15m / 1h / Tomorrow / +3 days / Next Mon.\n\n" +
-      "**Recurring**: open a reminder's *⋯ options* in the tab and set *Repeat* to Daily, Weekdays, or Weekly. Marking done advances to the next occurrence — recurring reminders never become overdue.\n\n" +
-      "**Quiet hours**: in *Settings* set a quiet window (e.g. 20:00 to 07:00). I'll skip proactive cards in that window and fire any due reminders right after it ends.\n\n" +
-      "Or use the **Reminders** tab in this app for clicking instead of typing."
-    );
+    await context.sendActivity(MessageFactory.attachment(
+      menuCard(
+        "Most things live in the **Reminders** tab — open it any time. From here in chat you can also tap a button below, or type:\n" +
+        "* a reminder like `Send report at 5pm` (I'll create it)\n" +
+        "* `list` to see what's open\n" +
+        "* `done report` to mark something done\n\n" +
+        "When a reminder fires, the card has *Mark done* + snooze buttons (15m / 1h / Tomorrow / +3 days / Next Mon)."
+      )
+    ));
   }
 
   async _listOpen(context, oid) {

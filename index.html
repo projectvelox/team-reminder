@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Day Reminders</title>
-  <link rel="stylesheet" href="styles.css?v=1.5.0" />
+  <link rel="stylesheet" href="styles.css?v=1.5.1" />
   <script src="https://res.cdn.office.net/teams-js/2.24.0/js/MicrosoftTeams.min.js"></script>
 </head>
 <body data-theme="default">
@@ -38,11 +38,11 @@
         <div>
           <h3>Welcome to Day Reminders</h3>
           <ol>
-            <li>Type a task above and press <strong>Add</strong>. Optional: pick a date, time, and client.</li>
-            <li>Set a <strong>Client</strong> to track which engagement this is for. Autocompletes from your past clients; shows as a chip on each row and in the proactive card.</li>
-            <li>Click <strong>+ Details</strong> to add notes (links, context, sub-tasks) below the title.</li>
-            <li>Add <code>#tags</code> in the title (e.g. <code>Send report #work</code>) to group your day.</li>
-            <li>Open the <strong>Chat</strong> tab to get proactive nudges in Teams; type <code>/help</code> there for shortcuts.</li>
+            <li>Type a task in the box above and press <strong>Add</strong>. Pick a date, time, client, and tags from the boxes next to it.</li>
+            <li>Set a <strong>Client</strong> for engagements you bill — the field autocompletes from past ones and shows on every reminder.</li>
+            <li>Use the <strong>Tags</strong> picker to group related work (work, personal, urgent…). Tags autocomplete from ones you've used before.</li>
+            <li>Click <strong>+ Notes</strong> below to attach context, links, or a checklist of sub-steps.</li>
+            <li>Open the <strong>Chat</strong> tab to get a ping before each reminder. The bot shows buttons — no need to remember any commands.</li>
           </ol>
         </div>
         <button id="dismissOnboarding" class="dismiss" type="button" aria-label="Dismiss welcome">&times;</button>
@@ -51,17 +51,22 @@
       <section class="card">
         <form id="addForm" autocomplete="off">
           <div class="add-row">
-            <input id="title" type="text" placeholder="What do you need to remember? (try #tags inline, e.g. Send report #work)" aria-label="Reminder text. Press slash anywhere to focus this field." required />
+            <input id="title" type="text" placeholder="What do you need to remember?" aria-label="Reminder text. Press slash anywhere to focus this field." required />
             <input id="client" type="text" list="clientList" placeholder="Client (optional)" maxlength="100" autocomplete="off" title="Client (e.g. Citadel, NAVCo). Type to autocomplete from your past clients." aria-label="Client" />
             <input id="dueDate" type="date" title="Due date (default today)" aria-label="Due date, defaults to today" />
             <input id="time" type="time" title="Optional time" aria-label="Optional time" />
             <button type="submit" class="btn primary">Add</button>
           </div>
           <datalist id="clientList"></datalist>
+          <datalist id="tagList"></datalist>
+          <div id="addTagPicker" class="tag-picker">
+            <div id="addTagChips" class="tag-picker-chips" aria-label="Selected tags"></div>
+            <input id="addTagInput" type="text" list="tagList" placeholder="Add tag (e.g. work, urgent)" maxlength="32" autocomplete="off" aria-label="Add tag" />
+          </div>
           <div class="add-extras">
-            <button id="detailsToggle" type="button" class="btn ghost small details-toggle" aria-expanded="false" aria-controls="description">+ Details</button>
+            <button id="detailsToggle" type="button" class="btn ghost small details-toggle" aria-expanded="false" aria-controls="description">+ Notes</button>
             <button id="openTemplates" type="button" class="btn ghost small" title="Pick from common reminder templates">+ Templates</button>
-            <textarea id="description" class="description-input" maxlength="2000" placeholder="Optional details: what is this for, links, context, sub-tasks..." rows="3" hidden></textarea>
+            <textarea id="description" class="description-input" maxlength="2000" placeholder="Optional notes: what is this for, links, context..." rows="3" hidden></textarea>
           </div>
         </form>
         <p class="hint" id="permHint" hidden></p>
@@ -69,8 +74,8 @@
 
       <div id="filterPills" class="filter-pills" role="group" aria-label="Quick filters">
         <button type="button" class="filter-pill" data-quick="all" aria-pressed="true">All</button>
-        <button type="button" class="filter-pill" data-quick="timed" aria-pressed="false" title="Open reminders with a time set">&#9200; Timed</button>
-        <button type="button" class="filter-pill" data-quick="anytime" aria-pressed="false" title="Open reminders with no time">&#9711; Anytime</button>
+        <button type="button" class="filter-pill" data-quick="timed" aria-pressed="false" title="Open reminders with a time set">&#9200; Scheduled</button>
+        <button type="button" class="filter-pill" data-quick="anytime" aria-pressed="false" title="Open reminders with no time set">&#9711; Anytime</button>
         <button type="button" class="filter-pill" data-quick="high" aria-pressed="false" title="High priority only">&#9733; Priority</button>
         <button type="button" class="filter-pill" data-quick="done" aria-pressed="false" title="Completed reminders only">&#10003; Done</button>
       </div>
@@ -96,12 +101,13 @@
         <details id="guideDetails" class="guide-details" open>
           <summary class="guide-title">Quick guide</summary>
           <ul class="guide-list">
-          <li><strong>Tags inline:</strong> type <code>#work</code> or <code>#urgent</code> right in the title, e.g. <code>Send report #work</code>. Click any <code>#chip</code> on a row to filter; Esc clears.</li>
+          <li><strong>Tags:</strong> use the <em>Tags</em> picker below the add row. Type and press Enter to add a chip; autocompletes from past tags. Click any tag chip on a row to filter; Esc clears.</li>
           <li><strong>Client:</strong> set a client per reminder; autocompletes from past ones. Click the client chip on a row to filter to it; click again to clear.</li>
-          <li><strong>Auto-roll:</strong> undone reminders carry forward to today (up to 30 days) with an <em>overdue Nd</em> badge.</li>
-          <li><strong>Edit inline:</strong> click a title, date, time, or description on any row. Enter saves, Esc cancels.</li>
-          <li><strong>Reorder:</strong> drag the <span class="kbd">☰</span> handle (works within Anytime today, tag, and priority sections).</li>
-          <li><strong>Per-row options:</strong> click <span class="kbd">⋯</span> on a row for details, custom lead time, or to move to tomorrow.</li>
+          <li><strong>Checklist:</strong> open the <span class="kbd">⋯</span> menu on a row to add sub-tasks. Each row with sub-tasks shows a "2/5" chip; expand it on the row to tick items off without opening the dialog.</li>
+          <li><strong>Repeat:</strong> in the <span class="kbd">⋯</span> menu, set <em>Repeat</em> to Daily, Weekdays, or Weekly. Marking done advances to the next occurrence — recurring items never go overdue.</li>
+          <li><strong>Auto-roll:</strong> undone one-off reminders carry forward to today (up to 30 days) with an <em>overdue Nd</em> badge.</li>
+          <li><strong>Edit inline:</strong> click a title, date, time, or notes on any row to change it. Enter saves, Esc cancels.</li>
+          <li><strong>Reorder:</strong> drag the <span class="kbd">☰</span> handle (within Anytime today, tag, and priority sections).</li>
           <li><strong>Shortcuts:</strong> <code>/</code> add, <code>f</code> search, <code>g</code> group, <code>v</code> view, <code>?</code> toggle this guide, <code>Esc</code> clear filters.</li>
           </ul>
         </details>
@@ -120,8 +126,21 @@
       <p class="hint">The bot will send an "Are you done?" card to your chat at this time on workdays.</p>
 
       <label class="row">
-        <span>Remind me this many minutes before a task</span>
-        <input id="setLeadMinutes" type="number" min="0" max="240" step="1" aria-label="Lead time in minutes" required />
+        <span>How long before a task should I remind you?</span>
+        <select id="setLeadPreset" aria-label="Default lead time">
+          <option value="0">Right at the time</option>
+          <option value="5">5 minutes before</option>
+          <option value="10">10 minutes before</option>
+          <option value="15">15 minutes before</option>
+          <option value="30">30 minutes before</option>
+          <option value="60">1 hour before</option>
+          <option value="120">2 hours before</option>
+          <option value="custom">Custom…</option>
+        </select>
+      </label>
+      <label class="row lead-custom-row" id="setLeadCustomRow" hidden>
+        <span>Custom (minutes)</span>
+        <input id="setLeadMinutes" type="number" min="0" max="240" step="1" aria-label="Custom lead time in minutes" />
       </label>
 
       <label class="row checkbox">
@@ -166,6 +185,16 @@
     <form method="dialog">
       <h2>What's new</h2>
       <ul class="changelog">
+        <li><strong>v1.5.1</strong> — non-developer friendliness pass
+          <ul>
+            <li><strong>Checklist (sub-tasks)</strong>: a reminder can now hold a list of sub-steps with real checkboxes. Open the <span class="kbd">⋯</span> menu, type each sub-task and press Enter. Each row with sub-tasks gets a "2/5" chip and a chevron to expand the checklist inline — tick boxes without opening a dialog.</li>
+            <li><strong>Tag picker</strong>: the add form now has a proper Tags box next to Client. Type and Enter to add a chip; autocompletes from your past tags. Typing <code>#tag</code> inside the title still works for power users.</li>
+            <li><strong>Lead time as a dropdown</strong>: "Right at the time / 5 / 10 / 15 / 30 min / 1 hr / 2 hr / Custom" instead of a number field. Applies to both your default in Settings and the per-reminder override.</li>
+            <li><strong>Bot replies with buttons</strong>: when you message the bot freely or open <code>/help</code>, you get an action card (<em>Add a reminder</em>, <em>What's on my list?</em>, <em>Mark something done</em>, <em>Show me how</em>) instead of a wall of slash-command syntax.</li>
+            <li><strong>Cleaner templates</strong>: built-in templates no longer have <code>#work</code> visible in the title — the tag shows as a chip below the name, matching how your own reminders look.</li>
+            <li><strong>Smaller copy fixes</strong>: <em>Timed</em> filter pill is now <em>Scheduled</em>; <em>+ Details</em> is now <em>+ Notes</em>; the empty-list screen shows clean example reminders without hash-tag syntax.</li>
+          </ul>
+        </li>
         <li><strong>v1.5.0</strong> — usability bundle (QOL audit)
           <ul>
             <li><strong>Search now covers your notes</strong>: typing in the search box matches title, tags, client, AND description. Same for the bot's <code>/done substring</code> command.</li>
@@ -308,6 +337,14 @@
         <input id="rowClient" type="text" list="clientList" maxlength="100" placeholder="Client (blank to clear)" autocomplete="off" aria-label="Client" />
       </label>
 
+      <div class="row">
+        <span>Tags (optional)</span>
+        <div id="rowTagPicker" class="tag-picker">
+          <div id="rowTagChips" class="tag-picker-chips" aria-label="Selected tags"></div>
+          <input id="rowTagInput" type="text" list="tagList" placeholder="Add tag" maxlength="32" autocomplete="off" aria-label="Add tag" />
+        </div>
+      </div>
+
       <label class="row">
         <span>Repeat</span>
         <select id="rowRepeat" aria-label="Repeat schedule">
@@ -320,15 +357,37 @@
       <p class="hint">Recurring reminders auto-advance to the next occurrence when you mark done. They never become overdue.</p>
 
       <label class="row">
-        <span>Custom lead time (minutes)</span>
-        <input id="rowLeadMinutes" type="number" min="0" max="240" step="1" placeholder="Use default" aria-label="Custom lead time in minutes" />
+        <span>How long before to remind me</span>
+        <select id="rowLeadPreset" aria-label="Lead time for this reminder">
+          <option value="">Use my default from Settings</option>
+          <option value="0">Right at the time</option>
+          <option value="5">5 minutes before</option>
+          <option value="10">10 minutes before</option>
+          <option value="15">15 minutes before</option>
+          <option value="30">30 minutes before</option>
+          <option value="60">1 hour before</option>
+          <option value="120">2 hours before</option>
+          <option value="custom">Custom…</option>
+        </select>
       </label>
-      <p class="hint">Override how many minutes before the time you want to be reminded. Leave blank to use your default from Settings.</p>
+      <label class="row lead-custom-row" id="rowLeadCustomRow" hidden>
+        <span>Custom (minutes)</span>
+        <input id="rowLeadMinutes" type="number" min="0" max="240" step="1" placeholder="0–240" aria-label="Custom lead time in minutes" />
+      </label>
 
       <label class="row" style="grid-template-columns: 1fr;">
-        <span>Details (optional)</span>
-        <textarea id="rowDescription" maxlength="2000" rows="3" placeholder="Notes, links, sub-tasks..." aria-label="Reminder details"></textarea>
+        <span>Notes (optional)</span>
+        <textarea id="rowDescription" maxlength="2000" rows="3" placeholder="Notes, links, context..." aria-label="Reminder notes"></textarea>
       </label>
+
+      <div class="row checklist-row">
+        <span>Checklist (optional)</span>
+        <div id="rowSubtasks" class="subtask-editor"></div>
+        <div class="subtask-add-row">
+          <input id="rowSubtaskNew" type="text" maxlength="500" placeholder="Add a sub-task and press Enter" aria-label="New sub-task" />
+          <button type="button" id="rowSubtaskAdd" class="btn ghost small">Add</button>
+        </div>
+      </div>
 
       <div class="dialog-actions">
         <button type="button" id="rowOptionsDone" class="btn ghost row-done-toggle">Mark done</button>
@@ -360,6 +419,6 @@
     <a class="link" href="https://github.com/projectvelox/team-reminder/issues" target="_blank" rel="noopener">Report an issue</a>
   </footer>
 
-  <script src="app.js?v=1.5.0"></script>
+  <script src="app.js?v=1.5.1"></script>
 </body>
 </html>

@@ -499,6 +499,7 @@ button:focus-visible, .link:focus-visible, .tag-chip:focus-visible, select:focus
   color: var(--text);
 }
 .empty-hero .example:hover { background: var(--surface); border-color: var(--accent); }
+.empty-hero .empty-templates-btn { margin-top: 14px; }
 
 .list li { position: relative; }
 
@@ -898,6 +899,58 @@ button:focus-visible, .link:focus-visible, .tag-chip:focus-visible, select:focus
 
 /* ===== v1.4 — due date, description, overdue rollover ===== */
 
+/* tag picker (add form + row options dialog) */
+.tag-picker {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-top: 8px;
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface);
+  min-height: 36px;
+}
+.tag-picker:focus-within { border-color: var(--accent); }
+.tag-picker-chips { display: flex; flex-wrap: wrap; gap: 4px; }
+.tag-picker input {
+  flex: 1;
+  min-width: 140px;
+  border: none;
+  padding: 4px 0;
+  background: transparent;
+  font: inherit;
+  color: var(--text);
+}
+.tag-picker input:focus { outline: none; }
+.picker-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 2px 4px 2px 8px;
+  border-radius: 999px;
+  color: #fff;
+}
+.picker-chip-x {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  border: none;
+  background: rgba(0,0,0,.18);
+  color: inherit;
+  font-size: 12px;
+  line-height: 1;
+  border-radius: 50%;
+  cursor: pointer;
+  padding: 0;
+}
+.picker-chip-x:hover { background: rgba(0,0,0,.32); }
+
 /* details toggle + description textarea under the add form */
 .add-extras {
   display: flex;
@@ -1013,6 +1066,102 @@ button:focus-visible, .link:focus-visible, .tag-chip:focus-visible, select:focus
   color: var(--muted);
   letter-spacing: .02em;
 }
+.subtask-chip {
+  display: inline-block;
+  font-size: 10px;
+  font-weight: 600;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  color: var(--muted);
+  letter-spacing: .02em;
+}
+.subtask-chip.complete {
+  background: #1a7f37;
+  color: #fff;
+  border-color: #1a7f37;
+}
+
+/* inline subtask block under a row */
+.subtask-block {
+  grid-column: 1 / -1;
+  margin: 0;
+  font-size: 12px;
+}
+.subtask-block > summary {
+  cursor: pointer;
+  padding: 4px 0;
+  color: var(--muted);
+  list-style: none;
+  user-select: none;
+}
+.subtask-block > summary::-webkit-details-marker { display: none; }
+.subtask-block > summary::before {
+  content: "▸ ";
+  display: inline-block;
+  width: 12px;
+  font-size: 10px;
+  transition: transform 120ms ease;
+}
+.subtask-block[open] > summary::before { content: "▾ "; }
+.subtask-block > summary:hover { color: var(--text); }
+.subtask-list {
+  list-style: none;
+  padding: 4px 0 4px 16px;
+  margin: 0;
+  display: grid;
+  gap: 4px;
+}
+.subtask-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.subtask-item.done .subtask-text {
+  text-decoration: line-through;
+  color: var(--muted);
+}
+.subtask-text {
+  flex: 1;
+  word-break: break-word;
+}
+
+/* row options dialog: checklist editor */
+.checklist-row { display: grid; grid-template-columns: 1fr; gap: 8px; }
+.subtask-editor {
+  display: grid;
+  gap: 6px;
+}
+.subtask-edit-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.subtask-text-input {
+  flex: 1;
+  font-size: 13px;
+  padding: 6px 8px;
+}
+.subtask-delete {
+  width: 24px;
+  height: 24px;
+  border-radius: 4px;
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 16px;
+  line-height: 1;
+  padding: 0;
+}
+.subtask-delete:hover { background: var(--bg); color: var(--danger); }
+.subtask-add-row {
+  display: flex;
+  gap: 6px;
+  margin-top: 4px;
+}
+.subtask-add-row input { flex: 1; }
 
 /* compact card grid: similar treatment */
 .gcard { grid-template-rows: auto auto auto; }
