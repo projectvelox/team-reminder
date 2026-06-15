@@ -32,6 +32,7 @@
   let calCursor = startOfMonth(new Date());
   let editingId = null; // id of license being edited in licDialog; null = new
   let renewTargetId = null;
+  let importRows = []; // staged rows during CSV import
 
   // localStorage keys (tab-only UI state)
   const LS_VIEW = "lic.view";
@@ -653,6 +654,22 @@
     $("addLicenseBtn").addEventListener("click", openAddDialog);
     $("licEmptyAdd").addEventListener("click", openAddDialog);
 
+    // CSV import
+    $("importCsvBtn").addEventListener("click", openImportDialog);
+    $("licEmptyImport").addEventListener("click", openImportDialog);
+    $("importFile").addEventListener("change", (e) => {
+      const f = e.target.files && e.target.files[0];
+      if (f) handleImportFile(f);
+    });
+    $("importCancelBtn").addEventListener("click", () => {
+      $("importDialog").close();
+      importRows = [];
+    });
+    $("importConfirmBtn").addEventListener("click", confirmImport);
+    $("importBulkProductLine").addEventListener("input", () => {
+      // Just visual; bulk PL is read at confirm time.
+    });
+
     // Add/edit dialog buttons
     $("licSaveBtn").addEventListener("click", saveLicense);
     $("licDeleteBtn").addEventListener("click", deleteLicense);
@@ -698,6 +715,359 @@
       calCursor = new Date(calCursor.getFullYear() + 1, calCursor.getMonth(), 1);
       render();
     });
+  }
+
+  // ---------- CSV import ----------
+
+  // Quote-aware CSV row splitter. Handles "Beyond Innovations, Inc" type embedded commas
+  // and "" escaped quotes inside quoted cells.
+  function parseCsv(text) {
+    const rows = [];
+    let row = [];
+    let cell = "";
+    let inQuotes = false;
+    for (let i = 0; i < text.length; i++) {
+      const c = text[i];
+      if (inQuotes) {
+        if (c === '"' && text[i + 1] === '"') { cell += '"'; i++; }
+        else if (c === '"') { inQuotes = false; }
+        else { cell += c; }
+      } else {
+        if (c === '"') inQuotes = true;
+        else if (c === ",") { row.push(cell); cell = ""; }
+        else if (c === "\n" || c === "\r") {
+          if (c === "\r" && text[i + 1] === "\n") i++;
+          row.push(cell); cell = "";
+          rows.push(row); row = [];
+        } else { cell += c; }
+      }
+    }
+    if (cell !== "" || row.length) { row.push(cell); rows.push(row); }
+    return rows.map((r) => r.map((c) => c.trim()));
+  }
+
+  // Accept ISO (YYYY-MM-DD), 17-Jul-26 / 17-Jul-2026, and M/D/YYYY or M/D/YY.
+  function parseDateMulti(s) {
+    if (!s) return null;
+    s = String(s).trim();
+    if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+    const months = ["jan","feb","mar","apr","may","jun","jul","aug","sep","oct","nov","dec"];
+    let m = /^(\d{1,2})[\s\-\/]+([A-Za-z]{3,9})[\s\-\/]+(\d{2,4})$/.exec(s);
+    if (m) {
+      const day = parseInt(m[1], 10);
+      const mon = months.indexOf(m[2].slice(0, 3).toLowerCase());
+      if (mon === -1) return null;
+      let year = parseInt(m[3], 10);
+      if (year < 100) year += 2000;
+      return `${year}-${String(mon + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+    }
+    m = /^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})$/.exec(s);
+    if (m) {
+      const mon = parseInt(m[1], 10);
+      const day = parseInt(m[2], 10);
+      let year = parseInt(m[3], 10);
+      if (year < 100) year += 2000;
+      if (mon < 1 || mon > 12 || day < 1 || day > 31) return null;
+      return `${year}-${String(mon).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+    }
+    return null;
+  }
+
+  // Find the row index that looks like the header (has cells matching multiple
+  // expected column keywords). Returns -1 if none matches.
+  function findHeaderRow(rows) {
+    for (let i = 0; i < rows.length; i++) {
+      const r = rows[i].map((c) => c.toLowerCase());
+      let hits = 0;
+      for (const c of r) {
+        if (/customer|client/.test(c)) hits++;
+        if (/license|product/.test(c)) hits++;
+        if (/expir|due\s*date|date/.test(c)) hits++;
+        if (/accountable|owner|assigned/.test(c)) hits++;
+      }
+      if (hits >= 3) return i;
+    }
+    return -1;
+  }
+
+  function mapColumns(header) {
+    const idx = { customer: -1, licenseType: -1, userCount: -1, expiryDate: -1, ownerName: -1, notes: -1, productLine: -1 };
+    header.forEach((c, i) => {
+      const lc = c.toLowerCase().trim();
+      if (idx.customer === -1 && /customer|client/.test(lc)) idx.customer = i;
+      else if (idx.licenseType === -1 && /license\s*type|product\s*name/.test(lc)) idx.licenseType = i;
+      else if (idx.userCount === -1 && /(num\.?\s*of\s*users|users|seats|qty|quantity|count)/.test(lc)) idx.userCount = i;
+      else if (idx.expiryDate === -1 && /(expir|renewal\s*date|due\s*date)/.test(lc)) idx.expiryDate = i;
+      else if (idx.ownerName === -1 && /(accountable|owner|assigned\s*to)/.test(lc)) idx.ownerName = i;
+      else if (idx.notes === -1 && /(notes?|remarks?|comments?)/.test(lc)) idx.notes = i;
+      else if (idx.productLine === -1 && /(product\s*line|category|module)/.test(lc)) idx.productLine = i;
+    });
+    return idx;
+  }
+
+  // Try to find a member by Accountable-name cell. Auto-match strategies:
+  // 1. Exact (case-insensitive) match on displayName.
+  // 2. Exact match on first token of displayName (e.g. "Dona" matches "Dona Apolonio") — only
+  //    if exactly one member matches that first token.
+  // 3. Substring contains (case-insensitive) — only if exactly one match.
+  function matchOwner(rawName) {
+    if (!rawName) return null;
+    const n = rawName.trim().toLowerCase();
+    if (!n) return null;
+    const exact = members.find((m) => (m.displayName || "").trim().toLowerCase() === n);
+    if (exact) return exact;
+    const firstTok = members.filter((m) => {
+      const dn = m.displayName || "";
+      const first = dn.split(/\s+/)[0] || "";
+      return first.toLowerCase() === n;
+    });
+    if (firstTok.length === 1) return firstTok[0];
+    const sub = members.filter((m) => (m.displayName || "").toLowerCase().includes(n));
+    if (sub.length === 1) return sub[0];
+    return null;
+  }
+
+  function classifyRow(row) {
+    if (!row.customer || !row.licenseType) return { status: "invalid", reason: "missing customer or license type" };
+    if (!row.expiryDate) return { status: "invalid", reason: "missing or invalid expiry date" };
+    // Duplicate detection: same customer + licenseType + expiryDate as an existing license.
+    const dup = licenses.find((l) =>
+      l.customer.trim().toLowerCase() === row.customer.trim().toLowerCase() &&
+      l.licenseType.trim().toLowerCase() === row.licenseType.trim().toLowerCase() &&
+      l.expiryDate === row.expiryDate
+    );
+    if (dup) return { status: "duplicate", reason: "already in licenses" };
+    if (!row.ownerOid) return { status: "needsOwner", reason: "owner not matched" };
+    return { status: "ready" };
+  }
+
+  function openImportDialog() {
+    importRows = [];
+    $("importFile").value = "";
+    $("importStep1").hidden = false;
+    $("importStep2").hidden = true;
+    $("importBulkProductLine").value = "";
+    $("importTbody").innerHTML = "";
+    $("importStats").textContent = "";
+    $("importConfirmBtn").disabled = true;
+    $("importConfirmBtn").textContent = "Import 0 licenses";
+    $("importDialog").showModal();
+  }
+
+  async function handleImportFile(file) {
+    if (!file) return;
+    const text = await file.text();
+    const rawRows = parseCsv(text).filter((r) => r.some((c) => c && c.trim()));
+    if (!rawRows.length) { toast("CSV is empty"); return; }
+
+    const headerIdx = findHeaderRow(rawRows);
+    if (headerIdx === -1) {
+      toast("Couldn't find a header row with Customer / License type / Expiry");
+      return;
+    }
+    const header = rawRows[headerIdx];
+    const cols = mapColumns(header);
+    if (cols.customer === -1 || cols.licenseType === -1 || cols.expiryDate === -1) {
+      toast("CSV needs Customer, License type, and Expiry date columns");
+      return;
+    }
+
+    importRows = [];
+    for (let i = headerIdx + 1; i < rawRows.length; i++) {
+      const r = rawRows[i];
+      const customer = (r[cols.customer] || "").trim();
+      const licenseType = (r[cols.licenseType] || "").trim();
+      // Skip totals/section rows: missing both customer AND licenseType.
+      if (!customer && !licenseType) continue;
+      // Skip rows that look like TOTAL summaries.
+      if (/^total\b/i.test(customer)) continue;
+
+      const expiryRaw = cols.expiryDate >= 0 ? (r[cols.expiryDate] || "") : "";
+      const expiryDate = parseDateMulti(expiryRaw);
+      const ownerRaw = cols.ownerName >= 0 ? (r[cols.ownerName] || "").trim() : "";
+      const owner = matchOwner(ownerRaw);
+      const userCountRaw = cols.userCount >= 0 ? (r[cols.userCount] || "").replace(/,/g, "") : "";
+      const userCount = userCountRaw ? Math.max(0, parseInt(userCountRaw, 10) || 0) : 0;
+      const notes = cols.notes >= 0 ? (r[cols.notes] || "").trim() : "";
+      const productLine = cols.productLine >= 0 ? (r[cols.productLine] || "").trim() : "";
+
+      const row = {
+        customer,
+        licenseType,
+        userCount,
+        expiryDate,
+        ownerOid: owner ? owner.oid : null,
+        ownerName: owner ? owner.displayName : ownerRaw || null,
+        ownerRawName: ownerRaw || null,
+        notes: notes || null,
+        productLine: productLine || null,
+      };
+      const cls = classifyRow(row);
+      row.status = cls.status;
+      row.reason = cls.reason || null;
+      importRows.push(row);
+    }
+
+    if (!importRows.length) {
+      toast("No data rows found in CSV");
+      return;
+    }
+    $("importStep1").hidden = true;
+    $("importStep2").hidden = false;
+    renderImportPreview();
+  }
+
+  function renderImportPreview() {
+    const tbody = $("importTbody");
+    tbody.innerHTML = "";
+    importRows.forEach((row, idx) => {
+      const tr = document.createElement("tr");
+      tr.dataset.idx = idx;
+      tr.classList.add(`status-${row.status}`);
+
+      const tdStatus = document.createElement("td");
+      tdStatus.className = "status-cell";
+      tdStatus.title = row.reason || "";
+      tdStatus.textContent = row.status === "ready" ? "✓" :
+                             row.status === "needsOwner" ? "⚠" :
+                             row.status === "duplicate" ? "↻" :
+                             "✗";
+      tr.appendChild(tdStatus);
+
+      const tdCust = document.createElement("td");
+      tdCust.textContent = row.customer;
+      tr.appendChild(tdCust);
+
+      const tdType = document.createElement("td");
+      tdType.textContent = row.licenseType;
+      tr.appendChild(tdType);
+
+      const tdUsers = document.createElement("td");
+      tdUsers.className = "num";
+      tdUsers.textContent = row.userCount;
+      tr.appendChild(tdUsers);
+
+      const tdExp = document.createElement("td");
+      tdExp.textContent = row.expiryDate ? fmtShortDate(row.expiryDate) : "(invalid date)";
+      tr.appendChild(tdExp);
+
+      const tdOwner = document.createElement("td");
+      if (row.status === "needsOwner" || (!row.ownerOid && row.status !== "invalid")) {
+        const sel = document.createElement("select");
+        sel.innerHTML = '<option value="">Pick owner…</option>';
+        members.forEach((m) => {
+          const opt = document.createElement("option");
+          opt.value = m.oid;
+          opt.textContent = m.displayName || m.upn || m.oid.slice(0, 8);
+          sel.appendChild(opt);
+        });
+        sel.addEventListener("change", () => {
+          const oid = sel.value;
+          const owner = members.find((m) => m.oid === oid);
+          row.ownerOid = oid || null;
+          row.ownerName = owner ? owner.displayName : null;
+          const cls = classifyRow(row);
+          row.status = cls.status;
+          row.reason = cls.reason || null;
+          renderImportPreview();
+          updateImportStats();
+        });
+        if (row.ownerRawName) {
+          const hint = document.createElement("div");
+          hint.className = "owner-hint";
+          hint.textContent = `from CSV: "${row.ownerRawName}"`;
+          tdOwner.appendChild(sel);
+          tdOwner.appendChild(hint);
+        } else {
+          tdOwner.appendChild(sel);
+        }
+      } else if (row.ownerOid) {
+        const pill = document.createElement("span");
+        pill.className = "owner-pill small";
+        pill.style.background = ownerColor(row.ownerOid);
+        pill.textContent = row.ownerName || "";
+        tdOwner.appendChild(pill);
+      } else {
+        tdOwner.textContent = row.ownerRawName || "—";
+      }
+      tr.appendChild(tdOwner);
+
+      const tdNotes = document.createElement("td");
+      tdNotes.textContent = row.notes ? (row.notes.length > 40 ? row.notes.slice(0, 39) + "…" : row.notes) : "";
+      tr.appendChild(tdNotes);
+
+      const tdRemove = document.createElement("td");
+      const x = document.createElement("button");
+      x.type = "button";
+      x.className = "btn ghost small";
+      x.textContent = "×";
+      x.title = "Drop this row from import";
+      x.addEventListener("click", () => {
+        importRows.splice(idx, 1);
+        renderImportPreview();
+        updateImportStats();
+      });
+      tdRemove.appendChild(x);
+      tr.appendChild(tdRemove);
+
+      tbody.appendChild(tr);
+    });
+    updateImportStats();
+  }
+
+  function updateImportStats() {
+    const ready = importRows.filter((r) => r.status === "ready").length;
+    const needsOwner = importRows.filter((r) => r.status === "needsOwner").length;
+    const invalid = importRows.filter((r) => r.status === "invalid").length;
+    const dup = importRows.filter((r) => r.status === "duplicate").length;
+    const parts = [];
+    if (ready) parts.push(`${ready} ready`);
+    if (needsOwner) parts.push(`${needsOwner} need owner`);
+    if (dup) parts.push(`${dup} duplicate`);
+    if (invalid) parts.push(`${invalid} invalid`);
+    $("importStats").textContent = parts.join(" · ");
+    const btn = $("importConfirmBtn");
+    btn.disabled = ready === 0;
+    btn.textContent = ready === 1 ? `Import 1 license` : `Import ${ready} licenses`;
+  }
+
+  async function confirmImport() {
+    const bulkPL = $("importBulkProductLine").value.trim() || null;
+    const toImport = importRows.filter((r) => r.status === "ready");
+    if (!toImport.length) return;
+    const btn = $("importConfirmBtn");
+    btn.disabled = true;
+    btn.textContent = "Importing…";
+    let success = 0;
+    let failed = 0;
+    for (const row of toImport) {
+      try {
+        const payload = {
+          customer: row.customer,
+          licenseType: row.licenseType,
+          userCount: row.userCount,
+          expiryDate: row.expiryDate,
+          ownerOid: row.ownerOid,
+          ownerName: row.ownerName,
+          productLine: bulkPL || row.productLine || null,
+          notes: row.notes,
+        };
+        const { license } = await api("POST", "/licenses", payload);
+        licenses.push(license);
+        success++;
+      } catch (err) {
+        console.error("import row failed", row, err);
+        failed++;
+      }
+    }
+    $("importDialog").close();
+    render();
+    if (failed) {
+      toast(`Imported ${success}, ${failed} failed (check console)`);
+    } else {
+      toast(`Imported ${success} license${success === 1 ? "" : "s"}`);
+    }
+    importRows = [];
   }
 
   // ---------- Teams init + boot ----------

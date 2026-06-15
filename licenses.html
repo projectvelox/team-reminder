@@ -4,8 +4,8 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Day Reminders &mdash; Licenses</title>
-  <link rel="stylesheet" href="styles.css?v=1.7.0" />
-  <link rel="stylesheet" href="licenses.css?v=1.7.0" />
+  <link rel="stylesheet" href="styles.css?v=1.7.1" />
+  <link rel="stylesheet" href="licenses.css?v=1.7.1" />
   <script src="https://res.cdn.office.net/teams-js/2.24.0/js/MicrosoftTeams.min.js"></script>
 </head>
 <body data-theme="default" data-page="licenses">
@@ -20,6 +20,7 @@
         <button type="button" data-view="table" class="view-btn" aria-pressed="true">Table</button>
         <button type="button" data-view="calendar" class="view-btn" aria-pressed="false">Calendar</button>
       </div>
+      <button id="importCsvBtn" class="btn ghost" title="Import licenses from a CSV file">Import CSV</button>
       <button id="addLicenseBtn" class="btn primary">+ Add license</button>
     </div>
   </header>
@@ -70,7 +71,10 @@
         <div id="licEmpty" class="lic-empty" hidden>
           <h2>No licenses yet</h2>
           <p>Track when your customers' Microsoft licenses (and anything else with a renewal date) need to be renewed.</p>
-          <button type="button" class="btn primary" id="licEmptyAdd">+ Add your first license</button>
+          <div class="lic-empty-actions">
+            <button type="button" class="btn primary" id="licEmptyAdd">+ Add your first license</button>
+            <button type="button" class="btn ghost" id="licEmptyImport">Import from CSV</button>
+          </div>
         </div>
       </section>
 
@@ -196,8 +200,54 @@
     </div>
   </dialog>
 
+  <!-- CSV import dialog -->
+  <dialog id="importDialog" class="lic-dialog import-dialog">
+    <h2>Import licenses from CSV</h2>
+    <p class="lic-hint">Pick a CSV file. We'll match columns by name, auto-assign owners by display name, and let you fix any rows that need attention before importing.</p>
+
+    <div id="importStep1">
+      <input id="importFile" type="file" accept=".csv,text/csv" aria-label="CSV file to import" />
+      <p class="lic-hint" style="margin-top: 12px;">
+        Expected columns (any order): <strong>Customer</strong>, <strong>License type</strong>, <strong>Number of users</strong>, <strong>Expiry date</strong>, <strong>Accountable / Owner</strong>, optional <strong>Notes</strong> and <strong>Product line</strong>. Date formats: <code>17-Jul-26</code>, <code>2026-07-17</code>, <code>7/17/2026</code>.
+      </p>
+    </div>
+
+    <div id="importStep2" hidden>
+      <div class="import-controls">
+        <label class="lic-field" style="flex: 1; margin: 0;">
+          <span class="lic-label">Set product line for all rows (optional)</span>
+          <input id="importBulkProductLine" type="text" list="productLineList" placeholder="e.g. M365, BC, BREP" aria-label="Product line applied to every imported row" />
+        </label>
+        <div class="import-stats" id="importStats" aria-live="polite"></div>
+      </div>
+
+      <div class="import-table-wrap">
+        <table class="lic-table import-table" id="importTable">
+          <thead>
+            <tr>
+              <th></th>
+              <th>Customer</th>
+              <th>License type</th>
+              <th>Users</th>
+              <th>Expires</th>
+              <th>Owner</th>
+              <th>Notes</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody id="importTbody"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="lic-dialog-actions">
+      <button type="button" class="btn primary" id="importConfirmBtn" disabled>Import N licenses</button>
+      <button type="button" class="btn ghost" id="importCancelBtn">Cancel</button>
+    </div>
+  </dialog>
+
   <div id="toast" class="toast" hidden></div>
 
-  <script src="licenses.js?v=1.7.0"></script>
+  <script src="licenses.js?v=1.7.1"></script>
 </body>
 </html>

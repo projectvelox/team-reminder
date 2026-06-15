@@ -135,6 +135,7 @@
 }
 .lic-empty h2 { margin: 0 0 8px; }
 .lic-empty p { margin: 0 0 16px; opacity: 0.8; max-width: 480px; margin-left: auto; margin-right: auto; }
+.lic-empty-actions { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; }
 
 /* Calendar (Month) view */
 .lic-cal-nav {
@@ -295,6 +296,67 @@
   border-bottom: 1px solid var(--border, #e4e4e4);
 }
 .lic-day-list li:last-child { border-bottom: none; }
+
+/* CSV import dialog */
+.import-dialog {
+  max-width: 1000px;
+  width: 95vw;
+}
+.import-controls {
+  display: flex;
+  gap: 16px;
+  align-items: flex-end;
+  margin: 16px 0 12px;
+  flex-wrap: wrap;
+}
+.import-stats {
+  font-size: 13px;
+  opacity: 0.9;
+  font-weight: 600;
+}
+.import-table-wrap {
+  max-height: 50vh;
+  overflow: auto;
+  border: 1px solid var(--border, #d1d1d1);
+  border-radius: 8px;
+}
+.import-table { margin: 0; }
+.import-table th, .import-table td {
+  padding: 6px 8px;
+  font-size: 13px;
+}
+.import-table tbody tr { cursor: default; }
+.import-table tbody tr:hover { background: transparent; }
+.import-table tr.status-ready .status-cell { color: #107c10; font-weight: 700; }
+.import-table tr.status-needsOwner .status-cell { color: #d83b01; font-weight: 700; }
+.import-table tr.status-invalid .status-cell { color: #c50f1f; font-weight: 700; }
+.import-table tr.status-invalid td { opacity: 0.55; }
+.import-table tr.status-duplicate .status-cell { color: #8a8886; font-weight: 700; }
+.import-table tr.status-duplicate td { opacity: 0.7; }
+.import-table .owner-hint {
+  font-size: 11px;
+  opacity: 0.7;
+  margin-top: 2px;
+}
+.import-table select {
+  padding: 4px 6px;
+  border: 1px solid var(--border, #d1d1d1);
+  border-radius: 4px;
+  background: var(--card-bg, #fff);
+  color: inherit;
+  font: inherit;
+  min-width: 140px;
+}
+#importFile {
+  padding: 8px;
+  border: 1px dashed var(--border, #d1d1d1);
+  border-radius: 6px;
+  width: 100%;
+  background: var(--card-bg, transparent);
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
 
 /* Toast */
 .toast {
