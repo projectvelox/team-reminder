@@ -334,6 +334,8 @@ input:focus {
   margin: 12px 0;
 }
 .dialog .row.checkbox { grid-template-columns: auto 1fr; }
+.dialog .row-date-wrap { display: inline-flex; gap: 8px; align-items: center; }
+.dialog .row-date-wrap input[type="date"] { min-width: 140px; }
 .dialog-actions {
   display: flex;
   justify-content: flex-end;

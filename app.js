@@ -176,6 +176,9 @@
   const rowOptionsTitle = $("rowOptionsTitle");
   const rowLeadMinutes = $("rowLeadMinutes");
   const rowDescription = $("rowDescription");
+  const rowDueDate = $("rowDueDate");
+  const rowClient = $("rowClient");
+  const rowDueTomorrow = $("rowDueTomorrow");
   const searchInput = $("searchInput");
   const searchClear = $("searchClear");
   const bulkToggleBtn = $("bulkToggle");
@@ -365,6 +368,16 @@
   });
 
   $("rowOptionsCancel").addEventListener("click", () => rowOptionsDialog.close());
+  if (rowDueTomorrow) {
+    rowDueTomorrow.addEventListener("click", () => {
+      const base = new Date(todayPh() + "T00:00:00Z");
+      base.setUTCDate(base.getUTCDate() + 1);
+      const yyyy = base.getUTCFullYear();
+      const mm = String(base.getUTCMonth() + 1).padStart(2, "0");
+      const dd = String(base.getUTCDate()).padStart(2, "0");
+      rowDueDate.value = `${yyyy}-${mm}-${dd}`;
+    });
+  }
   rowOptionsForm.addEventListener("submit", async (e) => {
     e.preventDefault();
     const r = reminders.find((x) => x.id === editingReminderId);
@@ -378,25 +391,41 @@
     }
     const nextDescRaw = rowDescription ? rowDescription.value.trim().slice(0, 2000) : "";
     const nextDesc = nextDescRaw || null;
+    const nextDue = rowDueDate && rowDueDate.value ? rowDueDate.value : (r.dueAt || todayPh());
+    const nextClientRaw = rowClient ? rowClient.value.trim().slice(0, 100) : "";
+    const nextClient = nextClientRaw || null;
     const prevLead = r.leadMinutes;
     const prevDesc = r.description;
+    const prevDue = r.dueAt;
+    const prevRoll = r.rollDays;
+    const prevClient = r.client;
+    const dueInitial = prevDue || todayPh();
     const leadChanged = prevLead !== nextLead;
     const descChanged = (prevDesc || null) !== nextDesc;
+    const dueChanged = nextDue !== dueInitial;
+    const clientChanged = (prevClient || null) !== nextClient;
     r.leadMinutes = nextLead;
     r.description = nextDesc;
+    if (dueChanged) { r.dueAt = nextDue; r.rollDays = 0; }
+    r.client = nextClient;
     rowOptionsDialog.close();
-    if (leadChanged || descChanged) render();
-    if (!leadChanged && !descChanged) return;
+    if (leadChanged || descChanged || dueChanged || clientChanged) render();
+    if (!leadChanged && !descChanged && !dueChanged && !clientChanged) return;
     try {
       const patch = {};
       if (leadChanged) patch.leadMinutes = nextLead;
       if (descChanged) patch.description = nextDesc || "";
+      if (dueChanged) patch.dueAt = nextDue;
+      if (clientChanged) patch.client = nextClient || "";
       const updated = await api("PATCH", `/reminders/${r.id}`, patch);
       replaceLocal(updated.reminder);
       announce("Saved");
     } catch (err) {
       r.leadMinutes = prevLead;
       r.description = prevDesc;
+      r.dueAt = prevDue;
+      r.rollDays = prevRoll;
+      r.client = prevClient;
       render();
       showError("Could not save options", err);
     }
@@ -1348,6 +1377,8 @@
     rowOptionsTitle.textContent = r.title;
     rowLeadMinutes.value = typeof r.leadMinutes === "number" ? String(r.leadMinutes) : "";
     if (rowDescription) rowDescription.value = r.description || "";
+    if (rowDueDate) rowDueDate.value = r.dueAt || todayPh();
+    if (rowClient) rowClient.value = r.client || "";
     openDialog(rowOptionsDialog);
   }
 

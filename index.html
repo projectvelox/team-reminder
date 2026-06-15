@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Day Reminders</title>
-  <link rel="stylesheet" href="styles.css?v=1.4.6" />
+  <link rel="stylesheet" href="styles.css?v=1.4.7" />
   <script src="https://res.cdn.office.net/teams-js/2.24.0/js/MicrosoftTeams.min.js"></script>
 </head>
 <body data-theme="default">
@@ -280,6 +280,19 @@
       <p class="muted" id="rowOptionsTitle" style="margin: 0 0 12px;"></p>
 
       <label class="row">
+        <span>Date</span>
+        <span class="row-date-wrap">
+          <input id="rowDueDate" type="date" aria-label="Reminder date" />
+          <button type="button" id="rowDueTomorrow" class="btn ghost" title="Move to tomorrow">Tomorrow</button>
+        </span>
+      </label>
+
+      <label class="row">
+        <span>Client (optional)</span>
+        <input id="rowClient" type="text" list="clientList" maxlength="100" placeholder="Client (blank to clear)" autocomplete="off" aria-label="Client" />
+      </label>
+
+      <label class="row">
         <span>Custom lead time (minutes)</span>
         <input id="rowLeadMinutes" type="number" min="0" max="240" step="1" placeholder="Use default" aria-label="Custom lead time in minutes" />
       </label>
@@ -343,6 +356,6 @@
     <a class="link" href="https://github.com/projectvelox/team-reminder/issues" target="_blank" rel="noopener">Report an issue</a>
   </footer>
 
-  <script src="app.js?v=1.4.6"></script>
+  <script src="app.js?v=1.4.7"></script>
 </body>
 </html>
