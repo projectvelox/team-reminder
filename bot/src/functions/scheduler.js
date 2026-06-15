@@ -67,6 +67,10 @@ app.timer('scheduler', {
 
 async function processUser(appId, user, ph, context) {
   const defaultLead = user.settings?.leadMinutes ?? 10;
+
+  // 0) once per PH day, roll forward undone past-due reminders (cap at 30 days).
+  await rolloverPastDue(user, ph, context);
+
   const reminders = await store.listReminders(user.oid);
 
   // 1) reminders. Snoozed items fire at their snoozedUntil; otherwise, normal lead-time logic.
@@ -95,8 +99,10 @@ async function processUser(appId, user, ph, context) {
       continue;
     }
 
-    // Normal time-based path
+    // Normal time-based path — only fire on the due date.
     if (!r.time || r.firedAt) continue;
+    const effectiveDueDate = r.dueAt || r.createdDate || ph.date;
+    if (effectiveDueDate !== ph.date) continue;
     const effectiveLead = typeof r.leadMinutes === 'number' ? r.leadMinutes : defaultLead;
     const targetMin = hhmmToMinutes(r.time);
     const fireAtMin = targetMin - effectiveLead;
@@ -136,4 +142,29 @@ async function sendProactive(appId, user, activity) {
   await adapter.continueConversationAsync(appId, user.conversationRef, async (turnContext) => {
     await turnContext.sendActivity(activity);
   });
+}
+
+// Roll any undone past-due reminder forward to today, once per user per PH day.
+// Items more than 30 days past their due date are left alone so a stale backlog
+// doesn't pile into the active list. Each roll bumps rollDays so the UI can
+// show an "overdue N days" badge.
+async function rolloverPastDue(user, ph, context) {
+  if (user.lastRolloverDate === ph.date) return;
+  const today = new Date(ph.date + 'T00:00:00Z');
+  const cap = new Date(today.getTime() - 30 * 24 * 60 * 60 * 1000);
+  const reminders = await store.listReminders(user.oid);
+  for (const r of reminders) {
+    if (r.done) continue;
+    const effectiveDueDate = r.dueAt || r.createdDate;
+    if (!effectiveDueDate || effectiveDueDate >= ph.date) continue;
+    const dueDate = new Date(effectiveDueDate + 'T00:00:00Z');
+    if (dueDate < cap) continue;
+    const daysOld = Math.round((today - dueDate) / (24 * 60 * 60 * 1000));
+    r.dueAt = ph.date;
+    r.rollDays = (r.rollDays || 0) + daysOld;
+    r.firedAt = null;
+    await store.upsertReminder(user.oid, r);
+    context.log(`[scheduler] rolled "${r.title}" from ${effectiveDueDate} to ${ph.date} (+${daysOld} days, total ${r.rollDays})`);
+  }
+  await store.upsertUser(user.oid, { lastRolloverDate: ph.date });
 }

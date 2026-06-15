@@ -42,6 +42,7 @@ async function getUser(oid) {
       settings: entity.settings ? JSON.parse(entity.settings) : { ...DEFAULT_SETTINGS },
       conversationRef: entity.conversationRef ? JSON.parse(entity.conversationRef) : null,
       lastEodDate: entity.lastEodDate || null,
+      lastRolloverDate: entity.lastRolloverDate || null,
       tenantId: entity.tenantId || null,
       serviceUrl: entity.serviceUrl || null,
       displayName: entity.displayName || null,
@@ -52,6 +53,7 @@ async function getUser(oid) {
         settings: { ...DEFAULT_SETTINGS },
         conversationRef: null,
         lastEodDate: null,
+        lastRolloverDate: null,
         tenantId: null,
         serviceUrl: null,
         displayName: null,
@@ -71,6 +73,7 @@ async function upsertUser(oid, patch) {
     settings: JSON.stringify(merged.settings || DEFAULT_SETTINGS),
     conversationRef: merged.conversationRef ? JSON.stringify(merged.conversationRef) : null,
     lastEodDate: merged.lastEodDate || null,
+    lastRolloverDate: merged.lastRolloverDate || null,
     tenantId: merged.tenantId || null,
     serviceUrl: merged.serviceUrl || null,
     displayName: merged.displayName || null,
@@ -90,6 +93,7 @@ async function* iterateUsersWithConversationRefs() {
       settings: e.settings ? JSON.parse(e.settings) : { ...DEFAULT_SETTINGS },
       conversationRef: JSON.parse(e.conversationRef),
       lastEodDate: e.lastEodDate || null,
+      lastRolloverDate: e.lastRolloverDate || null,
       tenantId: e.tenantId || null,
       serviceUrl: e.serviceUrl || null,
     };
@@ -117,6 +121,9 @@ function entityToReminder(e) {
     order: typeof e.order === 'number' ? e.order : null,
     leadMinutes: typeof e.leadMinutes === 'number' ? e.leadMinutes : null,
     snoozedUntil: e.snoozedUntil || null,
+    dueAt: e.dueAt || e.createdDate || null,
+    description: e.description || null,
+    rollDays: typeof e.rollDays === 'number' ? e.rollDays : 0,
   };
 }
 
@@ -157,6 +164,9 @@ async function upsertReminder(oid, r) {
     order: typeof r.order === 'number' ? r.order : null,
     leadMinutes: typeof r.leadMinutes === 'number' ? r.leadMinutes : null,
     snoozedUntil: r.snoozedUntil || null,
+    dueAt: r.dueAt || null,
+    description: r.description || null,
+    rollDays: typeof r.rollDays === 'number' ? r.rollDays : 0,
   }, 'Replace');
 }
 
@@ -171,8 +181,11 @@ async function deleteReminder(oid, id) {
   }
 }
 
-function todayKey(d = new Date()) {
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+const PH_OFFSET_MS = 8 * 60 * 60 * 1000;
+
+function todayKey() {
+  const ph = new Date(Date.now() + PH_OFFSET_MS);
+  return `${ph.getUTCFullYear()}-${String(ph.getUTCMonth() + 1).padStart(2, '0')}-${String(ph.getUTCDate()).padStart(2, '0')}`;
 }
 
 module.exports = {

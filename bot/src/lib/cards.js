@@ -17,6 +17,7 @@ function reminderCard(reminder, leadMinutes) {
         { type: 'TextBlock', text: 'Day Reminder', weight: 'Bolder', size: 'Small', color: 'Accent' },
         { type: 'TextBlock', text: reminder.title, weight: 'Bolder', size: 'Medium', wrap: true },
         { type: 'TextBlock', text: subtitle, isSubtle: true, spacing: 'None' },
+        ...(reminder.description ? [{ type: 'TextBlock', text: reminder.description, wrap: true, spacing: 'Small' }] : []),
       ],
       actions: [
         { type: 'Action.Submit', title: "Mark done", data: { action: 'markDone', reminderId: reminder.id } },

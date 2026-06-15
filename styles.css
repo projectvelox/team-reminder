@@ -139,14 +139,20 @@ body[data-theme="dark"] .error-banner {
 
 .add-row {
   display: grid;
-  grid-template-columns: 1fr 140px auto;
+  grid-template-columns: 1fr 150px 130px auto;
   gap: 8px;
 }
-@media (max-width: 560px) {
+@media (max-width: 720px) {
+  .add-row {
+    grid-template-columns: 1fr 1fr auto;
+  }
+  .add-row #title { grid-column: 1 / -1; }
+}
+@media (max-width: 480px) {
   .add-row { grid-template-columns: 1fr; }
 }
 
-input[type="text"], input[type="time"], input[type="number"] {
+input[type="text"], input[type="time"], input[type="number"], input[type="date"], textarea {
   background: var(--surface);
   color: var(--text);
   border: 1px solid var(--border);
@@ -155,6 +161,7 @@ input[type="text"], input[type="time"], input[type="number"] {
   font: inherit;
   width: 100%;
 }
+textarea { resize: vertical; min-height: 64px; line-height: 1.4; }
 input:focus {
   outline: 2px solid var(--accent);
   outline-offset: 1px;
@@ -628,8 +635,9 @@ button:focus-visible, .link:focus-visible, .tag-chip:focus-visible, select:focus
   }
   .list li .when { min-width: 0; }
   .list li > .icon-btn:last-child { display: none; } /* delete tucked into ⋯ menu */
-  .add-row { grid-template-columns: 1fr auto auto; }
-  .add-row input[type="time"] { width: 110px; }
+  .add-row { grid-template-columns: 1fr; }
+  .add-row input[type="time"] { width: 100%; }
+  .add-row input[type="date"] { width: 100%; }
   .onboarding-card { grid-template-columns: 1fr; }
   .filter-banner { font-size: 12px; flex-wrap: wrap; }
 }
@@ -805,3 +813,113 @@ button:focus-visible, .link:focus-visible, .tag-chip:focus-visible, select:focus
   .cal-row { grid-template-columns: 44px 1fr; gap: 8px; }
   .gcard-grid { grid-template-columns: 1fr; }
 }
+
+/* ===== v1.4 — due date, description, overdue rollover ===== */
+
+/* details toggle + description textarea under the add form */
+.add-extras {
+  display: grid;
+  gap: 8px;
+  margin-top: 8px;
+}
+.details-toggle { justify-self: start; }
+.details-toggle[aria-expanded="true"] { border-color: var(--accent); color: var(--accent); }
+.description-input { font-size: 13px; }
+
+/* list row: allow a second grid row for description block */
+.list li {
+  grid-template-rows: auto auto;
+}
+.list li .description-block,
+.gcard .description-block {
+  grid-column: 1 / -1;
+  margin: 0;
+  padding: 0;
+  font-size: 12px;
+  color: var(--muted);
+}
+.list li .description-block { grid-row: 2; }
+.list li .description-block > summary,
+.gcard .description-block > summary {
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  color: var(--muted);
+  padding: 2px 0;
+  user-select: none;
+  list-style: none;
+}
+.list li .description-block > summary::-webkit-details-marker,
+.gcard .description-block > summary::-webkit-details-marker { display: none; }
+.list li .description-block > summary::before,
+.gcard .description-block > summary::before {
+  content: "▸";
+  display: inline-block;
+  transition: transform .1s ease;
+  font-size: 10px;
+}
+.list li .description-block[open] > summary::before,
+.gcard .description-block[open] > summary::before {
+  transform: rotate(90deg);
+}
+.list li .description-block > summary:hover,
+.gcard .description-block > summary:hover { color: var(--text); }
+.description-body {
+  margin-top: 4px;
+  padding: 6px 8px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: var(--text);
+  cursor: text;
+}
+.description-body.empty { color: var(--muted); font-style: italic; cursor: pointer; }
+.description-edit {
+  margin-top: 4px;
+  width: 100%;
+  min-height: 60px;
+}
+
+/* due-date chip + overdue badge — sit inside title-wrap, above tags */
+.title-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  align-items: center;
+  margin-top: 2px;
+}
+.due-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: var(--bg);
+  color: var(--muted);
+  border: 1px solid var(--border);
+  cursor: pointer;
+  font-family: inherit;
+  letter-spacing: .02em;
+}
+.due-chip:hover { color: var(--text); border-color: var(--accent); }
+.due-chip.future { color: var(--accent); border-color: var(--accent); }
+.due-chip.past { color: var(--danger); border-color: var(--danger); }
+.overdue-badge {
+  display: inline-block;
+  font-size: 10px;
+  font-weight: 600;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: var(--danger);
+  color: #fff;
+  letter-spacing: .02em;
+}
+
+/* compact card grid: similar treatment */
+.gcard { grid-template-rows: auto auto auto; }
+.gcard .title-meta { margin-top: 0; }

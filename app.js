@@ -1,4 +1,4 @@
-/* Day Reminders — Teams personal tab (v1.2.10)
+/* Day Reminders — Teams personal tab (v1.4.0)
    Thin client over the bot's REST API. Auth via Teams SSO.
    Server-side bot handles all notifications (proactive Adaptive Cards in chat).
 */
@@ -8,7 +8,7 @@
   const API_BASE = "https://func-day-reminders-17023.azurewebsites.net/api";
   const DONE_AGE_MS = 24 * 60 * 60 * 1000;
   const UNDO_MS = 5000;
-  const APP_VERSION = "1.2.10";
+  const APP_VERSION = "1.4.0";
   const VIEWS = ["lines", "grid", "calendar"];
   const TAG_PALETTE = [
     "#0078d4", "#107c10", "#8764b8", "#ca5010", "#c50f1f",
@@ -59,6 +59,33 @@
     if (sv && VIEWS.includes(sv)) currentView = sv;
   } catch (_) {}
 
+  // ---------- date helpers ----------
+  // Today's date in Asia/Manila wall-clock as YYYY-MM-DD. Mirrors the bot's phToday so
+  // that the tab and the scheduler agree on what "today" means regardless of where the
+  // client browser sits.
+  function todayPh() {
+    const ph = new Date(Date.now() + 8 * 60 * 60 * 1000);
+    return `${ph.getUTCFullYear()}-${String(ph.getUTCMonth() + 1).padStart(2, '0')}-${String(ph.getUTCDate()).padStart(2, '0')}`;
+  }
+  // Short human label for a due date relative to today: "Today", "Tomorrow", "Yesterday",
+  // weekday name within +/-6 days, else "MMM D" (and year if different).
+  function formatDueLabel(dueAt, today) {
+    if (!dueAt) return "";
+    if (dueAt === today) return "Today";
+    const due = new Date(dueAt + "T00:00:00Z");
+    const tod = new Date(today + "T00:00:00Z");
+    const diffDays = Math.round((due - tod) / (24 * 60 * 60 * 1000));
+    if (diffDays === 1) return "Tomorrow";
+    if (diffDays === -1) return "Yesterday";
+    if (Math.abs(diffDays) <= 6) {
+      const weekday = due.toLocaleDateString(undefined, { weekday: "short", timeZone: "UTC" });
+      return weekday;
+    }
+    const opts = { month: "short", day: "numeric", timeZone: "UTC" };
+    if (due.getUTCFullYear() !== tod.getUTCFullYear()) opts.year = "numeric";
+    return due.toLocaleDateString(undefined, opts);
+  }
+
   // debounce search input writes/render
   let searchTimer = null;
   function debouncedSearch(value) {
@@ -89,6 +116,9 @@
   const addForm = $("addForm");
   const titleInput = $("title");
   const timeInput = $("time");
+  const dueDateInput = $("dueDate");
+  const descriptionInput = $("description");
+  const detailsToggleBtn = $("detailsToggle");
   const settingsDialog = $("settingsDialog");
   const settingsForm = $("settingsForm");
   const whatsNewDialog = $("whatsNewDialog");
@@ -126,24 +156,48 @@
   });
 
   // ---------- events ----------
+  if (dueDateInput) dueDateInput.value = todayPh();
+  if (detailsToggleBtn) {
+    detailsToggleBtn.addEventListener("click", () => {
+      const open = detailsToggleBtn.getAttribute("aria-expanded") === "true";
+      const next = !open;
+      detailsToggleBtn.setAttribute("aria-expanded", String(next));
+      detailsToggleBtn.textContent = next ? "− Details" : "+ Details";
+      descriptionInput.hidden = !next;
+      if (next) descriptionInput.focus();
+    });
+  }
+
   addForm.addEventListener("submit", async (e) => {
     e.preventDefault();
     const { title, tags } = extractTagsFromTitle(titleInput.value.trim());
     if (!title) return;
     const time = timeInput.value || null;
+    const today = todayPh();
+    const dueAt = dueDateInput.value || today;
+    const description = descriptionInput.value.trim().slice(0, 2000) || null;
     const tempId = `tmp-${Date.now()}-${Math.random().toString(16).slice(2, 8)}`;
     const optimistic = {
-      id: tempId, title, time, tags,
+      id: tempId, title, time, tags, dueAt, description, rollDays: 0,
       done: false, priority: "normal", closedAt: null, _optimistic: true,
     };
     reminders.push(optimistic);
     titleInput.value = "";
     timeInput.value = "";
+    dueDateInput.value = today;
+    descriptionInput.value = "";
+    descriptionInput.hidden = true;
+    if (detailsToggleBtn) {
+      detailsToggleBtn.setAttribute("aria-expanded", "false");
+      detailsToggleBtn.textContent = "+ Details";
+    }
     titleInput.focus();
     render();
     announce(`Added ${title}`);
     try {
-      const created = await api("POST", "/reminders", { title, time, tags });
+      const body = { title, time, tags, dueAt };
+      if (description) body.description = description;
+      const created = await api("POST", "/reminders", body);
       replaceById(tempId, created.reminder);
       render();
     } catch (err) {
@@ -476,6 +530,9 @@
 
     card.appendChild(head);
 
+    const cardMeta = buildTitleMeta(r);
+    if (cardMeta) card.appendChild(cardMeta);
+
     if (r.snoozedUntil && new Date(r.snoozedUntil).getTime() > Date.now()) {
       const badge = document.createElement("button");
       badge.type = "button";
@@ -522,6 +579,7 @@
     foot.appendChild(more);
 
     card.appendChild(foot);
+    card.appendChild(buildDescriptionBlock(r));
     return card;
   }
 
@@ -612,7 +670,7 @@
 
     const text = document.createElement("span");
     text.className = "cal-item-text";
-    text.textContent = r.title;
+    text.textContent = r.rollDays > 0 ? `${r.title}  (+${r.rollDays}d)` : r.title;
 
     const more = document.createElement("button");
     more.type = "button";
@@ -871,6 +929,9 @@
     title.addEventListener("click", () => startTitleEdit(r, title));
     titleWrap.appendChild(title);
 
+    const titleMeta = buildTitleMeta(r);
+    if (titleMeta) titleWrap.appendChild(titleMeta);
+
     if (r.snoozedUntil && new Date(r.snoozedUntil).getTime() > Date.now()) {
       const badge = document.createElement("button");
       badge.type = "button";
@@ -926,6 +987,7 @@
     del.addEventListener("click", () => removeReminder(r));
 
     li.append(handle, star, cb, titleWrap, when, more, del);
+    li.appendChild(buildDescriptionBlock(r));
     if (draggable) attachDragHandlers(li, r);
     return li;
   }
@@ -1089,6 +1151,130 @@
       if (e.key === "Enter") { e.preventDefault(); input.blur(); }
       else if (e.key === "Escape") { committed = true; renderWhen(host, r.time, r.leadMinutes); }
     });
+  }
+
+  function startDueDateEdit(r, host) {
+    if (host.querySelector("input")) return;
+    const input = document.createElement("input");
+    input.type = "date";
+    input.value = r.dueAt || todayPh();
+    input.className = "inline-edit";
+    const original = host.textContent;
+    host.textContent = "";
+    host.appendChild(input);
+    input.focus();
+    let committed = false;
+    const commit = async () => {
+      if (committed) return;
+      committed = true;
+      const newDue = input.value || null;
+      if (!newDue || newDue === r.dueAt) { host.textContent = original; return; }
+      const prev = r.dueAt;
+      const prevRoll = r.rollDays;
+      r.dueAt = newDue;
+      r.rollDays = 0;
+      render();
+      try {
+        const updated = await api("PATCH", `/reminders/${r.id}`, { dueAt: newDue });
+        replaceLocal(updated.reminder);
+        render();
+      } catch (err) {
+        r.dueAt = prev;
+        r.rollDays = prevRoll;
+        render();
+        showError("Could not change date", err);
+      }
+    };
+    input.addEventListener("blur", commit);
+    input.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") { e.preventDefault(); input.blur(); }
+      else if (e.key === "Escape") { committed = true; host.textContent = original; }
+    });
+  }
+
+  function startDescriptionEdit(r, host) {
+    if (host.querySelector("textarea")) return;
+    const ta = document.createElement("textarea");
+    ta.className = "inline-edit description-edit";
+    ta.maxLength = 2000;
+    ta.value = r.description || "";
+    ta.placeholder = "Notes, links, sub-tasks... (Ctrl+Enter to save, Esc to cancel)";
+    host.textContent = "";
+    host.appendChild(ta);
+    ta.focus();
+    if (ta.value) ta.setSelectionRange(ta.value.length, ta.value.length);
+    let committed = false;
+    const commit = async () => {
+      if (committed) return;
+      committed = true;
+      const newDesc = ta.value.trim().slice(0, 2000) || null;
+      if (newDesc === (r.description || null)) { render(); return; }
+      const prev = r.description;
+      r.description = newDesc;
+      render();
+      try {
+        const updated = await api("PATCH", `/reminders/${r.id}`, { description: newDesc || "" });
+        replaceLocal(updated.reminder);
+        render();
+      } catch (err) {
+        r.description = prev;
+        render();
+        showError("Could not update details", err);
+      }
+    };
+    ta.addEventListener("blur", commit);
+    ta.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) { e.preventDefault(); ta.blur(); }
+      else if (e.key === "Escape") { committed = true; render(); }
+    });
+  }
+
+  // Builds the title-meta row (due-date chip + overdue badge) shown inside a reminder's
+  // title-wrap. Returns null if there's nothing to show (item is for today and not rolled).
+  function buildTitleMeta(r) {
+    const today = todayPh();
+    const due = r.dueAt || r.createdDate || null;
+    const showChip = due && due !== today;
+    const showBadge = (r.rollDays || 0) > 0;
+    if (!showChip && !showBadge) return null;
+    const meta = document.createElement("div");
+    meta.className = "title-meta";
+    if (showChip) {
+      const chip = document.createElement("button");
+      chip.type = "button";
+      chip.className = "due-chip " + (due < today ? "past" : "future");
+      chip.textContent = formatDueLabel(due, today);
+      chip.title = `Due ${due}. Click to change.`;
+      chip.addEventListener("click", (e) => { e.stopPropagation(); startDueDateEdit(r, chip); });
+      meta.appendChild(chip);
+    }
+    if (showBadge) {
+      const badge = document.createElement("span");
+      badge.className = "overdue-badge";
+      badge.textContent = `overdue ${r.rollDays}d`;
+      badge.title = `Rolled forward from ${r.rollDays} day${r.rollDays === 1 ? "" : "s"} ago`;
+      meta.appendChild(badge);
+    }
+    return meta;
+  }
+
+  // Builds the collapsible description block shown under each reminder row.
+  // Always returns an element so users can add a description by clicking on the
+  // empty placeholder; collapsed by default to keep the list scannable.
+  function buildDescriptionBlock(r) {
+    const det = document.createElement("details");
+    det.className = "description-block";
+    const sum = document.createElement("summary");
+    sum.textContent = r.description ? "Details" : "+ Add details";
+    if (!r.description) sum.style.opacity = "0.55";
+    det.appendChild(sum);
+    const body = document.createElement("div");
+    body.className = "description-body" + (r.description ? "" : " empty");
+    body.textContent = r.description || "Click to add notes, links, sub-tasks...";
+    body.title = r.description ? "Click to edit" : "Click to add details";
+    body.addEventListener("click", (e) => { e.stopPropagation(); startDescriptionEdit(r, body); });
+    det.appendChild(body);
+    return det;
   }
 
   // ---------- model ops (optimistic) ----------
@@ -1434,15 +1620,16 @@
   async function addFromTemplate(t) {
     const { title, tags } = extractTagsFromTitle(t.title);
     if (!title) return;
+    const today = todayPh();
     const tempId = `tmp-${Date.now()}-${Math.random().toString(16).slice(2, 8)}`;
     const optimistic = {
-      id: tempId, title, time: t.time || null, tags,
+      id: tempId, title, time: t.time || null, tags, dueAt: today, description: null, rollDays: 0,
       done: false, priority: "normal", closedAt: null, _optimistic: true,
     };
     reminders.push(optimistic);
     render();
     try {
-      const created = await api("POST", "/reminders", { title, time: t.time || null, tags });
+      const created = await api("POST", "/reminders", { title, time: t.time || null, tags, dueAt: today });
       replaceById(tempId, created.reminder);
       render();
       announce(`Added template: ${title}`);

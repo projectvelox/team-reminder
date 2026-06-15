@@ -46,12 +46,16 @@ app.http('remindersCollection', {
     if (time && !/^\d{2}:\d{2}$/.test(time)) return json(400, { error: 'time must be HH:MM' });
     const tags = Array.isArray(body.tags) ? body.tags.map(String).map(s => s.trim()).filter(Boolean).slice(0, 8) : [];
     const priority = body.priority === 'high' ? 'high' : 'normal';
+    const dueAt = typeof body.dueAt === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(body.dueAt)
+      ? body.dueAt : store.todayKey();
+    const description = typeof body.description === 'string' && body.description.trim()
+      ? body.description.trim().slice(0, 2000) : null;
 
     const id = (globalThis.crypto?.randomUUID?.()) || `id-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
     const order = typeof body.order === 'number' && isFinite(body.order) ? body.order : null;
     const leadMinutes = typeof body.leadMinutes === 'number' && body.leadMinutes >= 0 && body.leadMinutes <= 240
       ? Math.floor(body.leadMinutes) : null;
-    const reminder = { id, title, time, done: false, firedAt: null, createdDate: store.todayKey(), closedAt: null, tags, priority, order, leadMinutes, snoozedUntil: null };
+    const reminder = { id, title, time, done: false, firedAt: null, createdDate: store.todayKey(), closedAt: null, tags, priority, order, leadMinutes, snoozedUntil: null, dueAt, description, rollDays: 0 };
     await store.upsertReminder(user.oid, reminder);
     return json(201, { reminder });
   },
@@ -106,6 +110,16 @@ app.http('remindersItem', {
     else if (typeof body.snoozedUntil === 'string' && !isNaN(Date.parse(body.snoozedUntil))) {
       existing.snoozedUntil = new Date(body.snoozedUntil).toISOString();
       existing.firedAt = null;
+    }
+    if (typeof body.dueAt === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(body.dueAt)) {
+      if (existing.dueAt !== body.dueAt) existing.firedAt = null;
+      existing.dueAt = body.dueAt;
+      existing.rollDays = 0;
+    }
+    if (body.description === null || body.description === '') {
+      existing.description = null;
+    } else if (typeof body.description === 'string') {
+      existing.description = body.description.trim().slice(0, 2000) || null;
     }
     await store.upsertReminder(user.oid, existing);
     return json(200, { reminder: existing });

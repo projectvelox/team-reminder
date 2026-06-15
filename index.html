@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Day Reminders</title>
-  <link rel="stylesheet" href="styles.css?v=1.2.10" />
+  <link rel="stylesheet" href="styles.css?v=1.4.0" />
   <script src="https://res.cdn.office.net/teams-js/2.24.0/js/MicrosoftTeams.min.js"></script>
 </head>
 <body data-theme="default">
@@ -37,7 +37,8 @@
         <div>
           <h3>Welcome to Day Reminders</h3>
           <ol>
-            <li>Type a task above and press <strong>Add</strong>. Optional: pick a time.</li>
+            <li>Type a task above and press <strong>Add</strong>. Optional: pick a date and a time.</li>
+            <li>Click <strong>+ Details</strong> to add notes (links, context, sub-tasks) below the title.</li>
             <li>Add <code>#tags</code> in the title (e.g. <code>Send report #work</code>) to group your day.</li>
             <li>Open the <strong>Chat</strong> tab to get proactive nudges in Teams; type <code>/help</code> there for shortcuts.</li>
           </ol>
@@ -46,10 +47,17 @@
       </section>
 
       <section class="card">
-        <form id="addForm" class="add-row" autocomplete="off">
-          <input id="title" type="text" placeholder="What do you need to remember? (try #tags inline, e.g. Send report #work)" aria-label="Reminder text. Press slash anywhere to focus this field." required />
-          <input id="time" type="time" title="Optional time" aria-label="Optional time" />
-          <button type="submit" class="btn primary">Add</button>
+        <form id="addForm" autocomplete="off">
+          <div class="add-row">
+            <input id="title" type="text" placeholder="What do you need to remember? (try #tags inline, e.g. Send report #work)" aria-label="Reminder text. Press slash anywhere to focus this field." required />
+            <input id="dueDate" type="date" title="Due date (default today)" aria-label="Due date, defaults to today" />
+            <input id="time" type="time" title="Optional time" aria-label="Optional time" />
+            <button type="submit" class="btn primary">Add</button>
+          </div>
+          <div class="add-extras">
+            <button id="detailsToggle" type="button" class="btn ghost small details-toggle" aria-expanded="false" aria-controls="description">+ Details</button>
+            <textarea id="description" class="description-input" maxlength="2000" placeholder="Optional details: what is this for, links, context, sub-tasks..." rows="3" hidden></textarea>
+          </div>
         </form>
         <p class="hint" id="permHint" hidden></p>
       </section>
@@ -83,10 +91,12 @@
       <section class="card">
         <h2 class="guide-title">Quick guide</h2>
         <ul class="guide-list">
+          <li><strong>Pick a date:</strong> use the date input next to time. Defaults to today. Items not done by their due date auto-roll forward (up to 30 days) and show an <em>overdue Nd</em> badge.</li>
+          <li><strong>Add details:</strong> click <em>+ Details</em> under the add form (or the chevron on a row) to attach notes, links, or sub-tasks. Shows in the proactive card too.</li>
           <li><strong>Add tags:</strong> type <code>#work</code> or <code>#urgent</code> directly in the title, e.g. <code>Send report #work</code>.</li>
           <li><strong>Filter by tag:</strong> click any <code>#chip</code> to see only that tag. Press Esc to clear.</li>
           <li><strong>High priority:</strong> click the <span class="kbd">☆</span> next to a row to pin it to the top.</li>
-          <li><strong>Edit inline:</strong> click a title or time to change it. Enter saves, Esc cancels.</li>
+          <li><strong>Edit inline:</strong> click a title, date, time, or description to change it. Enter saves, Esc cancels.</li>
           <li><strong>Reorder:</strong> grab the <span class="kbd">☰</span> handle to drag items within Anytime today or tag sections.</li>
           <li><strong>More options:</strong> click <span class="kbd">⋯</span> on a row to set a custom lead time (overrides your default).</li>
           <li><strong>Search:</strong> the <em>Search reminders</em> box in the top bar matches title and tags. Shortcut <code>f</code>.</li>
@@ -94,7 +104,7 @@
           <li><strong>Select multiple:</strong> click <em>Select</em> in the top bar to pick several rows and bulk-done / delete / star them.</li>
           <li><strong>Group by tag:</strong> the top-right toggle, or press <code>g</code>.</li>
           <li><strong>Mark done:</strong> tick the checkbox. Undo within 5 seconds.</li>
-          <li><strong>Bot chat:</strong> open the <em>Chat</em> tab above and type <code>/help</code>, <code>/list</code>, <code>/add</code>, <code>/done</code>.</li>
+          <li><strong>Bot chat:</strong> open the <em>Chat</em> tab above and type <code>/help</code>, <code>/list</code>, <code>/add</code>, <code>/done</code>. <code>/add</code> accepts a date too, e.g. <code>/add 5pm tomorrow #work Send report</code>.</li>
           <li><strong>Views:</strong> the top-right segmented control switches between <em>Lines</em>, <em>Grid</em>, and <em>Calendar</em>. Shortcut: <code>v</code>.</li>
           <li><strong>Shortcuts:</strong> <code>/</code> add, <code>f</code> search, <code>g</code> group, <code>v</code> view, <code>?</code> this guide, <code>Esc</code> clear filters.</li>
         </ul>
@@ -149,6 +159,21 @@
     <form method="dialog">
       <h2>What's new</h2>
       <ul class="changelog">
+        <li><strong>v1.4.0</strong>
+          <ul>
+            <li>New <em>Due date</em> field on each reminder — pick a date in the add form, or click the date chip on a row to change it. Defaults to today.</li>
+            <li>Undone reminders auto-roll forward each day to today's list, with an <em>overdue Nd</em> badge. Items more than 30 days past their due date stay put.</li>
+            <li>New <em>Details</em> field — click <em>+ Details</em> under the add form, or the chevron on any row, for notes, links, sub-tasks. Description renders in the proactive card too.</li>
+            <li><code>/add</code> slash command now accepts a date: <code>tomorrow</code>, <code>mon/tue/...</code>, <code>6/20</code>, or <code>2026-06-20</code>. Time and date in either order.</li>
+            <li>Fixed a latent timezone bug: end-of-day check-in date now consistently uses Asia/Manila wall-clock from both the bot and the scheduler.</li>
+          </ul>
+        </li>
+        <li><strong>v1.3.0</strong>
+          <ul>
+            <li>Activity Feed notifications when a reminder fires (the Teams bell icon).</li>
+            <li>New <em>Quick add reminder</em> compose-extension command — click <code>...</code> under any Teams message box, pick Day Reminders, type a reminder.</li>
+          </ul>
+        </li>
         <li><strong>v1.2.10</strong>
           <ul>
             <li>View toggle in the top bar: <em>Lines</em> (default), <em>Grid</em> (compact cards), <em>Calendar</em> (hour-by-hour timeline)</li>
@@ -233,15 +258,17 @@
     <form method="dialog">
       <h2>Quick guide</h2>
       <ul class="guide-list">
+        <li><strong>Pick a date:</strong> next to time. Defaults to today. Undone items auto-roll forward (cap 30 days) with an <em>overdue Nd</em> badge.</li>
+        <li><strong>Add details:</strong> click <em>+ Details</em> under the add form, or the chevron on a row, for notes / links / sub-tasks. Shows in the proactive card.</li>
         <li><strong>Add tags:</strong> type <code>#work</code> directly in the title, e.g. <code>Send report #work</code>.</li>
         <li><strong>Filter by tag:</strong> click any <code>#chip</code> in the list. Esc clears.</li>
         <li><strong>High priority:</strong> click the <span class="kbd">&#9734;</span> next to a row to pin it to the top.</li>
-        <li><strong>Edit inline:</strong> click a title or time to change it. Enter saves, Esc cancels.</li>
+        <li><strong>Edit inline:</strong> click a title, date, time, or description. Enter saves, Esc cancels.</li>
         <li><strong>Reorder:</strong> drag the <span class="kbd">&#9776;</span> handle (Anytime, tag, and high-priority sections).</li>
         <li><strong>Per-row options:</strong> click <span class="kbd">&middot;&middot;&middot;</span> to set a custom lead time.</li>
         <li><strong>Group by tag:</strong> top-right toggle or press <code>g</code>.</li>
         <li><strong>Mark done:</strong> tick the checkbox. Undo within 5 seconds if you mis-click.</li>
-        <li><strong>Bot chat:</strong> open the Chat tab, type <code>/help</code>, <code>/list</code>, <code>/add</code>, <code>/done</code>.</li>
+        <li><strong>Bot chat:</strong> open the Chat tab, type <code>/help</code>, <code>/list</code>, <code>/add</code>, <code>/done</code>. <code>/add</code> takes a date too: <code>5pm tomorrow Send report</code>.</li>
         <li><strong>Shortcuts:</strong> <code>/</code> focus add, <code>g</code> toggle group, <code>?</code> open this guide.</li>
       </ul>
       <div class="dialog-actions">
@@ -253,13 +280,13 @@
   <div id="toastRegion" class="toast-region" aria-live="polite"></div>
 
   <footer class="appfoot">
-    <span class="muted" id="versionLabel">v1.2.5</span>
+    <span class="muted" id="versionLabel">v1.4.0</span>
     <span class="muted">&middot;</span>
     <button id="openWhatsNew" class="link" type="button">What's new</button>
     <span class="muted">&middot;</span>
     <a class="link" href="https://github.com/projectvelox/team-reminder/issues" target="_blank" rel="noopener">Report an issue</a>
   </footer>
 
-  <script src="app.js?v=1.2.10"></script>
+  <script src="app.js?v=1.4.0"></script>
 </body>
 </html>
