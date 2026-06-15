@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Day Reminders</title>
-  <link rel="stylesheet" href="styles.css?v=1.4.7" />
+  <link rel="stylesheet" href="styles.css?v=1.4.8" />
   <script src="https://res.cdn.office.net/teams-js/2.24.0/js/MicrosoftTeams.min.js"></script>
 </head>
 <body data-theme="default">
@@ -24,7 +24,7 @@
       </div>
       <button id="groupToggle" class="btn ghost" title="Group reminders by tag (shortcut: g)" aria-pressed="false">Group by tag</button>
       <button id="openSettings" class="btn ghost" title="Settings">&#9881; Settings</button>
-      <button id="openGuide" class="btn ghost" title="Quick guide (shortcut: ?)" aria-label="Open quick guide">?</button>
+      <button id="openGuide" class="btn ghost" title="Toggle quick guide (shortcut: ?)" aria-label="Toggle quick guide">?</button>
     </div>
   </header>
 
@@ -60,6 +60,7 @@
           <datalist id="clientList"></datalist>
           <div class="add-extras">
             <button id="detailsToggle" type="button" class="btn ghost small details-toggle" aria-expanded="false" aria-controls="description">+ Details</button>
+            <button id="openTemplates" type="button" class="btn ghost small" title="Pick from common reminder templates">+ Templates</button>
             <textarea id="description" class="description-input" maxlength="2000" placeholder="Optional details: what is this for, links, context, sub-tasks..." rows="3" hidden></textarea>
           </div>
         </form>
@@ -72,7 +73,6 @@
         <button type="button" class="filter-pill" data-quick="anytime" aria-pressed="false" title="Open reminders with no time">&#9711; Anytime</button>
         <button type="button" class="filter-pill" data-quick="high" aria-pressed="false" title="High priority only">&#9733; Priority</button>
         <button type="button" class="filter-pill" data-quick="done" aria-pressed="false" title="Completed reminders only">&#10003; Done</button>
-        <button type="button" id="openTemplates" class="filter-pill" title="Pick from common reminder templates">+ Templates</button>
       </div>
 
       <div id="filterBanner" class="filter-banner" hidden>
@@ -93,27 +93,18 @@
 
     <aside class="guide">
       <section class="card">
-        <h2 class="guide-title">Quick guide</h2>
-        <ul class="guide-list">
-          <li><strong>Week view:</strong> top-right view toggle now includes <em>Week</em> — Mon–Sun grid of your reminders by due date. Today's column is highlighted. Click an empty day to start adding a reminder pre-filled for that date.</li>
-          <li><strong>Client:</strong> set a client per reminder. Autocompletes from your past clients. Click the client chip on any row to filter to that client; click it again to clear.</li>
-          <li><strong>Pick a date:</strong> use the date input next to time. Defaults to today. Items not done by their due date auto-roll forward (up to 30 days) and show an <em>overdue Nd</em> badge.</li>
-          <li><strong>Add details:</strong> click <em>+ Details</em> under the add form (or the chevron on a row) to attach notes, links, or sub-tasks. Shows in the proactive card too.</li>
-          <li><strong>Add tags:</strong> type <code>#work</code> or <code>#urgent</code> directly in the title, e.g. <code>Send report #work</code>.</li>
-          <li><strong>Filter by tag:</strong> click any <code>#chip</code> to see only that tag. Press Esc to clear.</li>
-          <li><strong>High priority:</strong> click the <span class="kbd">☆</span> next to a row to pin it to the top.</li>
-          <li><strong>Edit inline:</strong> click a title, date, time, or description to change it. Enter saves, Esc cancels.</li>
-          <li><strong>Reorder:</strong> grab the <span class="kbd">☰</span> handle to drag items within Anytime today or tag sections.</li>
-          <li><strong>More options:</strong> click <span class="kbd">⋯</span> on a row to set a custom lead time (overrides your default).</li>
-          <li><strong>Search:</strong> the <em>Search reminders</em> box in the top bar matches title and tags. Shortcut <code>f</code>.</li>
-          <li><strong>Quick filters:</strong> use the row of pills above the list (<em>Timed</em>, <em>Anytime</em>, <em>Priority</em>, <em>Done</em>) to focus a slice fast.</li>
-          <li><strong>Select multiple:</strong> click <em>Select</em> in the top bar to pick several rows and bulk-done / delete / star them.</li>
-          <li><strong>Group:</strong> the top-right toggle cycles <em>off → tag → client → off</em>. Shortcut <code>g</code>. Selection persists across reloads.</li>
-          <li><strong>Mark done:</strong> tick the checkbox. Undo within 5 seconds.</li>
-          <li><strong>Bot chat:</strong> open the <em>Chat</em> tab above and type <code>/help</code>, <code>/list</code>, <code>/add</code>, <code>/done</code>. <code>/add</code> accepts a date too, e.g. <code>/add 5pm tomorrow #work Send report</code>.</li>
-          <li><strong>Views:</strong> the top-right segmented control switches between <em>Lines</em>, <em>Grid</em>, <em>Day</em> (hour-by-hour today), and <em>Week</em> (Mon–Sun grid). Shortcut: <code>v</code> cycles.</li>
-          <li><strong>Shortcuts:</strong> <code>/</code> add, <code>f</code> search, <code>g</code> group, <code>v</code> view, <code>?</code> this guide, <code>Esc</code> clear filters.</li>
-        </ul>
+        <details id="guideDetails" class="guide-details" open>
+          <summary class="guide-title">Quick guide</summary>
+          <ul class="guide-list">
+          <li><strong>Tags inline:</strong> type <code>#work</code> or <code>#urgent</code> right in the title, e.g. <code>Send report #work</code>. Click any <code>#chip</code> on a row to filter; Esc clears.</li>
+          <li><strong>Client:</strong> set a client per reminder; autocompletes from past ones. Click the client chip on a row to filter to it; click again to clear.</li>
+          <li><strong>Auto-roll:</strong> undone reminders carry forward to today (up to 30 days) with an <em>overdue Nd</em> badge.</li>
+          <li><strong>Edit inline:</strong> click a title, date, time, or description on any row. Enter saves, Esc cancels.</li>
+          <li><strong>Reorder:</strong> drag the <span class="kbd">☰</span> handle (works within Anytime today, tag, and priority sections).</li>
+          <li><strong>Per-row options:</strong> click <span class="kbd">⋯</span> on a row for details, custom lead time, or to move to tomorrow.</li>
+          <li><strong>Shortcuts:</strong> <code>/</code> add, <code>f</code> search, <code>g</code> group, <code>v</code> view, <code>?</code> toggle this guide, <code>Esc</code> clear filters.</li>
+          </ul>
+        </details>
       </section>
     </aside>
   </div>
@@ -174,6 +165,10 @@
             <li>Plus a separate Azure Logic App keep-warm ping every 5 min (PH hours) so the Function App doesn't cold-start when no-one's used it for a while.</li>
           </ul>
         </li>
+      </ul>
+      <details class="changelog-older">
+        <summary>Older versions</summary>
+        <ul class="changelog">
         <li><strong>v1.4.5</strong>
           <ul>
             <li>Actually fix the Week-view text wrapping: the v1.4.4 attempt used <code>-webkit-line-clamp + -webkit-box</code> which has a legacy quirk that shrinks the box to its narrowest acceptable break point, causing the browser to break words like "Enhance" into "Enha/nce" just to make the box narrower. Switched to plain <code>max-height</code> clamping with normal word wrapping.</li>
@@ -267,7 +262,8 @@
         </li>
         <li><strong>v1.2.0</strong>: hashtag tags, high-priority star, inline edit, slash commands, done archive.</li>
         <li><strong>v1.1.x</strong>: SSO fixes, Bot Service wiring, proactive Adaptive Cards.</li>
-      </ul>
+        </ul>
+      </details>
       <div class="dialog-actions">
         <button type="submit" class="btn primary">Got it</button>
       </div>
@@ -321,31 +317,6 @@
     </form>
   </dialog>
 
-  <dialog id="guideDialog" class="dialog">
-    <form method="dialog">
-      <h2>Quick guide</h2>
-      <ul class="guide-list">
-        <li><strong>Week view:</strong> view toggle now includes <em>Week</em> — 7-day grid of reminders by due date. Click empty days to add for that date.</li>
-        <li><strong>Client:</strong> per-reminder client with autocomplete. Click the client chip on a row to filter.</li>
-        <li><strong>Pick a date:</strong> next to time. Defaults to today. Undone items auto-roll forward (cap 30 days) with an <em>overdue Nd</em> badge.</li>
-        <li><strong>Add details:</strong> click <em>+ Details</em> under the add form, or the chevron on a row, for notes / links / sub-tasks. Shows in the proactive card.</li>
-        <li><strong>Add tags:</strong> type <code>#work</code> directly in the title, e.g. <code>Send report #work</code>.</li>
-        <li><strong>Filter by tag:</strong> click any <code>#chip</code> in the list. Esc clears.</li>
-        <li><strong>High priority:</strong> click the <span class="kbd">&#9734;</span> next to a row to pin it to the top.</li>
-        <li><strong>Edit inline:</strong> click a title, date, time, or description. Enter saves, Esc cancels.</li>
-        <li><strong>Reorder:</strong> drag the <span class="kbd">&#9776;</span> handle (Anytime, tag, and high-priority sections).</li>
-        <li><strong>Per-row options:</strong> click <span class="kbd">&middot;&middot;&middot;</span> to set a custom lead time.</li>
-        <li><strong>Group:</strong> top-right toggle cycles off → tag → client → off. Press <code>g</code>.</li>
-        <li><strong>Mark done:</strong> tick the checkbox. Undo within 5 seconds if you mis-click.</li>
-        <li><strong>Bot chat:</strong> open the Chat tab, type <code>/help</code>, <code>/list</code>, <code>/add</code>, <code>/done</code>. <code>/add</code> takes a date too: <code>5pm tomorrow Send report</code>.</li>
-        <li><strong>Shortcuts:</strong> <code>/</code> focus add, <code>g</code> toggle group, <code>?</code> open this guide.</li>
-      </ul>
-      <div class="dialog-actions">
-        <button type="submit" class="btn primary">Close</button>
-      </div>
-    </form>
-  </dialog>
-
   <div id="toastRegion" class="toast-region" aria-live="polite"></div>
 
   <footer class="appfoot">
@@ -356,6 +327,6 @@
     <a class="link" href="https://github.com/projectvelox/team-reminder/issues" target="_blank" rel="noopener">Report an issue</a>
   </footer>
 
-  <script src="app.js?v=1.4.7"></script>
+  <script src="app.js?v=1.4.8"></script>
 </body>
 </html>

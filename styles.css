@@ -73,7 +73,54 @@ main { display: grid; gap: 16px; min-width: 0; }
   color: var(--muted);
   font-weight: 600;
 }
+.guide-details > .guide-title {
+  cursor: pointer;
+  list-style: none;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  user-select: none;
+  margin: 0;
+  padding: 2px 0;
+  border-radius: 4px;
+}
+.guide-details > .guide-title::-webkit-details-marker { display: none; }
+.guide-details > .guide-title::before {
+  content: "▸";
+  display: inline-block;
+  width: 12px;
+  font-size: 11px;
+  color: var(--muted);
+  transition: transform 120ms ease;
+}
+.guide-details[open] > .guide-title::before { transform: rotate(90deg); }
+.guide-details > .guide-title:hover { color: var(--text); }
+.guide-details > .guide-title:focus-visible {
+  outline: 2px solid var(--accent, #6264a7);
+  outline-offset: 2px;
+}
+.guide-details[open] > .guide-list { margin-top: 10px; }
 .guide-list { margin: 0; padding-left: 18px; display: grid; gap: 8px; font-size: 13px; }
+
+.changelog-older { margin-top: 8px; }
+.changelog-older > summary {
+  cursor: pointer;
+  color: var(--muted);
+  font-size: 13px;
+  padding: 4px 0;
+  list-style: none;
+  user-select: none;
+}
+.changelog-older > summary::-webkit-details-marker { display: none; }
+.changelog-older > summary::before {
+  content: "▸ ";
+  font-size: 11px;
+  display: inline-block;
+  width: 14px;
+  transition: transform 120ms ease;
+}
+.changelog-older[open] > summary::before { content: "▾ "; }
+.changelog-older > summary:hover { color: var(--text); }
 .guide-list code {
   background: var(--bg);
   border: 1px solid var(--border);
@@ -821,13 +868,14 @@ button:focus-visible, .link:focus-visible, .tag-chip:focus-visible, select:focus
 
 /* details toggle + description textarea under the add form */
 .add-extras {
-  display: grid;
+  display: flex;
+  flex-wrap: wrap;
   gap: 8px;
   margin-top: 8px;
+  align-items: center;
 }
-.details-toggle { justify-self: start; }
 .details-toggle[aria-expanded="true"] { border-color: var(--accent); color: var(--accent); }
-.description-input { font-size: 13px; }
+.description-input { font-size: 13px; flex: 1 1 100%; }
 
 /* list row: allow a second grid row for description block */
 .list li {

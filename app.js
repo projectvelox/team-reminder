@@ -49,6 +49,7 @@
   const LS_VIEW = "currentView";
   const LS_GROUP_BY = "groupBy";
   const LS_ONBOARDED = "onboardingDismissed";
+  const LS_GUIDE_OPEN = "guideOpen";
 
   try {
     const saved = localStorage.getItem(LS_THEME);
@@ -161,7 +162,6 @@
   const settingsDialog = $("settingsDialog");
   const settingsForm = $("settingsForm");
   const whatsNewDialog = $("whatsNewDialog");
-  const guideDialog = $("guideDialog");
   const permHint = $("permHint");
   const reminderRoot = $("reminderRoot");
   const groupToggle = $("groupToggle");
@@ -304,7 +304,28 @@
 
   clearFilterBtn.addEventListener("click", clearAllFilters);
   markAllDoneBtn.addEventListener("click", markAllOpenDone);
-  $("openGuide").addEventListener("click", () => openDialog(guideDialog));
+
+  const guideDetails = $("guideDetails");
+  if (guideDetails) {
+    try {
+      const savedOpen = localStorage.getItem(LS_GUIDE_OPEN);
+      if (savedOpen === "0") guideDetails.open = false;
+      else if (savedOpen === "1") guideDetails.open = true;
+    } catch (_) {}
+    guideDetails.addEventListener("toggle", () => {
+      try { localStorage.setItem(LS_GUIDE_OPEN, guideDetails.open ? "1" : "0"); } catch (_) {}
+    });
+  }
+  function toggleGuide() {
+    if (!guideDetails) return;
+    guideDetails.open = !guideDetails.open;
+    if (guideDetails.open) {
+      guideDetails.scrollIntoView({ behavior: "smooth", block: "nearest" });
+      const summary = guideDetails.querySelector("summary");
+      if (summary) summary.focus();
+    }
+  }
+  $("openGuide").addEventListener("click", toggleGuide);
   $("openWhatsNew").addEventListener("click", () => openDialog(whatsNewDialog));
 
   // search input
@@ -441,7 +462,7 @@
     else if (e.key === "f" || e.key === "F") { e.preventDefault(); searchInput && searchInput.focus(); }
     else if (e.key === "g" || e.key === "G") { e.preventDefault(); groupToggle.click(); }
     else if (e.key === "v" || e.key === "V") { e.preventDefault(); cycleView(); }
-    else if (e.key === "?") { e.preventDefault(); openDialog(guideDialog); }
+    else if (e.key === "?") { e.preventDefault(); toggleGuide(); }
     else if (e.key === "Escape" && (activeTagFilter || activeClientFilter || searchText || quickFilter !== "all" || bulkMode)) {
       if (bulkMode) setBulkMode(false);
       else clearAllFilters();
@@ -449,7 +470,7 @@
   });
 
   // focus return after a dialog closes
-  for (const d of [settingsDialog, whatsNewDialog, guideDialog, rowOptionsDialog, templatesDialog]) {
+  for (const d of [settingsDialog, whatsNewDialog, rowOptionsDialog, templatesDialog]) {
     d.addEventListener("close", () => {
       if (lastFocusedTrigger && typeof lastFocusedTrigger.focus === "function") {
         lastFocusedTrigger.focus();
