@@ -4,8 +4,8 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Day Reminders &mdash; Licenses</title>
-  <link rel="stylesheet" href="styles.css?v=1.7.1" />
-  <link rel="stylesheet" href="licenses.css?v=1.7.1" />
+  <link rel="stylesheet" href="styles.css?v=1.7.2" />
+  <link rel="stylesheet" href="licenses.css?v=1.7.2" />
   <script src="https://res.cdn.office.net/teams-js/2.24.0/js/MicrosoftTeams.min.js"></script>
 </head>
 <body data-theme="default" data-page="licenses">
@@ -20,7 +20,14 @@
         <button type="button" data-view="table" class="view-btn" aria-pressed="true">Table</button>
         <button type="button" data-view="calendar" class="view-btn" aria-pressed="false">Calendar</button>
       </div>
+      <div id="groupSwitch" class="view-switch" role="group" aria-label="Group by">
+        <button type="button" data-group="none" class="view-btn" aria-pressed="true" title="No grouping">None</button>
+        <button type="button" data-group="customer" class="view-btn" aria-pressed="false" title="Group rows by customer">Customer</button>
+        <button type="button" data-group="ownerName" class="view-btn" aria-pressed="false" title="Group rows by owner">Owner</button>
+        <button type="button" data-group="productLine" class="view-btn" aria-pressed="false" title="Group rows by product line">Product</button>
+      </div>
       <button id="importCsvBtn" class="btn ghost" title="Import licenses from a CSV file">Import CSV</button>
+      <button id="exportCsvBtn" class="btn ghost" title="Export the current filtered view to a CSV file">Export CSV</button>
       <button id="addLicenseBtn" class="btn primary">+ Add license</button>
     </div>
   </header>
@@ -46,12 +53,32 @@
         </button>
       </section>
 
+      <section id="statsStrip" class="lic-stats" aria-label="Totals">
+        <span class="lic-stat"><strong id="statLicenses">0</strong> licenses</span>
+        <span class="lic-stat-sep">·</span>
+        <span class="lic-stat"><strong id="statSeats">0</strong> seats</span>
+        <span class="lic-stat-sep">·</span>
+        <span class="lic-stat"><strong id="statCustomers">0</strong> customers</span>
+        <span class="lic-stat-sep">·</span>
+        <span class="lic-stat"><strong id="statRenewed30">0</strong> renewed last 30 days</span>
+      </section>
+
       <div id="filterPills" class="filter-pills" role="group" aria-label="Quick filters">
         <button type="button" class="filter-pill" data-quick="all" aria-pressed="true">All</button>
         <button type="button" class="filter-pill" data-quick="mine" aria-pressed="false" title="Licenses you own">Mine</button>
         <button type="button" class="filter-pill" data-quick="month" aria-pressed="false" title="Expiring this calendar month">This month</button>
         <button type="button" class="filter-pill" data-quick="overdue" aria-pressed="false" title="Expired and not renewed">Overdue</button>
       </div>
+
+      <section id="ownerStrip" class="lic-breakdown" aria-label="By owner" hidden>
+        <span class="lic-breakdown-label">Owner</span>
+        <div id="ownerChips" class="lic-breakdown-chips"></div>
+      </section>
+
+      <section id="productStrip" class="lic-breakdown" aria-label="By product line" hidden>
+        <span class="lic-breakdown-label">Product</span>
+        <div id="productChips" class="lic-breakdown-chips"></div>
+      </section>
 
       <section id="tableView">
         <table id="licTable" class="lic-table" hidden>
@@ -248,6 +275,6 @@
 
   <div id="toast" class="toast" hidden></div>
 
-  <script src="licenses.js?v=1.7.1"></script>
+  <script src="licenses.js?v=1.7.2"></script>
 </body>
 </html>

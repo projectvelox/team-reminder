@@ -25,6 +25,9 @@
   let currentView = "table";
   let summaryFilter = null; // null | 'week' | 'month' | 'overdue'
   let quickFilter = "all";  // 'all' | 'mine' | 'month' | 'overdue'
+  let ownerFilter = null;   // null | ownerOid — set by owner breakdown chip
+  let productFilter = null; // null | productLine string — set by product breakdown chip
+  let groupBy = "none";     // 'none' | 'customer' | 'ownerName' | 'productLine'
   let searchText = "";
   let sortKey = "expiryDate";
   let sortDir = 1; // 1 asc, -1 desc
@@ -38,6 +41,7 @@
   const LS_VIEW = "lic.view";
   const LS_QUICK = "lic.quickFilter";
   const LS_SORT = "lic.sort";
+  const LS_GROUP = "lic.groupBy";
 
   try {
     const v = localStorage.getItem(LS_VIEW);
@@ -50,6 +54,8 @@
       if (k) sortKey = k;
       if (d === "1" || d === "-1") sortDir = Number(d);
     }
+    const g = localStorage.getItem(LS_GROUP);
+    if (["none", "customer", "ownerName", "productLine"].includes(g)) groupBy = g;
   } catch (_) {}
 
   // ---------- date helpers ----------
@@ -137,16 +143,23 @@
     const today = todayPh();
     const d = daysBetween(today, lic.expiryDate);
     const f = effectiveFilter();
-    if (f === "mine") return lic.ownerOid === me.oid;
-    if (f === "month") {
-      if (!lic.expiryDate) return false;
-      const exp = parseISO(lic.expiryDate);
-      const now = new Date();
-      return exp && exp.getUTCFullYear() === now.getFullYear() && exp.getUTCMonth() === now.getMonth();
+    // Quick / summary filter
+    let ok = true;
+    if (f === "mine") ok = lic.ownerOid === me.oid;
+    else if (f === "month") {
+      if (!lic.expiryDate) ok = false;
+      else {
+        const exp = parseISO(lic.expiryDate);
+        const now = new Date();
+        ok = exp && exp.getUTCFullYear() === now.getFullYear() && exp.getUTCMonth() === now.getMonth();
+      }
     }
-    if (f === "overdue") return d !== null && d < 0 && lic.state !== "abandoned";
-    if (f === "week") return d !== null && d >= 0 && d <= 7;
-    return true; // all
+    else if (f === "overdue") ok = d !== null && d < 0 && lic.state !== "abandoned";
+    else if (f === "week") ok = d !== null && d >= 0 && d <= 7;
+    // additive owner & product breakdown filters
+    if (ok && ownerFilter && lic.ownerOid !== ownerFilter) ok = false;
+    if (ok && productFilter && lic.productLine !== productFilter) ok = false;
+    return ok;
   }
   function matchesSearch(lic) {
     if (!searchText) return true;
@@ -193,6 +206,110 @@
     });
   }
 
+  // ---------- stats + breakdowns ----------
+
+  function recomputeStats() {
+    const active = licenses.filter((l) => l.state !== "abandoned");
+    const customers = new Set();
+    let seats = 0;
+    for (const l of active) {
+      if (l.customer) customers.add(l.customer.trim().toLowerCase());
+      seats += (typeof l.userCount === "number" ? l.userCount : 0);
+    }
+    // Renewed in last 30 days (ISO timestamp comparison)
+    const cutoff = new Date(Date.now() - 30 * 86400000).toISOString();
+    let renewed30 = 0;
+    for (const l of active) if (l.lastRenewedAt && l.lastRenewedAt >= cutoff) renewed30++;
+    $("statLicenses").textContent = active.length;
+    $("statSeats").textContent = seats.toLocaleString();
+    $("statCustomers").textContent = customers.size;
+    $("statRenewed30").textContent = renewed30;
+  }
+
+  function renderOwnerChips() {
+    const map = new Map(); // ownerOid -> { name, count, nextExpiry }
+    const today = todayPh();
+    for (const l of licenses) {
+      if (l.state === "abandoned") continue;
+      if (!l.ownerOid) continue;
+      const key = l.ownerOid;
+      const cur = map.get(key) || { oid: l.ownerOid, name: l.ownerName || "(no name)", count: 0, nextExpiry: null };
+      cur.count++;
+      // next expiry = soonest upcoming or zero-days expiry (>=today)
+      if (l.expiryDate && (!cur.nextExpiry || l.expiryDate < cur.nextExpiry)) {
+        if (l.expiryDate >= today) cur.nextExpiry = l.expiryDate;
+        else if (!cur.nextExpiry) cur.nextExpiry = l.expiryDate; // fallback to overdue
+      }
+      map.set(key, cur);
+    }
+    const strip = $("ownerStrip");
+    const wrap = $("ownerChips");
+    wrap.innerHTML = "";
+    if (!map.size) { strip.hidden = true; return; }
+    strip.hidden = false;
+    const entries = [...map.values()].sort((a, b) => b.count - a.count);
+    for (const e of entries) {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "lic-breakdown-chip";
+      btn.setAttribute("aria-pressed", ownerFilter === e.oid ? "true" : "false");
+      const sw = document.createElement("span");
+      sw.className = "swatch";
+      sw.style.background = ownerColor(e.oid);
+      btn.appendChild(sw);
+      btn.appendChild(document.createTextNode(e.name));
+      const cnt = document.createElement("span");
+      cnt.className = "chip-count";
+      cnt.textContent = e.count;
+      btn.appendChild(cnt);
+      if (e.nextExpiry) {
+        const nx = document.createElement("span");
+        nx.className = "chip-next";
+        const d = daysBetween(today, e.nextExpiry);
+        nx.textContent = d === null ? "" : (d < 0 ? `overdue ${-d}d` : d === 0 ? "today" : `next ${fmtShortDate(e.nextExpiry)}`);
+        btn.appendChild(nx);
+      }
+      btn.addEventListener("click", () => {
+        ownerFilter = ownerFilter === e.oid ? null : e.oid;
+        // Clicking an owner chip overrides the Mine quick-filter so the chip wins.
+        if (ownerFilter && quickFilter === "mine") quickFilter = "all";
+        render();
+      });
+      wrap.appendChild(btn);
+    }
+  }
+
+  function renderProductChips() {
+    const map = new Map(); // productLine -> count
+    for (const l of licenses) {
+      if (l.state === "abandoned") continue;
+      if (!l.productLine) continue;
+      map.set(l.productLine, (map.get(l.productLine) || 0) + 1);
+    }
+    const strip = $("productStrip");
+    const wrap = $("productChips");
+    wrap.innerHTML = "";
+    if (!map.size) { strip.hidden = true; return; }
+    strip.hidden = false;
+    const entries = [...map.entries()].sort((a, b) => b[1] - a[1]);
+    for (const [name, count] of entries) {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "lic-breakdown-chip";
+      btn.setAttribute("aria-pressed", productFilter === name ? "true" : "false");
+      btn.appendChild(document.createTextNode(name));
+      const cnt = document.createElement("span");
+      cnt.className = "chip-count";
+      cnt.textContent = count;
+      btn.appendChild(cnt);
+      btn.addEventListener("click", () => {
+        productFilter = productFilter === name ? null : name;
+        render();
+      });
+      wrap.appendChild(btn);
+    }
+  }
+
   function refreshDataLists() {
     const customers = new Set(), licTypes = new Set(), productLines = new Set();
     for (const lic of licenses) {
@@ -230,9 +347,15 @@
   // ---------- render ----------
   function render() {
     recomputeSummary();
+    recomputeStats();
     refreshDataLists();
-    document.querySelectorAll(".view-btn").forEach((b) => {
+    renderOwnerChips();
+    renderProductChips();
+    document.querySelectorAll("#viewSwitch .view-btn").forEach((b) => {
       b.setAttribute("aria-pressed", b.dataset.view === currentView ? "true" : "false");
+    });
+    document.querySelectorAll("#groupSwitch .view-btn").forEach((b) => {
+      b.setAttribute("aria-pressed", b.dataset.group === groupBy ? "true" : "false");
     });
     document.querySelectorAll(".filter-pill").forEach((p) => {
       p.setAttribute("aria-pressed", (summaryFilter ? "false" : (p.dataset.quick === quickFilter ? "true" : "false")));
@@ -246,6 +369,93 @@
       $("calendarView").hidden = true;
       renderTable();
     }
+  }
+
+  function buildLicenseRow(lic, today) {
+    const tr = document.createElement("tr");
+    tr.dataset.id = lic.id;
+    const d = daysBetween(today, lic.expiryDate);
+    if (d !== null && d < 0 && lic.state !== "abandoned") tr.classList.add("overdue");
+    if (lic.state === "abandoned") tr.classList.add("abandoned");
+
+    const tdCustomer = document.createElement("td");
+    tdCustomer.textContent = lic.customer || "";
+    tr.appendChild(tdCustomer);
+
+    const tdType = document.createElement("td");
+    tdType.textContent = lic.licenseType || "";
+    tr.appendChild(tdType);
+
+    const tdUsers = document.createElement("td");
+    tdUsers.className = "num";
+    tdUsers.textContent = lic.userCount || 0;
+    tr.appendChild(tdUsers);
+
+    const tdExpiry = document.createElement("td");
+    const expSpan = document.createElement("span");
+    expSpan.textContent = fmtShortDate(lic.expiryDate);
+    tdExpiry.appendChild(expSpan);
+    if (d !== null) {
+      const badge = document.createElement("span");
+      badge.className = "lic-day-badge";
+      if (d < 0) { badge.classList.add("overdue"); badge.textContent = `${-d}d overdue`; }
+      else if (d === 0) badge.textContent = "today";
+      else badge.textContent = `${d}d left`;
+      tdExpiry.appendChild(badge);
+    }
+    tr.appendChild(tdExpiry);
+
+    const tdOwner = document.createElement("td");
+    const pill = document.createElement("span");
+    pill.className = "owner-pill";
+    pill.style.background = ownerColor(lic.ownerOid);
+    pill.textContent = lic.ownerName || (lic.ownerOid ? lic.ownerOid.slice(0, 8) : "(none)");
+    tdOwner.appendChild(pill);
+    tr.appendChild(tdOwner);
+
+    const tdProd = document.createElement("td");
+    if (lic.productLine) {
+      const tag = document.createElement("span");
+      tag.className = "product-tag";
+      tag.textContent = lic.productLine;
+      tdProd.appendChild(tag);
+    }
+    tr.appendChild(tdProd);
+
+    const tdActions = document.createElement("td");
+    tdActions.className = "actions";
+    const editBtn = document.createElement("button");
+    editBtn.type = "button";
+    editBtn.className = "btn ghost small";
+    editBtn.textContent = "Edit";
+    editBtn.addEventListener("click", (e) => { e.stopPropagation(); openEditDialog(lic); });
+    tdActions.appendChild(editBtn);
+    const renewBtn = document.createElement("button");
+    renewBtn.type = "button";
+    renewBtn.className = "btn primary small";
+    renewBtn.textContent = "Renewed";
+    renewBtn.addEventListener("click", (e) => { e.stopPropagation(); openRenewDialog(lic.id); });
+    tdActions.appendChild(renewBtn);
+    tr.appendChild(tdActions);
+
+    tr.addEventListener("click", () => openEditDialog(lic));
+    return tr;
+  }
+
+  function buildGroupHeaderRow(label, group) {
+    const tr = document.createElement("tr");
+    tr.className = "lic-group-header";
+    const td = document.createElement("td");
+    td.colSpan = 7;
+    const seats = group.reduce((s, l) => s + (typeof l.userCount === "number" ? l.userCount : 0), 0);
+    td.textContent = label || "(none)";
+    const meta = document.createElement("span");
+    meta.className = "group-count";
+    const noun = group.length === 1 ? "license" : "licenses";
+    meta.textContent = `${group.length} ${noun} · ${seats.toLocaleString()} seats`;
+    td.appendChild(meta);
+    tr.appendChild(td);
+    return tr;
   }
 
   function renderTable() {
@@ -262,82 +472,24 @@
     tbl.hidden = false;
     empty.hidden = true;
     const today = todayPh();
-    for (const lic of list) {
-      const tr = document.createElement("tr");
-      tr.dataset.id = lic.id;
-      const d = daysBetween(today, lic.expiryDate);
-      if (d !== null && d < 0 && lic.state !== "abandoned") tr.classList.add("overdue");
-      if (lic.state === "abandoned") tr.classList.add("abandoned");
 
-      const tdCustomer = document.createElement("td");
-      tdCustomer.textContent = lic.customer || "";
-      tr.appendChild(tdCustomer);
-
-      const tdType = document.createElement("td");
-      tdType.textContent = lic.licenseType || "";
-      tr.appendChild(tdType);
-
-      const tdUsers = document.createElement("td");
-      tdUsers.className = "num";
-      tdUsers.textContent = lic.userCount || 0;
-      tr.appendChild(tdUsers);
-
-      const tdExpiry = document.createElement("td");
-      const expSpan = document.createElement("span");
-      expSpan.textContent = fmtShortDate(lic.expiryDate);
-      tdExpiry.appendChild(expSpan);
-      if (d !== null) {
-        const badge = document.createElement("span");
-        badge.className = "lic-day-badge";
-        if (d < 0) {
-          badge.classList.add("overdue");
-          badge.textContent = `${-d}d overdue`;
-        } else if (d === 0) {
-          badge.textContent = "today";
-        } else {
-          badge.textContent = `${d}d left`;
-        }
-        tdExpiry.appendChild(badge);
+    if (groupBy === "none") {
+      for (const lic of list) tbody.appendChild(buildLicenseRow(lic, today));
+    } else {
+      const groups = new Map();
+      for (const lic of list) {
+        const key = (lic[groupBy] || "(none)").toString();
+        if (!groups.has(key)) groups.set(key, []);
+        groups.get(key).push(lic);
       }
-      tr.appendChild(tdExpiry);
-
-      const tdOwner = document.createElement("td");
-      const pill = document.createElement("span");
-      pill.className = "owner-pill";
-      pill.style.background = ownerColor(lic.ownerOid);
-      pill.textContent = lic.ownerName || (lic.ownerOid ? lic.ownerOid.slice(0, 8) : "(none)");
-      tdOwner.appendChild(pill);
-      tr.appendChild(tdOwner);
-
-      const tdProd = document.createElement("td");
-      if (lic.productLine) {
-        const tag = document.createElement("span");
-        tag.className = "product-tag";
-        tag.textContent = lic.productLine;
-        tdProd.appendChild(tag);
+      const orderedKeys = [...groups.keys()].sort((a, b) => a.localeCompare(b));
+      for (const key of orderedKeys) {
+        const group = groups.get(key);
+        tbody.appendChild(buildGroupHeaderRow(key, group));
+        for (const lic of group) tbody.appendChild(buildLicenseRow(lic, today));
       }
-      tr.appendChild(tdProd);
-
-      const tdActions = document.createElement("td");
-      tdActions.className = "actions";
-      const editBtn = document.createElement("button");
-      editBtn.type = "button";
-      editBtn.className = "btn ghost small";
-      editBtn.textContent = "Edit";
-      editBtn.addEventListener("click", (e) => { e.stopPropagation(); openEditDialog(lic); });
-      tdActions.appendChild(editBtn);
-      const renewBtn = document.createElement("button");
-      renewBtn.type = "button";
-      renewBtn.className = "btn primary small";
-      renewBtn.textContent = "Renewed";
-      renewBtn.addEventListener("click", (e) => { e.stopPropagation(); openRenewDialog(lic.id); });
-      tdActions.appendChild(renewBtn);
-      tr.appendChild(tdActions);
-
-      tr.addEventListener("click", () => openEditDialog(lic));
-      tbody.appendChild(tr);
     }
-    // Indicate active sort column.
+
     document.querySelectorAll("th.sortable").forEach((th) => {
       if (th.dataset.sort === sortKey) {
         th.setAttribute("aria-sort", sortDir === 1 ? "ascending" : "descending");
@@ -596,11 +748,20 @@
 
   // ---------- event wiring ----------
   function wireEvents() {
-    // View switcher
-    document.querySelectorAll(".view-btn").forEach((b) => {
+    // View switcher (Table / Calendar)
+    document.querySelectorAll("#viewSwitch .view-btn").forEach((b) => {
       b.addEventListener("click", () => {
         currentView = b.dataset.view;
         try { localStorage.setItem(LS_VIEW, currentView); } catch (_) {}
+        render();
+      });
+    });
+
+    // Group switcher (None / Customer / Owner / Product line)
+    document.querySelectorAll("#groupSwitch .view-btn").forEach((b) => {
+      b.addEventListener("click", () => {
+        groupBy = b.dataset.group;
+        try { localStorage.setItem(LS_GROUP, groupBy); } catch (_) {}
         render();
       });
     });
@@ -653,6 +814,9 @@
     // Add license buttons
     $("addLicenseBtn").addEventListener("click", openAddDialog);
     $("licEmptyAdd").addEventListener("click", openAddDialog);
+
+    // CSV export
+    $("exportCsvBtn").addEventListener("click", exportCsv);
 
     // CSV import
     $("importCsvBtn").addEventListener("click", openImportDialog);
@@ -1068,6 +1232,46 @@
       toast(`Imported ${success} license${success === 1 ? "" : "s"}`);
     }
     importRows = [];
+  }
+
+  // ---------- CSV export ----------
+
+  function csvEscape(v) {
+    if (v === null || v === undefined) return "";
+    const s = String(v);
+    if (/[",\n\r]/.test(s)) return `"${s.replace(/"/g, '""')}"`;
+    return s;
+  }
+
+  function exportCsv() {
+    const list = sortLicenses(visibleLicenses());
+    if (!list.length) { toast("Nothing to export with the current filters"); return; }
+    const headers = ["Customer", "License Type", "Number of Users", "Expiry Date", "Owner", "Product Line", "Lead Days", "Notes", "State", "Last Renewed"];
+    const lines = [headers.map(csvEscape).join(",")];
+    for (const l of list) {
+      lines.push([
+        l.customer,
+        l.licenseType,
+        l.userCount || 0,
+        l.expiryDate || "",
+        l.ownerName || "",
+        l.productLine || "",
+        l.leadDays == null ? "" : l.leadDays,
+        l.notes || "",
+        l.state || "active",
+        l.lastRenewedAt ? l.lastRenewedAt.slice(0, 10) : "",
+      ].map(csvEscape).join(","));
+    }
+    const blob = new Blob([lines.join("\n") + "\n"], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `day-reminders-licenses-${todayPh()}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(() => URL.revokeObjectURL(url), 100);
+    toast(`Exported ${list.length} license${list.length === 1 ? "" : "s"}`);
   }
 
   // ---------- Teams init + boot ----------
