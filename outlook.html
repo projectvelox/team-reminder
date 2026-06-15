@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Day Reminders</title>
+  <link rel="stylesheet" href="styles.css?v=1.6.0" />
+  <link rel="stylesheet" href="outlook.css?v=1.6.0" />
+  <script src="https://appsforoffice.microsoft.com/lib/1.1/hosted/office.js"></script>
+</head>
+<body data-theme="default" class="outlook-pane">
+  <main class="outlook-main">
+    <header class="outlook-header">
+      <h1>Add a reminder</h1>
+      <p class="muted" id="outlookEmailMeta"></p>
+    </header>
+
+    <div id="errorBanner" class="error-banner" hidden></div>
+
+    <form id="outlookForm" autocomplete="off">
+      <label class="outlook-row">
+        <span>What to remember</span>
+        <input id="outlookTitle" type="text" maxlength="200" required aria-label="Reminder title" />
+      </label>
+
+      <label class="outlook-row">
+        <span>Date</span>
+        <span class="row-date-wrap">
+          <input id="outlookDate" type="date" required aria-label="Reminder date" />
+          <button type="button" id="outlookTomorrow" class="btn ghost" title="Set to tomorrow">Tomorrow</button>
+          <button type="button" id="outlookToday" class="btn ghost" title="Set to today">Today</button>
+        </span>
+      </label>
+
+      <label class="outlook-row">
+        <span>Time (optional)</span>
+        <input id="outlookTime" type="time" aria-label="Reminder time, blank for anytime" />
+      </label>
+
+      <label class="outlook-row">
+        <span>Client (optional)</span>
+        <input id="outlookClient" type="text" list="outlookClientList" maxlength="100" placeholder="e.g. Citadel" aria-label="Client" />
+        <datalist id="outlookClientList"></datalist>
+      </label>
+
+      <label class="outlook-row outlook-row-wide">
+        <span>Details</span>
+        <textarea id="outlookDetails" maxlength="2000" rows="4" aria-label="Reminder details"></textarea>
+      </label>
+
+      <div class="outlook-actions">
+        <button type="button" id="outlookCancel" class="btn ghost">Cancel</button>
+        <button type="submit" id="outlookSubmit" class="btn primary">Add reminder</button>
+      </div>
+    </form>
+
+    <div id="outlookSuccess" class="outlook-success" hidden>
+      <div class="outlook-success-icon">&#10003;</div>
+      <h2>Reminder added</h2>
+      <p class="muted" id="outlookSuccessDetail"></p>
+      <div class="outlook-actions">
+        <button type="button" id="outlookAddAnother" class="btn ghost">Add another</button>
+        <button type="button" id="outlookDone" class="btn primary">Done</button>
+      </div>
+    </div>
+  </main>
+
+  <script src="outlook.js?v=1.6.0"></script>
+</body>
+</html>

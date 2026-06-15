@@ -10,7 +10,8 @@ The user (Kation owner) wanted a lightweight personal productivity surface that 
 
 ```
 projectvelox.github.io/team-reminder/  ──►  Teams static tab (HTML/JS/CSS)
-                                              │  Teams SSO Bearer
+                                       └──►  Outlook taskpane (outlook.html/.js)
+                                              │  Teams SSO Bearer  /  Office SSO Bearer
                                               ▼
 func-day-reminders-17023.azurewebsites.net  ──►  Azure Function App (Node 22, Linux Consumption, East Asia)
   /api/messages       ◄── Bot Service ──► Teams chat (proactive Adaptive Cards)
@@ -33,7 +34,9 @@ Secrets, GUIDs, and connection strings live in the Claude memory file `project_d
 | Path | What |
 |---|---|
 | `index.html` / `app.js` / `styles.css` | The tab, served from GitHub Pages |
+| `outlook.html` / `outlook.js` / `outlook.css` | Outlook add-in taskpane (new Outlook for Windows + OWA). Pre-fills a reminder from the open email, calls the same `/api/reminders`. |
 | `manifest.json` | Teams app manifest (sideload) |
+| `outlook-manifest.xml` | Office Add-in manifest for Outlook (sideload separately via Microsoft 365 admin → Integrated apps, or Outlook → My add-ins) |
 | `color.png` / `outline.png` | App icons |
 | `build.ps1` | Repackages `dist/team-reminder.zip` for sideload |
 | `bot/package.json`, `bot/host.json` | Function App project |
@@ -49,7 +52,11 @@ Secrets, GUIDs, and connection strings live in the Claude memory file `project_d
 | `bot/src/lib/cards.js` | Adaptive Card templates |
 | `dist/` | Build output, gitignored |
 
-## What ships today (v1.4.x)
+## What ships today (v1.6.x)
+
+- **Outlook add-in** (new Outlook for Windows + OWA). Open an email, click "Add reminder" in the message action bar (or right-click in the list → Apps → Day Reminders), taskpane slides in pre-filled with the subject as the title, sender in details, **date defaulted to tomorrow** (Tomorrow/Today quick-buttons, date picker available), optional time, client autocomplete. Submit creates the reminder in the same backend as the Teams tab. SSO via the same Entra app reg as Teams; backend audience check is unchanged.
+
+### v1.4 baseline
 
 - Add / delete / done-toggle / inline-edit (title, **date**, time, **description**, **client**)
 - **`dueAt` per reminder** (date, defaults to today) with auto-rollover of undone past-due items (cap 30 days) and an *overdue Nd* badge
@@ -142,20 +149,32 @@ The `--no-build` flag skips remote build (we ship `node_modules` in the zip — 
 ```
 Outputs `dist\team-reminder.zip`. URLs are baked into `manifest.json` directly now; the optional `-BaseUrl` arg rewrites them for local-host previews.
 
+### Outlook add-in
+The Outlook add-in is a separate "app" from a host perspective. The Teams app and Outlook add-in have independent manifests and independent admin-center entries; they share a backend, an Entra app reg, and a tab/taskpane domain.
+
+Sideload `outlook-manifest.xml` via either:
+- Microsoft 365 admin center → **Settings → Integrated apps → Upload custom apps → Office Add-in → Upload XML**, or
+- (Per-user) Outlook → **Get Add-ins → My add-ins → Add a custom add-in → Add from file**.
+
+The `outlook.html` / `outlook.js` / `outlook.css` files are tab-side — they ship on every `git push` (GitHub Pages). The XML manifest only needs to be re-uploaded when you change the manifest itself (version bumps, surface changes, new commands).
+
 ### When to bump what
 - Tab-only change → bump `?v=` in `index.html`, push. No re-upload needed.
+- Outlook taskpane change (`outlook.*`) → bump `?v=` in `outlook.html`, push. No re-upload of `outlook-manifest.xml` needed.
 - Bot-only change → publish to Function App. No re-upload needed.
 - `manifest.json` change → bump `version`, run `build.ps1`, re-upload via Teams admin center (Manage apps → Day Reminders → Update).
+- `outlook-manifest.xml` change → bump `<Version>`, re-upload via M365 admin center (Integrated apps).
 
 ## Auth model
 
 | Caller | Mechanism | Validated by |
 |---|---|---|
 | Tab → /api/reminders, /api/settings | Teams SSO Bearer token (audience = `api://projectvelox.github.io/<botAppId>`) | `bot/src/lib/auth.js` against Entra JWKS |
+| Outlook taskpane → /api/reminders | Office SSO Bearer token via `OfficeRuntime.auth.getAccessToken()` (same audience) | same `verifyTeamsToken` — token shape is identical |
 | Bot Service → /api/messages | Bot Framework JWT | `CloudAdapter` (auto) |
 | Future: Workato → /api/reminders | API key + `X-User-Oid` header | TBD; not yet implemented |
 
-`access_as_user` scope is pre-authorized for the six standard Teams + Office client app IDs. Tenant-wide admin consent is granted (one-time, by user as Kation admin).
+`access_as_user` scope is pre-authorized for the standard Teams + Office client app IDs (seven total as of v1.6, including the Office umbrella `ea5a67f6-b6f3-4338-b240-c655ddc3cc8e`). Tenant-wide admin consent is granted (one-time, by user as Kation admin); adding the Office umbrella ID did **not** require a new consent prompt since no new scope was added.
 
 ## User collaboration notes
 
@@ -171,4 +190,5 @@ Outputs `dist\team-reminder.zip`. URLs are baked into `manifest.json` directly n
 - Manifest version is in `manifest.json` (`version` field, separate from tab `?v=` cache-bust).
 - Bot App ID: `9f3711c1-c861-4da5-9664-6903bbe5bf05` (display name `Day Reminders Bot`).
 - Teams app ID (manifest `id`): `5a03bfa3-63c4-417c-b668-b02234ebc11b`.
+- Outlook add-in ID (`outlook-manifest.xml` `<Id>`): `29d36e10-9bd4-4c78-b66b-f6189ce9d7b5`.
 - Tenant: Kation Technologies (`705b9777-fb96-49cb-b57a-9a8fe00addad`).
