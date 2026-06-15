@@ -1,8 +1,8 @@
 # Day Reminders — User Guide
 
-Day Reminders is a personal productivity surface that lives inside Microsoft Teams. Capture what you need to remember today (or any day), and the bot pings you in chat before each one. You never have to leave Teams.
+Day Reminders is a tab + bot inside Teams for the stuff you need to remember today. You add things, the bot pings you in chat before each one, you mark them done. No flipping to a separate app.
 
-> Current version: **v1.4.6**.
+> Current version: **v1.4.6**. Last updated alongside the v1.4.x release wave.
 
 ---
 
@@ -179,6 +179,6 @@ Other tips:
 
 ## 9. Feedback
 
-Found a bug, want a feature? Drop a note in the team chat or ping Joshua directly.
+Bugs, requests, "this is annoying" — drop them in the team channel or DM Josh. This thing iterates fast.
 
-The next planned release (**v1.5**) adds **sharing** — you'll be able to share individual reminders with anyone in the tenant, and configure per-tag default share lists (e.g. `#QC = [Benex, Tim]` so any reminder tagged `#QC` auto-shares with the team).
+The next planned release (**v1.5**) adds **sharing**: assign individual reminders to anyone in the tenant, and configure per-tag default share lists (so `#QC` auto-shares with the QC team without picking recipients each time).

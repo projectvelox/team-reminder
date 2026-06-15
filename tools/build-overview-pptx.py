@@ -142,10 +142,31 @@ def add_body_bullets(slide, prs, lines, left, top, width, height):
 
 def add_placeholder_picture(slide, prs, idx: int, caption: str,
                             left: Emu, top: Emu, width: Emu, height: Emu):
-    # Prefer the real screenshot if it's been dropped into docs/screenshots/.
+    # Prefer the real screenshot. Critically: fit it within the slot while
+    # preserving its native aspect ratio (centered, letterbox-style). Without
+    # this, PowerPoint stretches every screenshot to fill the slot exactly,
+    # which is what made the v1 deck look distorted.
     real = SCREENSHOTS_DIR / SCREENSHOT_FILES.get(idx, "")
     if real.exists() and real.stat().st_size > 0:
-        return slide.shapes.add_picture(str(real), left, top, width, height)
+        with Image.open(real) as im:
+            iw, ih = im.size
+        img_ar = iw / ih
+        slot_ar = width / height
+        if img_ar > slot_ar:
+            # Image wider than slot — fit to width, center vertically
+            w = width
+            h = int(width / img_ar)
+            l = left
+            t = top + (height - h) // 2
+        else:
+            # Image taller than slot — fit to height, center horizontally
+            h = height
+            w = int(height * img_ar)
+            l = left + (width - w) // 2
+            t = top
+        return slide.shapes.add_picture(str(real), l, t, w, h)
+    # Placeholder fills the slot (the placeholder is a deliberate guide, not a
+    # real screenshot; stretching it is fine and keeps the slot fully marked).
     png_bytes = make_placeholder_png(idx, caption)
     return slide.shapes.add_picture(BytesIO(png_bytes), left, top, width, height)
 
@@ -180,7 +201,7 @@ def build_deck():
     p.font.color.rgb = RGBColor(0xFF, 0xFF, 0xFF); p.font.name = "Segoe UI"
     tb = s.shapes.add_textbox(Inches(1), Inches(3.9), Inches(11), Inches(0.8))
     p = tb.text_frame.paragraphs[0]
-    p.text = "Your reminders, inside Teams."
+    p.text = "Reminders, in the place you already work."
     p.font.size = Pt(32); p.font.color.rgb = ACCENT; p.font.name = "Segoe UI"
     tb = s.shapes.add_textbox(Inches(1), Inches(6.4), Inches(11), Inches(0.5))
     p = tb.text_frame.paragraphs[0]
@@ -189,18 +210,20 @@ def build_deck():
 
     # 2. What + Where
     s = prs.slides.add_slide(blank)
-    add_title_bar(s, prs, "What is Day Reminders?")
+    add_title_bar(s, prs, "What it is")
     add_body_bullets(s, prs, [
-        "A personal productivity tab + bot that lives inside Microsoft Teams.",
-        "Capture what you need to remember today (or any day) — the bot pings you in chat before each one.",
-        "No more flipping to another app.",
+        "Add what you need to remember today.",
+        "The bot pings you in chat before each one.",
+        "Mark it done from the card. Snooze it. Move on.",
+        "",
+        "No flipping to a separate app — it lives where you already work.",
         "",
         "Where to find it:",
-        "•  Look for the alarm-clock icon in the Teams left rail.",
-        "•  Two top tabs: Reminders (the main UI) and Chat (notifications + slash commands).",
-    ], Inches(0.6), Inches(1.3), Inches(6.2), Inches(5.5))
-    add_placeholder_picture(s, prs, 1, "Teams left rail with the Day Reminders icon",
-                            Inches(7.2), Inches(1.3), Inches(5.6), Inches(5.5))
+        "•  Alarm-clock icon in your Teams left rail.",
+        "•  Two top tabs: Reminders (the UI) and Chat (where the bot pings you).",
+    ], Inches(0.5), Inches(1.3), Inches(5.3), Inches(5.5))
+    add_placeholder_picture(s, prs,1, "Teams left rail with the Day Reminders icon",
+                            Inches(6.0), Inches(1.3), Inches(6.83), Inches(5.5))
     add_footer(s, prs, "Day Reminders v1.4.6")
 
     # 3. Adding from tab
@@ -215,9 +238,9 @@ def build_deck():
         "•  + Details — toggle for notes, links, sub-tasks (up to 2000 chars).",
         "",
         "Press Add (or hit Enter in the title field).",
-    ], Inches(0.6), Inches(1.3), Inches(6.2), Inches(5.5))
-    add_placeholder_picture(s, prs, 2, "The add form with title, client, date, time, and + Details expanded",
-                            Inches(7.2), Inches(1.3), Inches(5.6), Inches(5.5))
+    ], Inches(0.5), Inches(1.3), Inches(5.3), Inches(5.5))
+    add_placeholder_picture(s, prs,2, "The add form with title, client, date, time, and + Details expanded",
+                            Inches(6.0), Inches(1.3), Inches(6.83), Inches(5.5))
     add_footer(s, prs, "Day Reminders v1.4.6")
 
     # 4. Three ways to add
@@ -253,27 +276,26 @@ def build_deck():
         "",
         "Click any title, date, time, or chip to inline-edit.",
         "Enter saves, Esc cancels.",
-    ], Inches(0.6), Inches(1.3), Inches(6.2), Inches(5.5))
-    add_placeholder_picture(s, prs, 3, "Lines view with multiple reminders showing tags, clients, and a high-priority star",
-                            Inches(7.2), Inches(1.3), Inches(5.6), Inches(5.5))
+    ], Inches(0.5), Inches(1.3), Inches(5.3), Inches(5.5))
+    add_placeholder_picture(s, prs,3, "Lines view with multiple reminders showing tags, clients, and a high-priority star",
+                            Inches(6.0), Inches(1.3), Inches(6.83), Inches(5.5))
     add_footer(s, prs, "Day Reminders v1.4.6")
 
     # 6. Week view
     s = prs.slides.add_slide(blank)
-    add_title_bar(s, prs, "Week view — your whole week at a glance")
+    add_title_bar(s, prs, "Week view — am I bombarded or free?")
     add_body_bullets(s, prs, [
-        "Mon–Sun grid of reminders by due date. Today's column highlighted.",
+        "For the moment when you need to know what your whole week looks like.",
         "",
-        "Timed items stack chronologically in each day; anytime items sit at the bottom under a sub-heading.",
+        "Mon–Sun grid by due date. Today's column highlighted.",
+        "Timed items stack by time within each day; anytime items at the bottom.",
         "",
-        "Click an empty day to start adding a reminder pre-filled with that date.",
+        "Click any empty day to start adding a reminder for that date.",
         "",
-        "Prev / Today / Next arrows let you navigate weeks.",
-        "",
-        "Mini Day ⇄ Week switcher inside the header — flip without going to the top bar.",
-    ], Inches(0.6), Inches(1.3), Inches(6.2), Inches(5.5))
-    add_placeholder_picture(s, prs, 4, "Week view with today highlighted and reminders stacked under several days",
-                            Inches(7.2), Inches(1.3), Inches(5.6), Inches(5.5))
+        "Prev / Today / Next to navigate weeks. Mini Day ⇄ Week switcher in the header so you don't have to go back to the top bar to flip.",
+    ], Inches(0.5), Inches(1.3), Inches(5.3), Inches(5.5))
+    add_placeholder_picture(s, prs,4, "Week view with today highlighted and reminders stacked under several days",
+                            Inches(6.0), Inches(1.3), Inches(6.83), Inches(5.5))
     add_footer(s, prs, "Day Reminders v1.4.6")
 
     # 7. Tags / Clients / Group / Filter
@@ -291,9 +313,9 @@ def build_deck():
         "",
         "Quick filters — All / Timed / Anytime / Priority / Done pills above the list.",
         "    Search box top-right (shortcut: f) matches title, tags, and client.",
-    ], Inches(0.6), Inches(1.3), Inches(6.2), Inches(5.5))
-    add_placeholder_picture(s, prs, 5, "Lines view with Group: client active — multiple client sections, colored headers",
-                            Inches(7.2), Inches(1.3), Inches(5.6), Inches(5.5))
+    ], Inches(0.5), Inches(1.3), Inches(5.3), Inches(5.5))
+    add_placeholder_picture(s, prs,5, "Lines view with Group: client active — multiple client sections, colored headers",
+                            Inches(6.0), Inches(1.3), Inches(6.83), Inches(5.5))
     add_footer(s, prs, "Day Reminders v1.4.6")
 
     # 8. Notifications
@@ -312,9 +334,9 @@ def build_deck():
         "",
         "Items not done by their due date auto-roll forward to today with an overdue Nd badge",
         "(capped at 30 days so old backlog doesn't pile up).",
-    ], Inches(0.6), Inches(1.3), Inches(6.2), Inches(5.5))
-    add_placeholder_picture(s, prs, 6, "A real proactive Adaptive Card with title, time, description, and the four buttons",
-                            Inches(7.2), Inches(1.3), Inches(5.6), Inches(5.5))
+    ], Inches(0.5), Inches(1.3), Inches(5.3), Inches(5.5))
+    add_placeholder_picture(s, prs,6, "A real proactive Adaptive Card with title, time, description, and the four buttons",
+                            Inches(6.0), Inches(1.3), Inches(6.83), Inches(5.5))
     add_footer(s, prs, "Day Reminders v1.4.6")
 
     # 9. Tips + Roadmap
@@ -327,15 +349,15 @@ def build_deck():
         "    ?  open the quick guide          Esc  clear filters / cancel edit",
         "",
         "Other handy bits:",
-        "•  Select multiple — top-bar button, then bulk-done / delete / star.",
+        "•  Select multiple — top-bar button, then bulk-done / delete / star a batch.",
         "•  Templates — + Templates pill for common reminders, one click to add.",
-        "•  Undo delete — toast appears for 5 seconds after every delete.",
-        "•  Settings (top-right ⚙) — EOD time, default lead minutes, weekdays-only, theme.",
+        "•  Undo delete — toast hangs around for 5 seconds after every delete.",
+        "•  Settings (top-right ⚙) — EOD check-in time, default lead minutes, weekdays-only, theme.",
         "",
-        "Coming next (v1.5): sharing — assign reminders to teammates,",
-        "    set per-tag default share lists (e.g. #QC = [Benex, Tim]).",
+        "Coming next (v1.5): sharing. Assign reminders to teammates; set per-tag default share lists",
+        "    so #QC auto-shares with the QC team without picking recipients each time.",
         "",
-        "Bugs / requests → ping Joshua, or post in the team channel.",
+        "Bugs, asks, 'this is annoying' feedback → drop them in the team channel or ping Josh.",
     ], Inches(0.6), Inches(1.3), Inches(12.0), Inches(5.5))
     add_footer(s, prs, "Day Reminders v1.4.6")
 
