@@ -1,4 +1,4 @@
-/* Day Reminders — Teams personal tab (v1.4.1)
+/* Day Reminders — Teams personal tab (v1.4.2)
    Thin client over the bot's REST API. Auth via Teams SSO.
    Server-side bot handles all notifications (proactive Adaptive Cards in chat).
 */
@@ -8,8 +8,8 @@
   const API_BASE = "https://func-day-reminders-17023.azurewebsites.net/api";
   const DONE_AGE_MS = 24 * 60 * 60 * 1000;
   const UNDO_MS = 5000;
-  const APP_VERSION = "1.4.1";
-  const VIEWS = ["lines", "grid", "calendar"];
+  const APP_VERSION = "1.4.2";
+  const VIEWS = ["lines", "grid", "calendar", "week"];
   const TAG_PALETTE = [
     "#0078d4", "#107c10", "#8764b8", "#ca5010", "#c50f1f",
     "#038387", "#d83b01", "#5c2d91", "#0099bc", "#498205",
@@ -32,7 +32,8 @@
   let activeClientFilter = null;
   let quickFilter = "all"; // all | timed | anytime | high | done
   let searchText = "";
-  let currentView = "lines"; // lines | grid | calendar
+  let currentView = "lines"; // lines | grid | calendar | week
+  let weekOffset = 0; // 0 = current week; not persisted across reloads
   let bulkMode = false;
   const bulkSelected = new Set();
   let teamsTheme = "default";
@@ -71,6 +72,35 @@
     const ph = new Date(Date.now() + 8 * 60 * 60 * 1000);
     return `${ph.getUTCFullYear()}-${String(ph.getUTCMonth() + 1).padStart(2, '0')}-${String(ph.getUTCDate()).padStart(2, '0')}`;
   }
+  // Returns array of 7 YYYY-MM-DD strings starting Monday of the PH wall-clock
+  // week containing today + (offset * 7 days). offset=0 = current week.
+  function weekDates(offset) {
+    const ph = new Date(Date.now() + 8 * 60 * 60 * 1000);
+    const dow = ph.getUTCDay(); // 0=Sun ... 6=Sat
+    const daysFromMonday = (dow + 6) % 7; // Mon=0, Sun=6
+    const monday = new Date(ph.getTime());
+    monday.setUTCDate(monday.getUTCDate() - daysFromMonday + offset * 7);
+    const out = [];
+    for (let i = 0; i < 7; i++) {
+      const d = new Date(monday.getTime() + i * 24 * 60 * 60 * 1000);
+      out.push(`${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}-${String(d.getUTCDate()).padStart(2, '0')}`);
+    }
+    return out;
+  }
+  // Human label for a 7-day range like "Jun 15 – 21, 2026" or month/year spans.
+  function weekRangeLabel(days) {
+    const first = new Date(days[0] + "T00:00:00Z");
+    const last = new Date(days[6] + "T00:00:00Z");
+    const fmt = (d, opts) => d.toLocaleDateString(undefined, { ...opts, timeZone: "UTC" });
+    if (first.getUTCMonth() === last.getUTCMonth() && first.getUTCFullYear() === last.getUTCFullYear()) {
+      return `${fmt(first, { month: "short", day: "numeric" })} – ${fmt(last, { day: "numeric" })}, ${last.getUTCFullYear()}`;
+    }
+    if (first.getUTCFullYear() === last.getUTCFullYear()) {
+      return `${fmt(first, { month: "short", day: "numeric" })} – ${fmt(last, { month: "short", day: "numeric" })}, ${last.getUTCFullYear()}`;
+    }
+    return `${fmt(first, { month: "short", day: "numeric", year: "numeric" })} – ${fmt(last, { month: "short", day: "numeric", year: "numeric" })}`;
+  }
+
   // Short human label for a due date relative to today: "Today", "Tomorrow", "Yesterday",
   // weekday name within +/-6 days, else "MMM D" (and year if different).
   function formatDueLabel(dueAt, today) {
@@ -432,6 +462,28 @@
       return;
     }
 
+    // Week view: 7-column Mon–Sun grid of items by dueAt, with nav arrows.
+    // Includes both open and done items so the week shows real activity; the
+    // existing quick-filter for timed/anytime/high still narrows the slice.
+    if (currentView === "week" && quickFilter !== "done") {
+      const days = weekDates(weekOffset);
+      let weekItems = visible.filter((r) => {
+        const d = r.dueAt || r.createdDate;
+        return d && days.includes(d);
+      });
+      if (quickFilter === "timed") weekItems = weekItems.filter((r) => !!r.time);
+      else if (quickFilter === "anytime") weekItems = weekItems.filter((r) => !r.time);
+      else if (quickFilter === "high") weekItems = weekItems.filter((r) => r.priority === "high");
+      reminderRoot.appendChild(buildWeekLayout(weekItems, days));
+      if (recentDone.length || olderDoneCount) {
+        reminderRoot.appendChild(buildDoneSection(recentDone, olderDoneCount));
+      }
+      markAllDoneBtn.hidden = bulkMode || open.length === 0;
+      updateBulkBar();
+      updateBotHint();
+      return;
+    }
+
     if (quickFilter === "done") {
       if (doneAll.length === 0) {
         reminderRoot.appendChild(buildEmptyState(noFiltersActive
@@ -530,7 +582,7 @@
 
     const title = document.createElement("h3");
     title.className = "gcard-title";
-    title.textContent = r.title;
+    title.textContent = displayTitle(r);
     title.title = "Click to rename";
     title.addEventListener("click", () => startTitleEdit(r, title));
     head.appendChild(title);
@@ -664,6 +716,131 @@
 
     return section;
   }
+  // ---------- week view ----------
+  function buildWeekLayout(items, days) {
+    const section = document.createElement("section");
+    section.className = "card week";
+
+    const nav = document.createElement("div");
+    nav.className = "week-nav";
+    const prev = document.createElement("button");
+    prev.type = "button";
+    prev.className = "btn ghost small";
+    prev.textContent = "‹ Prev";
+    prev.title = "Previous week";
+    prev.addEventListener("click", () => setWeek(weekOffset - 1));
+    const range = document.createElement("div");
+    range.className = "week-range";
+    range.textContent = weekRangeLabel(days);
+    const todayBtn = document.createElement("button");
+    todayBtn.type = "button";
+    todayBtn.className = "btn ghost small";
+    todayBtn.textContent = "Today";
+    todayBtn.title = "Jump to current week";
+    todayBtn.disabled = weekOffset === 0;
+    todayBtn.addEventListener("click", () => setWeek(0));
+    const next = document.createElement("button");
+    next.type = "button";
+    next.className = "btn ghost small";
+    next.textContent = "Next ›";
+    next.title = "Next week";
+    next.addEventListener("click", () => setWeek(weekOffset + 1));
+    nav.append(prev, range, todayBtn, next);
+    section.appendChild(nav);
+
+    const grid = document.createElement("div");
+    grid.className = "week-grid";
+    const todayStr = todayPh();
+
+    for (const dayStr of days) {
+      const col = document.createElement("div");
+      col.className = "week-day";
+      if (dayStr === todayStr) col.classList.add("today");
+      else if (dayStr < todayStr) col.classList.add("past");
+
+      const dayDate = new Date(dayStr + "T00:00:00Z");
+      const head = document.createElement("div");
+      head.className = "week-day-head";
+      const name = document.createElement("span");
+      name.className = "week-day-name";
+      name.textContent = dayDate.toLocaleDateString(undefined, { weekday: "short", timeZone: "UTC" });
+      const num = document.createElement("span");
+      num.className = "week-day-num";
+      num.textContent = String(dayDate.getUTCDate());
+      head.append(name, num);
+      col.appendChild(head);
+
+      const body = document.createElement("div");
+      body.className = "week-day-body";
+      const dayItems = items.filter((r) => (r.dueAt || r.createdDate) === dayStr);
+      const timed = dayItems.filter((r) => !!r.time).sort((a, b) => a.time.localeCompare(b.time));
+      const anytime = dayItems.filter((r) => !r.time);
+
+      for (const r of timed) body.appendChild(buildWeekItem(r));
+      if (anytime.length) {
+        const sub = document.createElement("div");
+        sub.className = "week-anytime-head";
+        sub.textContent = "Anytime";
+        body.appendChild(sub);
+        for (const r of anytime) body.appendChild(buildWeekItem(r));
+      }
+
+      body.dataset.empty = dayItems.length === 0 ? "true" : "false";
+      body.addEventListener("click", (e) => {
+        if (e.target !== body) return;
+        if (!dueDateInput || !titleInput) return;
+        dueDateInput.value = dayStr;
+        titleInput.focus();
+        titleInput.scrollIntoView({ behavior: "smooth", block: "start" });
+      });
+
+      col.appendChild(body);
+      grid.appendChild(col);
+    }
+
+    section.appendChild(grid);
+    return section;
+  }
+
+  function buildWeekItem(r) {
+    const item = document.createElement("div");
+    item.className = "week-item";
+    item.dataset.id = r.id;
+    if (r.priority === "high") item.classList.add("high");
+    if (r.done) item.classList.add("done");
+    if (r.snoozedUntil && new Date(r.snoozedUntil).getTime() > Date.now()) item.classList.add("snoozed");
+
+    const time = document.createElement("span");
+    time.className = "week-item-time" + (r.time ? "" : " anytime");
+    time.textContent = r.time ? formatTime(r.time) : "·";
+
+    const text = document.createElement("span");
+    text.className = "week-item-text";
+    text.textContent = displayTitle(r);
+
+    item.append(time, text);
+    item.addEventListener("click", (e) => {
+      e.stopPropagation();
+      if (e.target.closest("button")) return;
+      openRowOptions(r);
+    });
+    return item;
+  }
+
+  function setWeek(offset) {
+    weekOffset = offset;
+    render();
+  }
+
+  // displayTitle(): renders the title with a [Client] prefix when a client is set.
+  // Keeps the underlying r.title editable as-is — the prefix is display-only and
+  // updates automatically if the client changes.
+  function displayTitle(r) {
+    return r.client && r.client.trim()
+      ? `[${r.client.trim()}] ${r.title}`
+      : r.title;
+  }
+
   function buildCalendarItem(r) {
     const item = document.createElement("div");
     item.className = "cal-item";
@@ -685,7 +862,7 @@
 
     const text = document.createElement("span");
     text.className = "cal-item-text";
-    text.textContent = r.rollDays > 0 ? `${r.title}  (+${r.rollDays}d)` : r.title;
+    text.textContent = r.rollDays > 0 ? `${displayTitle(r)}  (+${r.rollDays}d)` : displayTitle(r);
 
     const more = document.createElement("button");
     more.type = "button";
@@ -939,7 +1116,7 @@
     titleWrap.className = "title-wrap";
     const title = document.createElement("span");
     title.className = "title";
-    title.textContent = r.title;
+    title.textContent = displayTitle(r);
     title.title = "Click to rename";
     title.addEventListener("click", () => startTitleEdit(r, title));
     titleWrap.appendChild(title);
@@ -1105,7 +1282,7 @@
       const { title, tags } = extractTagsFromTitle(input.value.trim());
       const wantTagMerge = tags.length && !sameTags(mergeTags(r.tags, tags), r.tags);
       if (!title || (title === r.title && !wantTagMerge)) {
-        span.textContent = r.title;
+        span.textContent = displayTitle(r);
         return;
       }
       const prevTitle = r.title;
@@ -1129,7 +1306,7 @@
     input.addEventListener("blur", commit);
     input.addEventListener("keydown", (e) => {
       if (e.key === "Enter") { e.preventDefault(); input.blur(); }
-      else if (e.key === "Escape") { committed = true; span.textContent = r.title; }
+      else if (e.key === "Escape") { committed = true; span.textContent = displayTitle(r); }
     });
   }
 

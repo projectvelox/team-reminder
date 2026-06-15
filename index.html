@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Day Reminders</title>
-  <link rel="stylesheet" href="styles.css?v=1.4.1" />
+  <link rel="stylesheet" href="styles.css?v=1.4.2" />
   <script src="https://res.cdn.office.net/teams-js/2.24.0/js/MicrosoftTeams.min.js"></script>
 </head>
 <body data-theme="default">
@@ -19,7 +19,8 @@
       <div id="viewSwitch" class="view-switch" role="group" aria-label="List view">
         <button type="button" data-view="lines" class="view-btn" title="Row-by-row view (shortcut: v)" aria-pressed="true">Lines</button>
         <button type="button" data-view="grid" class="view-btn" title="Compact card grid" aria-pressed="false">Grid</button>
-        <button type="button" data-view="calendar" class="view-btn" title="Hour-by-hour calendar" aria-pressed="false">Calendar</button>
+        <button type="button" data-view="calendar" class="view-btn" title="Hour-by-hour day view" aria-pressed="false">Day</button>
+        <button type="button" data-view="week" class="view-btn" title="Mon–Sun week view, items plotted on their due date" aria-pressed="false">Week</button>
       </div>
       <button id="groupToggle" class="btn ghost" title="Group reminders by tag (shortcut: g)" aria-pressed="false">Group by tag</button>
       <button id="openSettings" class="btn ghost" title="Settings">&#9881; Settings</button>
@@ -94,6 +95,7 @@
       <section class="card">
         <h2 class="guide-title">Quick guide</h2>
         <ul class="guide-list">
+          <li><strong>Week view:</strong> top-right view toggle now includes <em>Week</em> — Mon–Sun grid of your reminders by due date. Today's column is highlighted. Click an empty day to start adding a reminder pre-filled for that date.</li>
           <li><strong>Client:</strong> set a client per reminder. Autocompletes from your past clients. Click the client chip on any row to filter to that client; click it again to clear.</li>
           <li><strong>Pick a date:</strong> use the date input next to time. Defaults to today. Items not done by their due date auto-roll forward (up to 30 days) and show an <em>overdue Nd</em> badge.</li>
           <li><strong>Add details:</strong> click <em>+ Details</em> under the add form (or the chevron on a row) to attach notes, links, or sub-tasks. Shows in the proactive card too.</li>
@@ -109,7 +111,7 @@
           <li><strong>Group by tag:</strong> the top-right toggle, or press <code>g</code>.</li>
           <li><strong>Mark done:</strong> tick the checkbox. Undo within 5 seconds.</li>
           <li><strong>Bot chat:</strong> open the <em>Chat</em> tab above and type <code>/help</code>, <code>/list</code>, <code>/add</code>, <code>/done</code>. <code>/add</code> accepts a date too, e.g. <code>/add 5pm tomorrow #work Send report</code>.</li>
-          <li><strong>Views:</strong> the top-right segmented control switches between <em>Lines</em>, <em>Grid</em>, and <em>Calendar</em>. Shortcut: <code>v</code>.</li>
+          <li><strong>Views:</strong> the top-right segmented control switches between <em>Lines</em>, <em>Grid</em>, <em>Day</em> (hour-by-hour today), and <em>Week</em> (Mon–Sun grid). Shortcut: <code>v</code> cycles.</li>
           <li><strong>Shortcuts:</strong> <code>/</code> add, <code>f</code> search, <code>g</code> group, <code>v</code> view, <code>?</code> this guide, <code>Esc</code> clear filters.</li>
         </ul>
       </section>
@@ -163,6 +165,15 @@
     <form method="dialog">
       <h2>What's new</h2>
       <ul class="changelog">
+        <li><strong>v1.4.2</strong>
+          <ul>
+            <li>New <em>Week</em> view in the top-right view toggle — Mon–Sun grid of your reminders by due date. Today's column is highlighted.</li>
+            <li>Timed reminders stack chronologically per day; anytime items sit at the bottom of each day under an <em>Anytime</em> sub-heading.</li>
+            <li>Click an empty area in any day column to focus the add form pre-filled with that day's date.</li>
+            <li>Prev / next week navigation arrows above the grid. Renamed the existing <em>Calendar</em> view to <em>Day</em> so the toggle reads <em>Lines / Grid / Day / Week</em>.</li>
+            <li>Reminders with a client now show <code>[Client]</code> as a prefix on the title in every view (Lines, Grid, Day, Week) and in the proactive Adaptive Card — replaces the separate "Client: X" line, so the title is the single scannable identifier. The client chip below the title is still there for click-to-filter.</li>
+          </ul>
+        </li>
         <li><strong>v1.4.1</strong>
           <ul>
             <li>New <em>Client</em> field per reminder. Optional, autocompletes from your past clients (no master list to maintain).</li>
@@ -270,6 +281,7 @@
     <form method="dialog">
       <h2>Quick guide</h2>
       <ul class="guide-list">
+        <li><strong>Week view:</strong> view toggle now includes <em>Week</em> — 7-day grid of reminders by due date. Click empty days to add for that date.</li>
         <li><strong>Client:</strong> per-reminder client with autocomplete. Click the client chip on a row to filter.</li>
         <li><strong>Pick a date:</strong> next to time. Defaults to today. Undone items auto-roll forward (cap 30 days) with an <em>overdue Nd</em> badge.</li>
         <li><strong>Add details:</strong> click <em>+ Details</em> under the add form, or the chevron on a row, for notes / links / sub-tasks. Shows in the proactive card.</li>
@@ -293,13 +305,13 @@
   <div id="toastRegion" class="toast-region" aria-live="polite"></div>
 
   <footer class="appfoot">
-    <span class="muted" id="versionLabel">v1.4.1</span>
+    <span class="muted" id="versionLabel">v1.4.2</span>
     <span class="muted">&middot;</span>
     <button id="openWhatsNew" class="link" type="button">What's new</button>
     <span class="muted">&middot;</span>
     <a class="link" href="https://github.com/projectvelox/team-reminder/issues" target="_blank" rel="noopener">Report an issue</a>
   </footer>
 
-  <script src="app.js?v=1.4.1"></script>
+  <script src="app.js?v=1.4.2"></script>
 </body>
 </html>
