@@ -638,6 +638,36 @@ button:focus-visible, .link:focus-visible, .tag-chip:focus-visible, select:focus
 .template-grid .template:hover { border-color: var(--accent); background: var(--surface); }
 .template-grid .template strong { display: block; font-size: 13px; }
 .template-grid .template .sub { font-size: 11px; color: var(--muted); }
+.template-grid .template-section {
+  grid-column: 1 / -1;
+  margin: 8px 0 0;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: .04em;
+  color: var(--muted);
+  font-weight: 600;
+}
+.template-grid .template-wrap {
+  position: relative;
+  display: flex;
+}
+.template-grid .template-wrap > .template { flex: 1; }
+.template-grid .template-delete {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 16px;
+  line-height: 1;
+  padding: 0;
+}
+.template-grid .template-delete:hover { background: var(--bg); color: var(--danger); }
 
 /* bulk select */
 .bulk-bar {
@@ -970,6 +1000,17 @@ button:focus-visible, .link:focus-visible, .tag-chip:focus-visible, select:focus
   border-radius: 999px;
   background: var(--danger);
   color: #fff;
+  letter-spacing: .02em;
+}
+.repeat-badge {
+  display: inline-block;
+  font-size: 10px;
+  font-weight: 600;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  color: var(--muted);
   letter-spacing: .02em;
 }
 

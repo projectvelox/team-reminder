@@ -90,19 +90,46 @@ function snoozeMinutesIso(n) {
 function snoozeTomorrowIso(hhmm) {
   // tomorrow's PH wall-clock at the reminder's original time (or 09:00 default),
   // converted back to a real UTC ISO.
+  return snoozeDaysIso(hhmm, 1);
+}
+function snoozeDaysIso(hhmm, days) {
   const ph = new Date(Date.now() + PH_OFFSET_MS);
-  ph.setUTCDate(ph.getUTCDate() + 1);
+  ph.setUTCDate(ph.getUTCDate() + days);
   const [h, m] = (hhmm || '09:00').split(':').map(Number);
   ph.setUTCHours(h, m, 0, 0);
   return new Date(ph.getTime() - PH_OFFSET_MS).toISOString();
 }
+function advanceOccurrence(dateStr, repeat) {
+  const d = new Date(dateStr + 'T00:00:00Z');
+  if (repeat === 'daily') {
+    d.setUTCDate(d.getUTCDate() + 1);
+  } else if (repeat === 'weekly') {
+    d.setUTCDate(d.getUTCDate() + 7);
+  } else if (repeat === 'weekdays') {
+    do { d.setUTCDate(d.getUTCDate() + 1); }
+    while (d.getUTCDay() === 0 || d.getUTCDay() === 6);
+  }
+  return d.toISOString().slice(0, 10);
+}
+
+function snoozeNextMondayIso(hhmm) {
+  // days until next Monday in PH (if today IS Monday, skip to next week).
+  const ph = new Date(Date.now() + PH_OFFSET_MS);
+  const todayDow = ph.getUTCDay(); // 0=Sun..6=Sat
+  const daysUntilMon = ((1 - todayDow + 7) % 7) || 7;
+  return snoozeDaysIso(hhmm, daysUntilMon);
+}
 function snoozeLabel(data, untilIso) {
-  if (data.tomorrow) {
-    // describe in PH wall-clock terms
+  const phTime = () => {
     const ph = new Date(new Date(untilIso).getTime() + PH_OFFSET_MS);
     const hh = String(ph.getUTCHours()).padStart(2, '0');
     const mm = String(ph.getUTCMinutes()).padStart(2, '0');
-    return `tomorrow at ${hh}:${mm}`;
+    return `${hh}:${mm}`;
+  };
+  if (data.tomorrow) return `tomorrow at ${phTime()}`;
+  if (data.nextMonday) return `next Monday at ${phTime()}`;
+  if (typeof data.days === 'number' && data.days > 0) {
+    return `in ${data.days} day${data.days === 1 ? '' : 's'} at ${phTime()}`;
   }
   if (typeof data.minutes === 'number') {
     if (data.minutes < 60) return `in ${data.minutes} min`;
@@ -228,16 +255,29 @@ class ReminderBot extends TeamsActivityHandler {
     if (data.action === 'markDone' && data.reminderId) {
       const r = await store.getReminder(oid, data.reminderId);
       if (r) {
-        r.done = true;
-        r.snoozedUntil = null;
-        await store.upsertReminder(oid, r);
-        await context.sendActivity(`Marked done: ${r.title}`);
+        if (r.repeat && r.repeat !== 'none') {
+          // Recurring: advance to next occurrence, stay open.
+          r.dueAt = advanceOccurrence(r.dueAt || phToday(), r.repeat);
+          r.firedAt = null;
+          r.snoozedUntil = null;
+          r.rollDays = 0;
+          await store.upsertReminder(oid, r);
+          await context.sendActivity(`Done for today: ${r.title}. Next occurrence: ${r.dueAt}.`);
+        } else {
+          r.done = true;
+          r.closedAt = new Date().toISOString();
+          r.snoozedUntil = null;
+          await store.upsertReminder(oid, r);
+          await context.sendActivity(`Marked done: ${r.title}`);
+        }
       }
     } else if (data.action === 'snooze' && data.reminderId) {
       const r = await store.getReminder(oid, data.reminderId);
       if (!r) return;
       let until = null;
       if (data.tomorrow) until = snoozeTomorrowIso(r.time);
+      else if (data.nextMonday) until = snoozeNextMondayIso(r.time);
+      else if (typeof data.days === 'number' && data.days > 0) until = snoozeDaysIso(r.time, data.days);
       else if (typeof data.minutes === 'number' && data.minutes > 0) until = snoozeMinutesIso(data.minutes);
       if (!until) return;
       r.snoozedUntil = until;
@@ -313,8 +353,11 @@ class ReminderBot extends TeamsActivityHandler {
       "* **/add** [time] [date] [#tag] *title* (e.g. `/add 5pm tomorrow #work Send weekly report`)\n" +
       "  Date can be `today`, `tomorrow`, a weekday (`mon`, `fri`...), `6/20`, or `2026-06-20`. Time and date can appear in either order.\n" +
       "* **/list** to see what's open today\n" +
-      "* **/done** *substring* to mark a matching item done (e.g. `/done report`)\n" +
+      "* **/done** *substring* to mark a matching item done (matches title, tags, client, or notes; e.g. `/done report`)\n" +
       "* **/help** to see this again\n\n" +
+      "**On the proactive card**: Mark done, Snooze 15m / 1h / Tomorrow / +3 days / Next Mon.\n\n" +
+      "**Recurring**: open a reminder's *⋯ options* in the tab and set *Repeat* to Daily, Weekdays, or Weekly. Marking done advances to the next occurrence — recurring reminders never become overdue.\n\n" +
+      "**Quiet hours**: in *Settings* set a quiet window (e.g. 20:00 to 07:00). I'll skip proactive cards in that window and fire any due reminders right after it ends.\n\n" +
       "Or use the **Reminders** tab in this app for clicking instead of typing."
     );
   }
@@ -377,7 +420,12 @@ class ReminderBot extends TeamsActivityHandler {
     }
     const q = query.toLowerCase();
     const items = (await store.listReminders(oid)).filter((r) => !r.done);
-    const matches = items.filter((r) => r.title.toLowerCase().includes(q));
+    const matchField = (r) =>
+      (r.title || "").toLowerCase().includes(q) ||
+      (r.client || "").toLowerCase().includes(q) ||
+      (r.description || "").toLowerCase().includes(q) ||
+      (r.tags || []).some((t) => (t || "").toLowerCase().includes(q));
+    const matches = items.filter(matchField);
     if (matches.length === 0) {
       await context.sendActivity(`No open item matches "${query}".`);
       return;

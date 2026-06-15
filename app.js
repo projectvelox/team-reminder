@@ -17,6 +17,7 @@
 
   // ---------- state ----------
   let reminders = [];
+  let userTemplates = []; // per-user templates loaded from /api/templates
   let settings = {
     eodTime: "17:00",
     leadMinutes: 10,
@@ -268,6 +269,8 @@
       leadMinutes: clampInt($("setLeadMinutes").value, 0, 240, settings.leadMinutes),
       weekdaysOnly: $("setWeekdaysOnly").checked,
       notifications: $("setNotifications").checked,
+      quietStart: $("setQuietStart").value || null,
+      quietEnd: $("setQuietEnd").value || null,
     };
     const newTheme = $("setThemeOverride").value;
     settings.themeOverride = newTheme;
@@ -401,6 +404,12 @@
     rowOptionsDialog.close();
     toggleDone(r);
   });
+  $("rowOptionsSaveTemplate").addEventListener("click", () => {
+    const r = reminders.find((x) => x.id === editingReminderId);
+    if (!r) { rowOptionsDialog.close(); return; }
+    rowOptionsDialog.close();
+    saveAsTemplate(r);
+  });
   if (rowDescription) {
     rowDescription.addEventListener("input", () => autoGrowTextarea(rowDescription));
   }
@@ -430,29 +439,35 @@
     const nextDue = rowDueDate && rowDueDate.value ? rowDueDate.value : (r.dueAt || todayPh());
     const nextClientRaw = rowClient ? rowClient.value.trim().slice(0, 100) : "";
     const nextClient = nextClientRaw || null;
+    const repeatSel = $("rowRepeat");
+    const nextRepeat = repeatSel && ["daily", "weekdays", "weekly"].includes(repeatSel.value) ? repeatSel.value : "none";
     const prevLead = r.leadMinutes;
     const prevDesc = r.description;
     const prevDue = r.dueAt;
     const prevRoll = r.rollDays;
     const prevClient = r.client;
+    const prevRepeat = r.repeat || "none";
     const dueInitial = prevDue || todayPh();
     const leadChanged = prevLead !== nextLead;
     const descChanged = (prevDesc || null) !== nextDesc;
     const dueChanged = nextDue !== dueInitial;
     const clientChanged = (prevClient || null) !== nextClient;
+    const repeatChanged = prevRepeat !== nextRepeat;
     r.leadMinutes = nextLead;
     r.description = nextDesc;
     if (dueChanged) { r.dueAt = nextDue; r.rollDays = 0; }
     r.client = nextClient;
+    r.repeat = nextRepeat;
     rowOptionsDialog.close();
-    if (leadChanged || descChanged || dueChanged || clientChanged) render();
-    if (!leadChanged && !descChanged && !dueChanged && !clientChanged) return;
+    if (leadChanged || descChanged || dueChanged || clientChanged || repeatChanged) render();
+    if (!leadChanged && !descChanged && !dueChanged && !clientChanged && !repeatChanged) return;
     try {
       const patch = {};
       if (leadChanged) patch.leadMinutes = nextLead;
       if (descChanged) patch.description = nextDesc || "";
       if (dueChanged) patch.dueAt = nextDue;
       if (clientChanged) patch.client = nextClient || "";
+      if (repeatChanged) patch.repeat = nextRepeat;
       const updated = await api("PATCH", `/reminders/${r.id}`, patch);
       replaceLocal(updated.reminder);
       announce("Saved");
@@ -462,6 +477,7 @@
       r.dueAt = prevDue;
       r.rollDays = prevRoll;
       r.client = prevClient;
+      r.repeat = prevRepeat;
       render();
       showError("Could not save options", err);
     }
@@ -513,7 +529,8 @@
       visible = visible.filter((r) =>
         norm(r.title).includes(searchNorm) ||
         (r.tags || []).some((t) => norm(t).includes(searchNorm)) ||
-        norm(r.client).includes(searchNorm)
+        norm(r.client).includes(searchNorm) ||
+        norm(r.description).includes(searchNorm)
       );
     }
 
@@ -1435,8 +1452,10 @@
     if (rowDescription) rowDescription.value = r.description || "";
     if (rowDueDate) rowDueDate.value = r.dueAt || todayPh();
     if (rowClient) rowClient.value = r.client || "";
+    const repeatSel = $("rowRepeat");
+    if (repeatSel) repeatSel.value = r.repeat && r.repeat !== "none" ? r.repeat : "none";
     const doneBtn = $("rowOptionsDone");
-    if (doneBtn) doneBtn.textContent = r.done ? "Mark not done" : "Mark done";
+    if (doneBtn) doneBtn.textContent = r.done ? "Mark not done" : (r.repeat && r.repeat !== "none" ? "Done (advance)" : "Mark done");
     openDialog(rowOptionsDialog);
     // scrollHeight needs the element to be in layout — modal is shown synchronously
     // by showModal(), but defer one frame to dodge any browser layout quirks.
@@ -1607,10 +1626,19 @@
     const showDueChip = due && due !== today;
     const showBadge = (r.rollDays || 0) > 0;
     const showClient = !!(r.client && r.client.trim());
-    if (!showDueChip && !showBadge && !showClient) return null;
+    const showRepeat = r.repeat && r.repeat !== "none";
+    if (!showDueChip && !showBadge && !showClient && !showRepeat) return null;
     const meta = document.createElement("div");
     meta.className = "title-meta";
     if (showClient) meta.appendChild(buildClientChip(r));
+    if (showRepeat) {
+      const tag = document.createElement("span");
+      tag.className = "repeat-badge";
+      const labels = { daily: "Daily", weekdays: "Weekdays", weekly: "Weekly" };
+      tag.textContent = `↻ ${labels[r.repeat] || r.repeat}`;
+      tag.title = `Recurring ${labels[r.repeat] || r.repeat}. Marking done advances to the next occurrence.`;
+      meta.appendChild(tag);
+    }
     if (showDueChip) {
       const chip = document.createElement("button");
       chip.type = "button";
@@ -1825,7 +1853,8 @@
       v = v.filter((r) =>
         norm(r.title).includes(sn) ||
         (r.tags || []).some((t) => norm(t).includes(sn)) ||
-        norm(r.client).includes(sn)
+        norm(r.client).includes(sn) ||
+        norm(r.description).includes(sn)
       );
     }
     return v;
@@ -1843,10 +1872,8 @@
     for (const r of openVisible) { r.done = true; r.closedAt = now; }
     render();
     try {
-      await Promise.all(openVisible.map((r) =>
-        api("PATCH", `/reminders/${r.id}`, { done: true })
-          .catch((err) => { if (err.status !== 404) throw err; })
-      ));
+      const ids = openVisible.map((r) => r.id);
+      await api("POST", "/reminders/bulk", { ids, patch: { done: true } });
       announce(`${openVisible.length} reminders marked done`);
     } catch (err) {
       for (const snap of snapshot) {
@@ -2026,10 +2053,7 @@
     for (const r of targets) { r.done = true; r.closedAt = now; }
     setBulkMode(false);
     try {
-      await Promise.all(targets.map((r) =>
-        api("PATCH", `/reminders/${r.id}`, { done: true })
-          .catch((err) => { if (err.status !== 404) throw err; })
-      ));
+      await api("POST", "/reminders/bulk", { ids: targets.map((r) => r.id), patch: { done: true } });
       announce(`${targets.length} marked done`);
     } catch (err) {
       for (const snap of snapshot) {
@@ -2065,10 +2089,7 @@
     for (const r of targets) r.priority = nextPriority;
     setBulkMode(false);
     try {
-      await Promise.all(targets.map((r) =>
-        api("PATCH", `/reminders/${r.id}`, { priority: nextPriority })
-          .catch((err) => { if (err.status !== 404) throw err; })
-      ));
+      await api("POST", "/reminders/bulk", { ids: targets.map((r) => r.id), patch: { priority: nextPriority } });
       announce(`${targets.length} updated`);
     } catch (err) {
       for (const snap of snapshot) {
@@ -2084,7 +2105,11 @@
   function buildTemplateGrid() {
     if (!templateGrid) return;
     templateGrid.textContent = "";
-    for (const t of TEMPLATES) {
+
+    const renderTemplate = (t, isUser) => {
+      const wrap = document.createElement("div");
+      wrap.className = "template-wrap";
+
       const btn = document.createElement("button");
       btn.type = "button";
       btn.className = "template";
@@ -2092,28 +2117,68 @@
       title.textContent = t.title;
       const sub = document.createElement("span");
       sub.className = "sub";
-      sub.textContent = t.time ? `at ${formatTime(t.time)}` : "no time";
+      const parts = [];
+      if (t.time) parts.push(`at ${formatTime(t.time)}`);
+      else parts.push("no time");
+      if (t.client) parts.push(`for ${t.client}`);
+      sub.textContent = parts.join(" · ");
       btn.append(title, sub);
       btn.addEventListener("click", async () => {
         templatesDialog.close();
         await addFromTemplate(t);
       });
-      templateGrid.appendChild(btn);
+      wrap.appendChild(btn);
+
+      if (isUser) {
+        const del = document.createElement("button");
+        del.type = "button";
+        del.className = "template-delete";
+        del.title = "Delete this template";
+        del.setAttribute("aria-label", `Delete template ${t.title}`);
+        del.textContent = "×";
+        del.addEventListener("click", async (e) => {
+          e.stopPropagation();
+          await deleteUserTemplate(t);
+        });
+        wrap.appendChild(del);
+      }
+      return wrap;
+    };
+
+    if (userTemplates.length) {
+      const head = document.createElement("h3");
+      head.className = "template-section";
+      head.textContent = "Your templates";
+      templateGrid.appendChild(head);
+      for (const t of userTemplates) templateGrid.appendChild(renderTemplate(t, true));
+      const head2 = document.createElement("h3");
+      head2.className = "template-section";
+      head2.textContent = "Built-in";
+      templateGrid.appendChild(head2);
     }
+    for (const t of TEMPLATES) templateGrid.appendChild(renderTemplate(t, false));
   }
+
   async function addFromTemplate(t) {
-    const { title, tags } = extractTagsFromTitle(t.title);
+    const { title, tags: titleTags } = extractTagsFromTitle(t.title);
     if (!title) return;
+    const tags = Array.isArray(t.tags) && t.tags.length ? mergeTags(t.tags, titleTags) : titleTags;
     const today = todayPh();
     const tempId = `tmp-${Date.now()}-${Math.random().toString(16).slice(2, 8)}`;
     const optimistic = {
-      id: tempId, title, time: t.time || null, tags, dueAt: today, description: null, rollDays: 0, client: null,
+      id: tempId, title, time: t.time || null, tags, dueAt: today,
+      description: t.description || null, rollDays: 0, client: t.client || null,
+      leadMinutes: typeof t.leadMinutes === "number" ? t.leadMinutes : null,
       done: false, priority: "normal", closedAt: null, _optimistic: true,
     };
     reminders.push(optimistic);
     render();
     try {
-      const created = await api("POST", "/reminders", { title, time: t.time || null, tags, dueAt: today });
+      const created = await api("POST", "/reminders", {
+        title, time: t.time || null, tags, dueAt: today,
+        client: t.client || null, description: t.description || null,
+        leadMinutes: typeof t.leadMinutes === "number" ? t.leadMinutes : null,
+      });
       replaceById(tempId, created.reminder);
       render();
       announce(`Added template: ${title}`);
@@ -2121,6 +2186,49 @@
       reminders = reminders.filter((r) => r.id !== tempId);
       render();
       showError("Could not add template", err);
+    }
+  }
+
+  async function saveAsTemplate(r) {
+    if (!r || !r.title) return;
+    const tpl = {
+      title: r.title,
+      time: r.time || null,
+      client: r.client || null,
+      description: r.description || null,
+      leadMinutes: typeof r.leadMinutes === "number" ? r.leadMinutes : null,
+      tags: Array.isArray(r.tags) ? r.tags : [],
+    };
+    // dedup by title+time+client so saving the same thing twice is idempotent
+    const key = `${tpl.title}|${tpl.time || ""}|${tpl.client || ""}`;
+    const without = userTemplates.filter((x) => `${x.title}|${x.time || ""}|${x.client || ""}` !== key);
+    const next = [tpl, ...without].slice(0, 100);
+    const prev = userTemplates;
+    userTemplates = next;
+    try {
+      const saved = await api("PUT", "/templates", { templates: next });
+      userTemplates = Array.isArray(saved.templates) ? saved.templates : next;
+      announce(`Saved template: ${tpl.title}`);
+    } catch (err) {
+      userTemplates = prev;
+      showError("Could not save template", err);
+    }
+  }
+
+  async function deleteUserTemplate(t) {
+    const key = `${t.title}|${t.time || ""}|${t.client || ""}`;
+    const prev = userTemplates;
+    const next = userTemplates.filter((x) => `${x.title}|${x.time || ""}|${x.client || ""}` !== key);
+    userTemplates = next;
+    buildTemplateGrid();
+    try {
+      const saved = await api("PUT", "/templates", { templates: next });
+      userTemplates = Array.isArray(saved.templates) ? saved.templates : next;
+      buildTemplateGrid();
+    } catch (err) {
+      userTemplates = prev;
+      buildTemplateGrid();
+      showError("Could not delete template", err);
     }
   }
 
@@ -2173,6 +2281,8 @@
     $("setLeadMinutes").value = settings.leadMinutes;
     $("setWeekdaysOnly").checked = !!settings.weekdaysOnly;
     $("setNotifications").checked = settings.notifications !== false;
+    $("setQuietStart").value = settings.quietStart || "";
+    $("setQuietEnd").value = settings.quietEnd || "";
     $("setThemeOverride").value = settings.themeOverride || "auto";
   }
 
@@ -2366,9 +2476,10 @@
         throw new Error(`SSO failed: ${msg}`);
       }
 
-      const [{ settings: s, hasBot: hb }, { reminders: rems }] = await Promise.all([
+      const [{ settings: s, hasBot: hb }, { reminders: rems }, { templates: userTpls }] = await Promise.all([
         api("GET", "/settings"),
         api("GET", "/reminders"),
+        api("GET", "/templates").catch(() => ({ templates: [] })),
       ]);
       Object.assign(settings, s);
       // restore tab-only override after server settings merge
@@ -2378,6 +2489,7 @@
       } catch (_) {}
       hasBot = !!hb;
       reminders = rems;
+      userTemplates = Array.isArray(userTpls) ? userTpls : [];
       render();
     } catch (err) {
       console.error("Boot failed", err);

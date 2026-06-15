@@ -34,12 +34,21 @@ app.http('settings', {
 
     const body = await request.json().catch(() => ({}));
     const incoming = body.settings || {};
+    const validHHMM = (s) => typeof s === 'string' && /^\d{2}:\d{2}$/.test(s);
     const settings = {
-      eodTime: typeof incoming.eodTime === 'string' && /^\d{2}:\d{2}$/.test(incoming.eodTime) ? incoming.eodTime : store.DEFAULT_SETTINGS.eodTime,
+      eodTime: validHHMM(incoming.eodTime) ? incoming.eodTime : store.DEFAULT_SETTINGS.eodTime,
       leadMinutes: clampInt(incoming.leadMinutes, 0, 240, store.DEFAULT_SETTINGS.leadMinutes),
       weekdaysOnly: !!incoming.weekdaysOnly,
       notifications: incoming.notifications !== false,
+      quietStart: validHHMM(incoming.quietStart) ? incoming.quietStart : null,
+      quietEnd: validHHMM(incoming.quietEnd) ? incoming.quietEnd : null,
+      autoImportFlagged: !!incoming.autoImportFlagged,
     };
+    // Both must be set, or both null — partial config means quiet hours disabled.
+    if (!settings.quietStart || !settings.quietEnd) {
+      settings.quietStart = null;
+      settings.quietEnd = null;
+    }
     await store.upsertUser(user.oid, { settings });
     return json(200, { settings });
   },

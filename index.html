@@ -4,14 +4,14 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Day Reminders</title>
-  <link rel="stylesheet" href="styles.css?v=1.4.11" />
+  <link rel="stylesheet" href="styles.css?v=1.5.0" />
   <script src="https://res.cdn.office.net/teams-js/2.24.0/js/MicrosoftTeams.min.js"></script>
 </head>
 <body data-theme="default">
   <header class="topbar">
     <div class="topbar-actions">
       <div class="search-wrap">
-        <input id="searchInput" class="search-input" type="search" placeholder="Search reminders" aria-label="Search reminders (shortcut: f)" autocomplete="off" />
+        <input id="searchInput" class="search-input" type="search" placeholder="Search title, tags, client, notes" aria-label="Search reminders by title, tags, client, or notes (shortcut: f)" autocomplete="off" />
         <button id="searchClear" class="search-clear" type="button" title="Clear search" aria-label="Clear search" hidden>&times;</button>
       </div>
       <button id="bulkToggle" class="btn ghost" title="Select multiple reminders">Select</button>
@@ -135,6 +135,16 @@
       </label>
 
       <label class="row">
+        <span>Quiet hours start</span>
+        <input id="setQuietStart" type="time" aria-label="Quiet hours start time" />
+      </label>
+      <label class="row">
+        <span>Quiet hours end</span>
+        <input id="setQuietEnd" type="time" aria-label="Quiet hours end time" />
+      </label>
+      <p class="hint">No proactive cards or activity-feed pings between these times. Set both to leave blank to disable. Reminders that come due during quiet hours fire on the first tick after the window ends.</p>
+
+      <label class="row">
         <span>Appearance</span>
         <select id="setThemeOverride" aria-label="Theme override">
           <option value="auto">Match Teams</option>
@@ -156,6 +166,16 @@
     <form method="dialog">
       <h2>What's new</h2>
       <ul class="changelog">
+        <li><strong>v1.5.0</strong> — usability bundle (QOL audit)
+          <ul>
+            <li><strong>Search now covers your notes</strong>: typing in the search box matches title, tags, client, AND description. Same for the bot's <code>/done substring</code> command.</li>
+            <li><strong>Recurring reminders</strong>: open a reminder's options dialog and set <em>Repeat</em> to Daily, Weekdays (Mon–Fri), or Weekly. Recurring items auto-advance to the next occurrence when you mark them done. They never become overdue.</li>
+            <li><strong>Quiet hours</strong>: in Settings, set a quiet window (e.g. 20:00 to 07:00). No proactive cards or activity-feed pings during those hours. Reminders that come due inside the window fire at the first tick after it ends.</li>
+            <li><strong>Save as template</strong>: any reminder can now become a reusable template — open its options dialog and click <em>Save as template</em>. Personal templates show above the built-in ones, with delete buttons.</li>
+            <li><strong>More reschedule options on the proactive card</strong>: <em>+3 days</em> and <em>Next Mon</em> alongside the existing Snooze 15m / 1h / Tomorrow.</li>
+            <li><strong>Bulk actions are now one round-trip</strong>: <em>Mark all done</em>, bulk done, and bulk priority no longer loop one PATCH per reminder.</li>
+          </ul>
+        </li>
         <li><strong>v1.4.6</strong>
           <ul>
             <li>Performance: rows without a description no longer render an empty <em>details</em> block (saves ~100+ DOM nodes per render in typical use). To add or edit a description on an existing reminder, click the <span class="kbd">⋯</span> menu — the row options dialog now has a <em>Details</em> textarea.</li>
@@ -289,6 +309,17 @@
       </label>
 
       <label class="row">
+        <span>Repeat</span>
+        <select id="rowRepeat" aria-label="Repeat schedule">
+          <option value="none">Don't repeat</option>
+          <option value="daily">Daily</option>
+          <option value="weekdays">Weekdays (Mon–Fri)</option>
+          <option value="weekly">Weekly</option>
+        </select>
+      </label>
+      <p class="hint">Recurring reminders auto-advance to the next occurrence when you mark done. They never become overdue.</p>
+
+      <label class="row">
         <span>Custom lead time (minutes)</span>
         <input id="rowLeadMinutes" type="number" min="0" max="240" step="1" placeholder="Use default" aria-label="Custom lead time in minutes" />
       </label>
@@ -301,6 +332,7 @@
 
       <div class="dialog-actions">
         <button type="button" id="rowOptionsDone" class="btn ghost row-done-toggle">Mark done</button>
+        <button type="button" id="rowOptionsSaveTemplate" class="btn ghost" title="Save this reminder as a reusable template">Save as template</button>
         <button type="button" id="rowOptionsCancel" class="btn ghost">Cancel</button>
         <button type="submit" class="btn primary">Save</button>
       </div>
@@ -328,6 +360,6 @@
     <a class="link" href="https://github.com/projectvelox/team-reminder/issues" target="_blank" rel="noopener">Report an issue</a>
   </footer>
 
-  <script src="app.js?v=1.4.11"></script>
+  <script src="app.js?v=1.5.0"></script>
 </body>
 </html>

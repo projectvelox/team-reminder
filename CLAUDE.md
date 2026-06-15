@@ -68,21 +68,28 @@ Secrets, GUIDs, and connection strings live in the Claude memory file `project_d
 - High-priority star, pinned to top of list
 - Group-by-tag view toggle (acts as project sections)
 - View toggle: Lines / Grid / Calendar
-- Search, quick filters (All / Timed / Anytime / Priority / Done), templates, bulk select
+- Search (title + tags + client + **description**), quick filters (All / Timed / Anytime / Priority / Done), templates, bulk select
 - Done items >24h hidden behind a "Show N older" button
-- Slash commands in bot chat: `/add [time] [date] [#tags] title`, `/list`, `/done <substring>`, `/help` — `/add` accepts `today`, `tomorrow`, weekday names, `M/D`, or `YYYY-MM-DD`
+- Slash commands in bot chat: `/add [time] [date] [#tags] title`, `/list`, `/done <substring>`, `/help` — `/add` accepts `today`, `tomorrow`, weekday names, `M/D`, or `YYYY-MM-DD`. `/done` matches title, tags, client, or description.
 - Compose-extension command "Quick add reminder" — invocable from `...` menu under any Teams message box
-- Proactive Adaptive Card per timed reminder with "Mark done" + snooze (15m / 1h / Tomorrow)
-- Snoozing to Tomorrow advances `dueAt` so the rollover doesn't double-count
+- Proactive Adaptive Card per timed reminder with "Mark done" + snooze (15m / 1h / Tomorrow / +3 days / Next Mon)
+- Snoozing to Tomorrow / +3 days / Next Mon advances `dueAt` so the rollover doesn't double-count
 - EOD check-in card at configurable time
 - Activity Feed notification when a reminder fires (Teams bell)
 
+### v1.5 additions (this release)
+
+- **Recurring reminders** — `repeat: none | daily | weekdays | weekly` per reminder. Set via the row options dialog. "Mark done" on a recurring reminder advances `dueAt` to the next occurrence and leaves it open. Recurring items are auto-advanced (not piled up as overdue) during the daily rollover.
+- **Quiet hours** — per-user `quietStart` / `quietEnd` HH:MM in Settings. Scheduler short-circuits all proactive sends (lead-time, snooze fires, EOD) while in-window. Wrap-around windows (e.g. 22:00–07:00) are supported. The lead-time fire window is widened to `[target-lead, target+60min]` so a reminder whose original window fell entirely inside quiet hours still fires at most an hour late.
+- **Per-user templates** — `GET / PUT /api/templates` stores up to 100 templates per user under RowKey `_templates`. Tab dialog shows "Your templates" above "Built-in". Row options dialog has a *Save as template* button. Each saved template captures title, time, client, description, leadMinutes, tags.
+- **Bulk PATCH** — `POST /api/reminders/bulk` with `{ ids, patch }`. Tab's *Mark all done*, bulk done, and bulk priority now do a single round-trip instead of one PATCH per reminder.
+
 ## Backlog
 
-- **v1.5 — sharing** (Rochelle's feedback 2026-06-15). Per-reminder share with any tenant member; recipients can edit content + mark done; creator owns the recipient list; deletion removes for everyone. Includes per-tag default share lists in Settings (e.g. `#QC = [Benex, Tim]` so any reminder tagged `#QC` auto-shares). Implementation must include proactive Graph install for recipients who haven't opened the bot. See `project_day_reminders_v15_sharing_scope.md` in Claude memory for the locked decisions.
+- **v1.5 — sharing** (Rochelle's feedback 2026-06-15) — deferred behind the v1.5 QOL bundle that just shipped. Per-reminder share with any tenant member; recipients can edit content + mark done; creator owns the recipient list; deletion removes for everyone. Includes per-tag default share lists in Settings (e.g. `#QC = [Benex, Tim]` so any reminder tagged `#QC` auto-shares). Implementation must include proactive Graph install for recipients who haven't opened the bot. See `project_day_reminders_v15_sharing_scope.md` in Claude memory for the locked decisions. Likely v1.6 now.
 - **v1.7 (conditional)** — Markdown formatting toolbar on description, only if Phase A (plain text) usage shows demand. Toolbar emits markdown that Adaptive Card's TextBlock renders natively.
-- **Recurring reminders** (Dei's feedback EIL_0003). `repeat: none | daily | weekdays | weekly` on each reminder; scheduler uses `lastFiredDate` instead of one-shot `firedAt`. Deferred behind v1.5.
 - **Intra-day check-ins** (Dei's feedback EIL_0003). Settings supports a list of check-in times, not just one EOD. Each fires its own "how's it going?" card once per day. Deferred behind v1.5.
+- **Outlook flag → auto-create reminder** (audit 2026-06-15) — scaffolded in v1.5 as `bot/src/functions/graphNotifications.js` (validation-token handshake + notification batch skeleton) and as `settings.autoImportFlagged` (default off, persisted but no UI yet). Not active in production: missing subscription creation/renewal flow, Graph delegated `Mail.Read` consent, OBO token exchange, and per-user subscription→oid mapping. Pick this up when ready to grant Mail.Read consent at the tenant level.
 - **Workato sidecar for long-message intent parsing** (Josh's feedback EIL_0005). Backend gets an API-key auth path on `/api/reminders` (in addition to Teams SSO); a Workato recipe receives `@DayReminders <long message>` in Teams, parses via Workato AI, loops `POST /api/reminders` for each extracted item. ~30 min on our side; recipe lives in Kation's Workato workspace.
 
 ## Explicitly dropped

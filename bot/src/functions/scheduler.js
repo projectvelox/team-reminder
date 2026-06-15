@@ -40,6 +40,19 @@ function hhmmToMinutes(hhmm) {
   return h * 60 + m;
 }
 
+// Returns true if minutesOfDay falls inside the user's configured quiet window.
+// Supports wrap-around windows (e.g. 22:00–07:00).
+function inQuietWindow(settings, minutesOfDay) {
+  const qs = settings?.quietStart;
+  const qe = settings?.quietEnd;
+  if (!qs || !qe) return false;
+  const start = hhmmToMinutes(qs);
+  const end = hhmmToMinutes(qe);
+  if (start === end) return false;
+  if (start < end) return minutesOfDay >= start && minutesOfDay < end;
+  return minutesOfDay >= start || minutesOfDay < end;
+}
+
 app.timer('scheduler', {
   schedule: '0 */1 * * * *', // every minute on the second 0
   handler: async (_timer, context) => {
@@ -69,7 +82,16 @@ async function processUser(appId, user, ph, context) {
   const defaultLead = user.settings?.leadMinutes ?? 10;
 
   // 0) once per PH day, roll forward undone past-due reminders (cap at 30 days).
+  // Rollover is storage-only and runs even during quiet hours.
   await rolloverPastDue(user, ph, context);
+
+  // Quiet hours: suppress all proactive sends (lead-time, snooze, EOD).
+  // Reminders that come due inside the window will fire on the first tick
+  // after the window ends; the EOD check-in is per-day and will fire as
+  // soon as we're past quietEnd if still before midnight.
+  if (inQuietWindow(user.settings, ph.minutesOfDay)) {
+    return;
+  }
 
   const reminders = await store.listReminders(user.oid);
 
@@ -106,7 +128,10 @@ async function processUser(appId, user, ph, context) {
     const effectiveLead = typeof r.leadMinutes === 'number' ? r.leadMinutes : defaultLead;
     const targetMin = hhmmToMinutes(r.time);
     const fireAtMin = targetMin - effectiveLead;
-    if (ph.minutesOfDay >= fireAtMin && ph.minutesOfDay <= targetMin) {
+    // Upper bound is targetMin + 60 (not just targetMin) so a reminder whose
+    // lead window fell entirely inside quiet hours still fires up to an hour
+    // after its scheduled time. firedAt is the once-per-day guarantee.
+    if (ph.minutesOfDay >= fireAtMin && ph.minutesOfDay <= targetMin + 60) {
       context.log(`[scheduler] firing "${r.title}" target=${r.time} now=${ph.hour}:${String(ph.minute).padStart(2, '0')} lead=${effectiveLead}${typeof r.leadMinutes === 'number' ? ' (custom)' : ''}`);
       try {
         await sendProactive(appId, user, MessageFactory.attachment(reminderCard(r, effectiveLead)));
@@ -148,6 +173,9 @@ async function sendProactive(appId, user, activity) {
 // Items more than 30 days past their due date are left alone so a stale backlog
 // doesn't pile into the active list. Each roll bumps rollDays so the UI can
 // show an "overdue N days" badge.
+//
+// Recurring reminders auto-advance to the next occurrence on/after today instead
+// of accumulating overdue debt — the rule is "always today's task," not "missed."
 async function rolloverPastDue(user, ph, context) {
   if (user.lastRolloverDate === ph.date) return;
   const today = new Date(ph.date + 'T00:00:00Z');
@@ -157,6 +185,17 @@ async function rolloverPastDue(user, ph, context) {
     if (r.done) continue;
     const effectiveDueDate = r.dueAt || r.createdDate;
     if (!effectiveDueDate || effectiveDueDate >= ph.date) continue;
+    if (r.repeat && r.repeat !== 'none') {
+      let next = effectiveDueDate;
+      let safety = 366;
+      while (next < ph.date && safety-- > 0) next = advanceOccurrence(next, r.repeat);
+      r.dueAt = next;
+      r.firedAt = null;
+      r.rollDays = 0;
+      await store.upsertReminder(user.oid, r);
+      context.log(`[scheduler] advanced recurring "${r.title}" (${r.repeat}) from ${effectiveDueDate} to ${next}`);
+      continue;
+    }
     const dueDate = new Date(effectiveDueDate + 'T00:00:00Z');
     if (dueDate < cap) continue;
     const daysOld = Math.round((today - dueDate) / (24 * 60 * 60 * 1000));
@@ -167,4 +206,17 @@ async function rolloverPastDue(user, ph, context) {
     context.log(`[scheduler] rolled "${r.title}" from ${effectiveDueDate} to ${ph.date} (+${daysOld} days, total ${r.rollDays})`);
   }
   await store.upsertUser(user.oid, { lastRolloverDate: ph.date });
+}
+
+function advanceOccurrence(dateStr, repeat) {
+  const d = new Date(dateStr + 'T00:00:00Z');
+  if (repeat === 'daily') {
+    d.setUTCDate(d.getUTCDate() + 1);
+  } else if (repeat === 'weekly') {
+    d.setUTCDate(d.getUTCDate() + 7);
+  } else if (repeat === 'weekdays') {
+    do { d.setUTCDate(d.getUTCDate() + 1); }
+    while (d.getUTCDay() === 0 || d.getUTCDay() === 6);
+  }
+  return d.toISOString().slice(0, 10);
 }

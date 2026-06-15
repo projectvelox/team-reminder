@@ -57,11 +57,91 @@ app.http('remindersCollection', {
     const order = typeof body.order === 'number' && isFinite(body.order) ? body.order : null;
     const leadMinutes = typeof body.leadMinutes === 'number' && body.leadMinutes >= 0 && body.leadMinutes <= 240
       ? Math.floor(body.leadMinutes) : null;
-    const reminder = { id, title, time, done: false, firedAt: null, createdDate: store.todayKey(), closedAt: null, tags, priority, order, leadMinutes, snoozedUntil: null, dueAt, description, rollDays: 0, client };
+    const repeat = body.repeat === 'daily' || body.repeat === 'weekdays' || body.repeat === 'weekly' ? body.repeat : 'none';
+    const reminder = { id, title, time, done: false, firedAt: null, createdDate: store.todayKey(), closedAt: null, tags, priority, order, leadMinutes, snoozedUntil: null, dueAt, description, rollDays: 0, client, repeat };
     await store.upsertReminder(user.oid, reminder);
     return json(201, { reminder });
   },
 });
+
+// Compute the next occurrence date for a recurring reminder.
+// `currentDate` is YYYY-MM-DD; `repeat` is 'daily' | 'weekdays' | 'weekly'.
+function nextOccurrence(currentDate, repeat) {
+  const d = new Date(currentDate + 'T00:00:00Z');
+  if (repeat === 'daily') {
+    d.setUTCDate(d.getUTCDate() + 1);
+  } else if (repeat === 'weekly') {
+    d.setUTCDate(d.getUTCDate() + 7);
+  } else if (repeat === 'weekdays') {
+    do { d.setUTCDate(d.getUTCDate() + 1); }
+    while (d.getUTCDay() === 0 || d.getUTCDay() === 6);
+  } else {
+    return currentDate;
+  }
+  return d.toISOString().slice(0, 10);
+}
+
+// Shared field-by-field patch logic. Mutates `existing` in place using values from `body`.
+// Only validated fields are applied; unknown or invalid fields are ignored.
+function applyPatch(existing, body) {
+  const isRecurring = existing.repeat && existing.repeat !== 'none';
+  if (typeof body.done === 'boolean') {
+    if (body.done && isRecurring) {
+      // Recurring "done" = complete this occurrence and roll forward to next.
+      // The reminder stays open with a new dueAt; firedAt and snooze reset.
+      const base = existing.dueAt || store.todayKey();
+      existing.dueAt = nextOccurrence(base, existing.repeat);
+      existing.firedAt = null;
+      existing.snoozedUntil = null;
+      existing.rollDays = 0;
+      // done/closedAt are intentionally left untouched (stays open).
+    } else {
+      existing.done = body.done;
+      existing.closedAt = body.done ? new Date().toISOString() : null;
+    }
+  }
+  if (typeof body.title === 'string' && body.title.trim()) existing.title = body.title.trim();
+  if (body.time === null) {
+    existing.time = null;
+    existing.firedAt = null;
+  } else if (typeof body.time === 'string' && /^\d{2}:\d{2}$/.test(body.time)) {
+    if (existing.time !== body.time) existing.firedAt = null;
+    existing.time = body.time;
+  }
+  if (Array.isArray(body.tags)) {
+    existing.tags = body.tags.map(String).map(s => s.trim()).filter(Boolean).slice(0, 8);
+  }
+  if (body.priority === 'high' || body.priority === 'normal') existing.priority = body.priority;
+  if (typeof body.order === 'number' && isFinite(body.order)) existing.order = body.order;
+  if (body.leadMinutes === null) existing.leadMinutes = null;
+  else if (typeof body.leadMinutes === 'number' && body.leadMinutes >= 0 && body.leadMinutes <= 240) {
+    existing.leadMinutes = Math.floor(body.leadMinutes);
+  }
+  if (body.snoozedUntil === null) existing.snoozedUntil = null;
+  else if (typeof body.snoozedUntil === 'string' && !isNaN(Date.parse(body.snoozedUntil))) {
+    existing.snoozedUntil = new Date(body.snoozedUntil).toISOString();
+    existing.firedAt = null;
+  }
+  if (typeof body.dueAt === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(body.dueAt)) {
+    if (existing.dueAt !== body.dueAt) existing.firedAt = null;
+    existing.dueAt = body.dueAt;
+    existing.rollDays = 0;
+  }
+  if (body.description === null || body.description === '') {
+    existing.description = null;
+  } else if (typeof body.description === 'string') {
+    existing.description = body.description.trim().slice(0, 2000) || null;
+  }
+  if (body.client === null || body.client === '') {
+    existing.client = null;
+  } else if (typeof body.client === 'string') {
+    existing.client = body.client.trim().slice(0, 100) || null;
+  }
+  if (body.repeat === null || body.repeat === 'none') existing.repeat = 'none';
+  else if (body.repeat === 'daily' || body.repeat === 'weekdays' || body.repeat === 'weekly') {
+    existing.repeat = body.repeat;
+  }
+}
 
 // PATCH/DELETE /api/reminders/{id}
 app.http('remindersItem', {
@@ -86,49 +166,39 @@ app.http('remindersItem', {
     const body = await request.json().catch(() => ({}));
     const existing = await store.getReminder(user.oid, id);
     if (!existing) return json(404, { error: 'not found' });
-    if (typeof body.done === 'boolean') {
-      existing.done = body.done;
-      existing.closedAt = body.done ? new Date().toISOString() : null;
-    }
-    if (typeof body.title === 'string' && body.title.trim()) existing.title = body.title.trim();
-    if (body.time === null) {
-      existing.time = null;
-      existing.firedAt = null;
-    } else if (typeof body.time === 'string' && /^\d{2}:\d{2}$/.test(body.time)) {
-      if (existing.time !== body.time) existing.firedAt = null;
-      existing.time = body.time;
-    }
-    if (Array.isArray(body.tags)) {
-      existing.tags = body.tags.map(String).map(s => s.trim()).filter(Boolean).slice(0, 8);
-    }
-    if (body.priority === 'high' || body.priority === 'normal') existing.priority = body.priority;
-    if (typeof body.order === 'number' && isFinite(body.order)) existing.order = body.order;
-    if (body.leadMinutes === null) existing.leadMinutes = null;
-    else if (typeof body.leadMinutes === 'number' && body.leadMinutes >= 0 && body.leadMinutes <= 240) {
-      existing.leadMinutes = Math.floor(body.leadMinutes);
-    }
-    // snoozedUntil: accept null to clear, or an ISO string to set
-    if (body.snoozedUntil === null) existing.snoozedUntil = null;
-    else if (typeof body.snoozedUntil === 'string' && !isNaN(Date.parse(body.snoozedUntil))) {
-      existing.snoozedUntil = new Date(body.snoozedUntil).toISOString();
-      existing.firedAt = null;
-    }
-    if (typeof body.dueAt === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(body.dueAt)) {
-      if (existing.dueAt !== body.dueAt) existing.firedAt = null;
-      existing.dueAt = body.dueAt;
-      existing.rollDays = 0;
-    }
-    if (body.description === null || body.description === '') {
-      existing.description = null;
-    } else if (typeof body.description === 'string') {
-      existing.description = body.description.trim().slice(0, 2000) || null;
-    }
-    if (body.client === null || body.client === '') {
-      existing.client = null;
-    } else if (typeof body.client === 'string') {
-      existing.client = body.client.trim().slice(0, 100) || null;
-    }
+    applyPatch(existing, body);
     await store.upsertReminder(user.oid, existing);
     return json(200, { reminder: existing });
+  },
+});
+
+// POST /api/reminders/bulk — apply the same patch to many reminders in one round-trip.
+// Body: { ids: ["id1", "id2", ...], patch: { done: true } }
+// Returns: { updated: [reminder...], notFound: [id...] }
+app.http('remindersBulk', {
+  methods: ['POST', 'OPTIONS'],
+  authLevel: 'anonymous',
+  route: 'reminders/bulk',
+  handler: async (request, context) => {
+    if (request.method === 'OPTIONS') return { status: 204, headers: corsHeaders() };
+    let user;
+    try { user = await authed(request); } catch (err) { return json(err.status || 401, { error: err.message }); }
+
+    const body = await request.json().catch(() => ({}));
+    const ids = Array.isArray(body.ids) ? body.ids.filter(x => typeof x === 'string').slice(0, 500) : [];
+    const patch = body.patch && typeof body.patch === 'object' ? body.patch : null;
+    if (!ids.length) return json(400, { error: 'ids array is required' });
+    if (!patch) return json(400, { error: 'patch object is required' });
+
+    const updated = [];
+    const notFound = [];
+    for (const id of ids) {
+      const existing = await store.getReminder(user.oid, id);
+      if (!existing) { notFound.push(id); continue; }
+      applyPatch(existing, patch);
+      await store.upsertReminder(user.oid, existing);
+      updated.push(existing);
+    }
+    return json(200, { updated, notFound });
   },
 });

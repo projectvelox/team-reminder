@@ -30,6 +30,9 @@ const DEFAULT_SETTINGS = {
   leadMinutes: 10,
   weekdaysOnly: true,
   notifications: true,
+  quietStart: null, // HH:MM, null/empty = quiet hours disabled
+  quietEnd: null,
+  autoImportFlagged: false, // when true, flagged Outlook emails auto-create reminders. v1.5: setting persisted but subscription flow not yet active.
 };
 
 // ---------- user ----------
@@ -108,6 +111,7 @@ function entityToReminder(e) {
     try { tags = JSON.parse(e.tags); } catch { tags = []; }
     if (!Array.isArray(tags)) tags = [];
   }
+  const repeat = e.repeat === 'daily' || e.repeat === 'weekdays' || e.repeat === 'weekly' ? e.repeat : 'none';
   return {
     id: e.rowKey.slice(2),
     title: e.title,
@@ -125,6 +129,7 @@ function entityToReminder(e) {
     description: e.description || null,
     rollDays: typeof e.rollDays === 'number' ? e.rollDays : 0,
     client: e.client || null,
+    repeat,
   };
 }
 
@@ -169,6 +174,35 @@ async function upsertReminder(oid, r) {
     description: r.description || null,
     rollDays: typeof r.rollDays === 'number' ? r.rollDays : 0,
     client: r.client || null,
+    repeat: r.repeat === 'daily' || r.repeat === 'weekdays' || r.repeat === 'weekly' ? r.repeat : 'none',
+  }, 'Replace');
+}
+
+// ---------- templates (per-user, stored as a single JSON blob) ----------
+
+async function getTemplates(oid) {
+  await ensureTable();
+  try {
+    const entity = await getClient().getEntity(oid, '_templates');
+    if (entity.items) {
+      try {
+        const parsed = JSON.parse(entity.items);
+        return Array.isArray(parsed) ? parsed : [];
+      } catch { return []; }
+    }
+    return [];
+  } catch (err) {
+    if (err.statusCode === 404) return [];
+    throw err;
+  }
+}
+
+async function setTemplates(oid, templates) {
+  await ensureTable();
+  await getClient().upsertEntity({
+    partitionKey: oid,
+    rowKey: '_templates',
+    items: JSON.stringify(Array.isArray(templates) ? templates : []),
   }, 'Replace');
 }
 
@@ -199,5 +233,7 @@ module.exports = {
   getReminder,
   upsertReminder,
   deleteReminder,
+  getTemplates,
+  setTemplates,
   todayKey,
 };
