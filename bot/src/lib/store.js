@@ -1,9 +1,14 @@
 // Azure Tables storage layer.
 //
-// Single table `dayreminders`, partitioned by user oid (AAD object ID).
-// RowKey encodes the kind:
-//   _user                          → user metadata (settings, conversation ref, last EOD)
-//   r:<reminderId>                 → a reminder
+// Single table `dayreminders`. Partition strategy:
+//   PK = <user oid>                 → per-user reminders
+//     RK = _user                    → user metadata (settings, conversation ref, last EOD)
+//     RK = _templates               → saved templates
+//     RK = r:<reminderId>           → a reminder
+//   PK = _licenses                  → tenant-shared license tracker (v1.7)
+//     RK = l:<licenseId>            → a license
+//   PK = _members                   → tenant-shared member registry (v1.7, Owner picker source)
+//     RK = m:<oid>                  → a known user (auto-registered on tab load)
 
 const { TableClient, AzureNamedKeyCredential } = require('@azure/data-tables');
 
@@ -241,6 +246,140 @@ function todayKey() {
   return `${ph.getUTCFullYear()}-${String(ph.getUTCMonth() + 1).padStart(2, '0')}-${String(ph.getUTCDate()).padStart(2, '0')}`;
 }
 
+// ---------- licenses (tenant-shared, v1.7) ----------
+
+const LICENSE_PARTITION = '_licenses';
+
+function entityToLicense(e) {
+  return {
+    id: e.rowKey.slice(2),
+    customer: e.customer || '',
+    licenseType: e.licenseType || '',
+    userCount: typeof e.userCount === 'number' ? e.userCount : (parseInt(e.userCount, 10) || 0),
+    expiryDate: e.expiryDate || null,
+    ownerOid: e.ownerOid || null,
+    ownerName: e.ownerName || null,
+    productLine: e.productLine || null,
+    leadDays: typeof e.leadDays === 'number' ? e.leadDays : null,
+    notes: e.notes || null,
+    state: e.state === 'abandoned' ? 'abandoned' : 'active',
+    createdAt: e.createdAt || null,
+    createdByOid: e.createdByOid || null,
+    createdByName: e.createdByName || null,
+    lastEditedAt: e.lastEditedAt || null,
+    lastEditedByOid: e.lastEditedByOid || null,
+    lastEditedByName: e.lastEditedByName || null,
+    lastRenewedAt: e.lastRenewedAt || null,
+    lastEscalatedDays: typeof e.lastEscalatedDays === 'number' ? e.lastEscalatedDays : null,
+  };
+}
+
+async function listLicenses() {
+  await ensureTable();
+  const iter = getClient().listEntities({
+    queryOptions: { filter: `PartitionKey eq '${LICENSE_PARTITION}'` },
+  });
+  const out = [];
+  for await (const e of iter) out.push(entityToLicense(e));
+  return out;
+}
+
+async function getLicense(id) {
+  await ensureTable();
+  try {
+    const e = await getClient().getEntity(LICENSE_PARTITION, `l:${id}`);
+    return entityToLicense({ ...e, rowKey: `l:${id}` });
+  } catch (err) {
+    if (err.statusCode === 404) return null;
+    throw err;
+  }
+}
+
+async function upsertLicense(license) {
+  await ensureTable();
+  await getClient().upsertEntity({
+    partitionKey: LICENSE_PARTITION,
+    rowKey: `l:${license.id}`,
+    customer: license.customer || '',
+    licenseType: license.licenseType || '',
+    userCount: typeof license.userCount === 'number' ? license.userCount : 0,
+    expiryDate: license.expiryDate || null,
+    ownerOid: license.ownerOid || null,
+    ownerName: license.ownerName || null,
+    productLine: license.productLine || null,
+    leadDays: typeof license.leadDays === 'number' ? license.leadDays : null,
+    notes: license.notes || null,
+    state: license.state === 'abandoned' ? 'abandoned' : 'active',
+    createdAt: license.createdAt || null,
+    createdByOid: license.createdByOid || null,
+    createdByName: license.createdByName || null,
+    lastEditedAt: license.lastEditedAt || null,
+    lastEditedByOid: license.lastEditedByOid || null,
+    lastEditedByName: license.lastEditedByName || null,
+    lastRenewedAt: license.lastRenewedAt || null,
+    lastEscalatedDays: typeof license.lastEscalatedDays === 'number' ? license.lastEscalatedDays : null,
+  }, 'Replace');
+}
+
+async function deleteLicense(id) {
+  await ensureTable();
+  try {
+    await getClient().deleteEntity(LICENSE_PARTITION, `l:${id}`);
+    return true;
+  } catch (err) {
+    if (err.statusCode === 404) return false;
+    throw err;
+  }
+}
+
+// ---------- members (tenant-shared, v1.7) ----------
+// Auto-populating registry of users who have opened the app.
+// Source of truth for the Owner picker on the Licenses tab.
+
+const MEMBER_PARTITION = '_members';
+
+function entityToMember(e) {
+  return {
+    oid: e.rowKey.slice(2),
+    displayName: e.displayName || null,
+    upn: e.upn || null,
+    firstSeenAt: e.firstSeenAt || null,
+    lastSeenAt: e.lastSeenAt || null,
+  };
+}
+
+async function registerMember({ oid, displayName, upn }) {
+  if (!oid) return null;
+  await ensureTable();
+  const now = new Date().toISOString();
+  let firstSeenAt = now;
+  try {
+    const existing = await getClient().getEntity(MEMBER_PARTITION, `m:${oid}`);
+    firstSeenAt = existing.firstSeenAt || now;
+  } catch (err) {
+    if (err.statusCode !== 404) throw err;
+  }
+  await getClient().upsertEntity({
+    partitionKey: MEMBER_PARTITION,
+    rowKey: `m:${oid}`,
+    displayName: displayName || null,
+    upn: upn || null,
+    firstSeenAt,
+    lastSeenAt: now,
+  }, 'Replace');
+  return { oid, displayName, upn, firstSeenAt, lastSeenAt: now };
+}
+
+async function listMembers() {
+  await ensureTable();
+  const iter = getClient().listEntities({
+    queryOptions: { filter: `PartitionKey eq '${MEMBER_PARTITION}'` },
+  });
+  const out = [];
+  for await (const e of iter) out.push(entityToMember(e));
+  return out;
+}
+
 module.exports = {
   DEFAULT_SETTINGS,
   getUser,
@@ -253,4 +392,10 @@ module.exports = {
   getTemplates,
   setTemplates,
   todayKey,
+  listLicenses,
+  getLicense,
+  upsertLicense,
+  deleteLicense,
+  registerMember,
+  listMembers,
 };

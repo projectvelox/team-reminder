@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Day Reminders &mdash; Licenses</title>
+  <link rel="stylesheet" href="styles.css?v=1.7.0" />
+  <link rel="stylesheet" href="licenses.css?v=1.7.0" />
+  <script src="https://res.cdn.office.net/teams-js/2.24.0/js/MicrosoftTeams.min.js"></script>
+</head>
+<body data-theme="default" data-page="licenses">
+
+  <header class="topbar">
+    <div class="topbar-actions">
+      <div class="search-wrap">
+        <input id="searchInput" class="search-input" type="search" placeholder="Search customer, license type, notes" aria-label="Search licenses" autocomplete="off" />
+        <button id="searchClear" class="search-clear" type="button" title="Clear search" aria-label="Clear search" hidden>&times;</button>
+      </div>
+      <div id="viewSwitch" class="view-switch" role="group" aria-label="View">
+        <button type="button" data-view="table" class="view-btn" aria-pressed="true">Table</button>
+        <button type="button" data-view="calendar" class="view-btn" aria-pressed="false">Calendar</button>
+      </div>
+      <button id="addLicenseBtn" class="btn primary">+ Add license</button>
+    </div>
+  </header>
+
+  <div id="liveRegion" class="visually-hidden" aria-live="polite" aria-atomic="true"></div>
+
+  <div class="layout">
+    <main>
+      <p id="errorBanner" class="error-banner" hidden></p>
+
+      <section id="summaryChips" class="lic-summary" aria-label="Upcoming">
+        <button type="button" class="lic-summary-chip" data-summary="week" aria-pressed="false">
+          <span class="lic-summary-count" id="cntWeek">0</span>
+          <span class="lic-summary-label">expiring this week</span>
+        </button>
+        <button type="button" class="lic-summary-chip" data-summary="month" aria-pressed="false">
+          <span class="lic-summary-count" id="cntMonth">0</span>
+          <span class="lic-summary-label">expiring this month</span>
+        </button>
+        <button type="button" class="lic-summary-chip danger" data-summary="overdue" aria-pressed="false">
+          <span class="lic-summary-count" id="cntOverdue">0</span>
+          <span class="lic-summary-label">overdue</span>
+        </button>
+      </section>
+
+      <div id="filterPills" class="filter-pills" role="group" aria-label="Quick filters">
+        <button type="button" class="filter-pill" data-quick="all" aria-pressed="true">All</button>
+        <button type="button" class="filter-pill" data-quick="mine" aria-pressed="false" title="Licenses you own">Mine</button>
+        <button type="button" class="filter-pill" data-quick="month" aria-pressed="false" title="Expiring this calendar month">This month</button>
+        <button type="button" class="filter-pill" data-quick="overdue" aria-pressed="false" title="Expired and not renewed">Overdue</button>
+      </div>
+
+      <section id="tableView">
+        <table id="licTable" class="lic-table" hidden>
+          <thead>
+            <tr>
+              <th class="sortable" data-sort="customer">Customer</th>
+              <th class="sortable" data-sort="licenseType">License type</th>
+              <th class="sortable" data-sort="userCount">Users</th>
+              <th class="sortable" data-sort="expiryDate" aria-sort="ascending">Expires</th>
+              <th class="sortable" data-sort="ownerName">Owner</th>
+              <th class="sortable" data-sort="productLine">Product line</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody id="licTbody"></tbody>
+        </table>
+        <div id="licEmpty" class="lic-empty" hidden>
+          <h2>No licenses yet</h2>
+          <p>Track when your customers' Microsoft licenses (and anything else with a renewal date) need to be renewed.</p>
+          <button type="button" class="btn primary" id="licEmptyAdd">+ Add your first license</button>
+        </div>
+      </section>
+
+      <section id="calendarView" hidden>
+        <div class="lic-cal-nav">
+          <button type="button" class="btn ghost" id="calPrev" title="Previous month">&lsaquo;</button>
+          <button type="button" class="btn ghost" id="calToday">Today</button>
+          <button type="button" class="btn ghost" id="calNext" title="Next month">&rsaquo;</button>
+          <h2 class="lic-cal-title" id="calTitle"></h2>
+          <button type="button" class="btn ghost" id="calNextYear" title="Same month next year">Same month next year</button>
+        </div>
+        <div class="lic-cal-grid">
+          <div class="lic-cal-header">Mon</div>
+          <div class="lic-cal-header">Tue</div>
+          <div class="lic-cal-header">Wed</div>
+          <div class="lic-cal-header">Thu</div>
+          <div class="lic-cal-header">Fri</div>
+          <div class="lic-cal-header">Sat</div>
+          <div class="lic-cal-header">Sun</div>
+          <div id="calBody" class="lic-cal-body" role="grid"></div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <!-- Add / edit drawer -->
+  <dialog id="licDialog" class="lic-dialog">
+    <form id="licForm" method="dialog" autocomplete="off">
+      <h2 id="licDialogTitle">Add license</h2>
+
+      <label class="lic-field">
+        <span class="lic-label">Customer</span>
+        <input id="licCustomer" type="text" list="customerList" required maxlength="200" placeholder="e.g. Beyond Innovations, Inc" />
+        <datalist id="customerList"></datalist>
+      </label>
+
+      <label class="lic-field">
+        <span class="lic-label">License type</span>
+        <input id="licType" type="text" list="licTypeList" required maxlength="200" placeholder="e.g. Microsoft 365 Business Standard" />
+        <datalist id="licTypeList"></datalist>
+      </label>
+
+      <div class="lic-row">
+        <label class="lic-field">
+          <span class="lic-label">Number of users</span>
+          <input id="licUsers" type="number" min="0" max="1000000" value="1" />
+        </label>
+        <label class="lic-field">
+          <span class="lic-label">Expires</span>
+          <input id="licExpiry" type="date" required />
+        </label>
+      </div>
+
+      <label class="lic-field">
+        <span class="lic-label">Owner</span>
+        <select id="licOwner" required>
+          <option value="">Pick a teammate</option>
+        </select>
+      </label>
+
+      <label class="lic-field">
+        <span class="lic-label">Product line (optional)</span>
+        <input id="licProductLine" type="text" list="productLineList" maxlength="100" placeholder="e.g. M365, BC, BREP" />
+        <datalist id="productLineList"></datalist>
+      </label>
+
+      <label class="lic-field">
+        <span class="lic-label">Notify me how many days before expiry?</span>
+        <select id="licLeadDays">
+          <option value="">Use default (14 days)</option>
+          <option value="7">7 days</option>
+          <option value="14">14 days</option>
+          <option value="30">30 days</option>
+          <option value="60">60 days</option>
+          <option value="90">90 days</option>
+          <option value="custom">Custom…</option>
+        </select>
+        <input id="licLeadDaysCustom" type="number" min="0" max="365" placeholder="Days" hidden />
+      </label>
+
+      <label class="lic-field">
+        <span class="lic-label">Notes (optional)</span>
+        <textarea id="licNotes" maxlength="2000" placeholder="Renewal contact, multi-year context, etc." rows="3"></textarea>
+      </label>
+
+      <div class="lic-dialog-actions">
+        <button type="button" class="btn primary" id="licSaveBtn">Save</button>
+        <button type="button" class="btn ghost" id="licRenewBtn" hidden>Mark renewed&hellip;</button>
+        <button type="button" class="btn ghost" id="licDeleteBtn" hidden>Delete</button>
+        <button type="button" class="btn ghost" id="licCancelBtn">Cancel</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- Renewed action sub-dialog -->
+  <dialog id="renewDialog" class="lic-dialog small">
+    <form id="renewForm" method="dialog">
+      <h2>Mark as renewed</h2>
+      <p class="lic-hint">Pick how long the renewal covers, and the new expiry date will be set automatically.</p>
+      <div class="renew-presets" role="radiogroup" aria-label="Renewal length">
+        <button type="button" class="btn ghost" data-years="1">+1 year</button>
+        <button type="button" class="btn ghost" data-years="2">+2 years</button>
+        <button type="button" class="btn ghost" data-years="3">+3 years (triennial)</button>
+      </div>
+      <label class="lic-field">
+        <span class="lic-label">Or pick the new expiry date</span>
+        <input id="renewCustomDate" type="date" />
+      </label>
+      <div class="lic-dialog-actions">
+        <button type="button" class="btn primary" id="renewConfirm">Confirm renewal</button>
+        <button type="button" class="btn ghost" id="renewCancel">Cancel</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- Day-detail popover (Calendar view) -->
+  <dialog id="dayDialog" class="lic-dialog small">
+    <h2 id="dayDialogTitle">Day</h2>
+    <ul id="dayDialogList" class="lic-day-list"></ul>
+    <div class="lic-dialog-actions">
+      <button type="button" class="btn primary" id="dayDialogAdd">+ Add license on this day</button>
+      <button type="button" class="btn ghost" id="dayDialogClose">Close</button>
+    </div>
+  </dialog>
+
+  <div id="toast" class="toast" hidden></div>
+
+  <script src="licenses.js?v=1.7.0"></script>
+</body>
+</html>

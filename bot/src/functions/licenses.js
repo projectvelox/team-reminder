@@ -1,0 +1,286 @@
+// REST API for the Licenses tab (v1.7).
+// Tenant-shared data — every authenticated tenant user can read and write all rows.
+// Each row has an Owner (ownerOid + ownerName) who receives Teams escalation cards
+// and the monthly email digest.
+
+const { app } = require('@azure/functions');
+const { verifyTeamsToken } = require('../lib/auth');
+const store = require('../lib/store');
+
+function corsHeaders() {
+  return {
+    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Headers': 'Authorization, Content-Type',
+    'Access-Control-Allow-Methods': 'GET, POST, PATCH, DELETE, OPTIONS',
+    'Content-Type': 'application/json',
+  };
+}
+
+function json(status, body) {
+  return { status, headers: corsHeaders(), body: JSON.stringify(body) };
+}
+
+async function authed(request) {
+  const auth = request.headers.get('authorization');
+  return await verifyTeamsToken(auth);
+}
+
+// Tenant-shared = every caller is implicitly an editor today.
+// We still register them as a member so the Owner picker auto-populates.
+async function registerCaller(user) {
+  try {
+    await store.registerMember({ oid: user.oid, displayName: user.name, upn: user.upn });
+  } catch { /* member registration is best-effort */ }
+}
+
+function newId() {
+  return (globalThis.crypto?.randomUUID?.()) || `id-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
+
+// Validate + coerce a license payload. Returns either { license: {...} } or { error: "..." }.
+// `existing` is the current row when patching; null when creating.
+function validatePayload(body, existing) {
+  const out = existing ? { ...existing } : {};
+
+  if (body.customer !== undefined) {
+    const v = String(body.customer || '').trim();
+    if (!v) return { error: 'customer is required' };
+    if (v.length > 200) return { error: 'customer max 200 chars' };
+    out.customer = v;
+  } else if (!existing) {
+    return { error: 'customer is required' };
+  }
+
+  if (body.licenseType !== undefined) {
+    const v = String(body.licenseType || '').trim();
+    if (!v) return { error: 'licenseType is required' };
+    if (v.length > 200) return { error: 'licenseType max 200 chars' };
+    out.licenseType = v;
+  } else if (!existing) {
+    return { error: 'licenseType is required' };
+  }
+
+  if (body.userCount !== undefined) {
+    const n = Number(body.userCount);
+    if (!isFinite(n) || n < 0 || n > 1000000) return { error: 'userCount must be a non-negative number' };
+    out.userCount = Math.floor(n);
+  } else if (!existing) {
+    out.userCount = 0;
+  }
+
+  if (body.expiryDate !== undefined) {
+    if (!ISO_DATE.test(String(body.expiryDate || ''))) return { error: 'expiryDate must be YYYY-MM-DD' };
+    out.expiryDate = body.expiryDate;
+  } else if (!existing) {
+    return { error: 'expiryDate is required' };
+  }
+
+  if (body.ownerOid !== undefined) {
+    const oid = String(body.ownerOid || '').trim();
+    if (!oid) return { error: 'ownerOid is required' };
+    out.ownerOid = oid;
+  } else if (!existing) {
+    return { error: 'ownerOid is required' };
+  }
+
+  if (body.ownerName !== undefined) {
+    out.ownerName = String(body.ownerName || '').trim().slice(0, 100) || null;
+  }
+
+  if (body.productLine !== undefined) {
+    const v = String(body.productLine || '').trim();
+    out.productLine = v ? v.slice(0, 100) : null;
+  }
+
+  if (body.leadDays === null) {
+    out.leadDays = null;
+  } else if (body.leadDays !== undefined) {
+    const n = Number(body.leadDays);
+    if (!isFinite(n) || n < 0 || n > 365) return { error: 'leadDays must be 0-365' };
+    out.leadDays = Math.floor(n);
+  }
+
+  if (body.notes === null || body.notes === '') {
+    out.notes = null;
+  } else if (body.notes !== undefined) {
+    out.notes = String(body.notes).trim().slice(0, 2000) || null;
+  }
+
+  if (body.state !== undefined) {
+    out.state = body.state === 'abandoned' ? 'abandoned' : 'active';
+  } else if (!existing) {
+    out.state = 'active';
+  }
+
+  return { license: out };
+}
+
+// GET/POST /api/licenses
+app.http('licensesCollection', {
+  methods: ['GET', 'POST', 'OPTIONS'],
+  authLevel: 'anonymous',
+  route: 'licenses',
+  handler: async (request, context) => {
+    if (request.method === 'OPTIONS') return { status: 204, headers: corsHeaders() };
+    let user;
+    try { user = await authed(request); } catch (err) { return json(err.status || 401, { error: err.message }); }
+    await registerCaller(user);
+
+    if (request.method === 'GET') {
+      const items = await store.listLicenses();
+      return json(200, { licenses: items });
+    }
+
+    // POST — create
+    const body = await request.json().catch(() => ({}));
+    const result = validatePayload(body, null);
+    if (result.error) return json(400, { error: result.error });
+
+    const now = new Date().toISOString();
+    const license = {
+      ...result.license,
+      id: newId(),
+      createdAt: now,
+      createdByOid: user.oid,
+      createdByName: user.name || null,
+      lastEditedAt: now,
+      lastEditedByOid: user.oid,
+      lastEditedByName: user.name || null,
+      lastRenewedAt: null,
+      lastEscalatedDays: null,
+    };
+    await store.upsertLicense(license);
+    return json(201, { license });
+  },
+});
+
+// PATCH/DELETE /api/licenses/{id}
+app.http('licensesItem', {
+  methods: ['PATCH', 'DELETE', 'OPTIONS'],
+  authLevel: 'anonymous',
+  route: 'licenses/{id}',
+  handler: async (request, context) => {
+    if (request.method === 'OPTIONS') return { status: 204, headers: corsHeaders() };
+    let user;
+    try { user = await authed(request); } catch (err) { return json(err.status || 401, { error: err.message }); }
+    await registerCaller(user);
+
+    const id = request.params.id;
+    if (!id) return json(400, { error: 'id is required' });
+
+    if (request.method === 'DELETE') {
+      const ok = await store.deleteLicense(id);
+      if (ok) return { status: 204, headers: corsHeaders() };
+      return json(404, { error: 'not found' });
+    }
+
+    const existing = await store.getLicense(id);
+    if (!existing) return json(404, { error: 'not found' });
+    const body = await request.json().catch(() => ({}));
+    const result = validatePayload(body, existing);
+    if (result.error) return json(400, { error: result.error });
+
+    const merged = {
+      ...result.license,
+      lastEditedAt: new Date().toISOString(),
+      lastEditedByOid: user.oid,
+      lastEditedByName: user.name || null,
+    };
+    // Clear escalation tracking if expiry moved forward (manual edit case).
+    if (existing.expiryDate !== merged.expiryDate) {
+      merged.lastEscalatedDays = null;
+    }
+    await store.upsertLicense(merged);
+    return json(200, { license: merged });
+  },
+});
+
+// POST /api/licenses/{id}/renew
+// Body: { newExpiryDate: "YYYY-MM-DD" }  -- explicit new expiry
+//   or: { years: 1 | 2 | 3 }              -- advance by N years from current expiry
+app.http('licensesRenew', {
+  methods: ['POST', 'OPTIONS'],
+  authLevel: 'anonymous',
+  route: 'licenses/{id}/renew',
+  handler: async (request, context) => {
+    if (request.method === 'OPTIONS') return { status: 204, headers: corsHeaders() };
+    let user;
+    try { user = await authed(request); } catch (err) { return json(err.status || 401, { error: err.message }); }
+    await registerCaller(user);
+
+    const id = request.params.id;
+    if (!id) return json(400, { error: 'id is required' });
+
+    const existing = await store.getLicense(id);
+    if (!existing) return json(404, { error: 'not found' });
+
+    const body = await request.json().catch(() => ({}));
+    let newExpiry = null;
+    if (typeof body.newExpiryDate === 'string' && ISO_DATE.test(body.newExpiryDate)) {
+      newExpiry = body.newExpiryDate;
+    } else if (body.years === 1 || body.years === 2 || body.years === 3) {
+      const base = existing.expiryDate && ISO_DATE.test(existing.expiryDate)
+        ? new Date(existing.expiryDate + 'T00:00:00Z')
+        : new Date();
+      base.setUTCFullYear(base.getUTCFullYear() + body.years);
+      newExpiry = base.toISOString().slice(0, 10);
+    } else {
+      return json(400, { error: 'provide newExpiryDate (YYYY-MM-DD) or years (1, 2, or 3)' });
+    }
+
+    const now = new Date().toISOString();
+    const merged = {
+      ...existing,
+      expiryDate: newExpiry,
+      state: 'active',
+      lastRenewedAt: now,
+      lastEditedAt: now,
+      lastEditedByOid: user.oid,
+      lastEditedByName: user.name || null,
+      lastEscalatedDays: null,
+    };
+    await store.upsertLicense(merged);
+    return json(200, { license: merged });
+  },
+});
+
+// POST /api/licenses/bulk — apply the same patch to many licenses (e.g. bulk reassign Owner).
+// Body: { ids: ["id1", ...], patch: { ownerOid, ownerName } }
+app.http('licensesBulk', {
+  methods: ['POST', 'OPTIONS'],
+  authLevel: 'anonymous',
+  route: 'licenses/bulk',
+  handler: async (request, context) => {
+    if (request.method === 'OPTIONS') return { status: 204, headers: corsHeaders() };
+    let user;
+    try { user = await authed(request); } catch (err) { return json(err.status || 401, { error: err.message }); }
+    await registerCaller(user);
+
+    const body = await request.json().catch(() => ({}));
+    const ids = Array.isArray(body.ids) ? body.ids.filter(x => typeof x === 'string').slice(0, 500) : [];
+    const patch = body.patch && typeof body.patch === 'object' ? body.patch : null;
+    if (!ids.length) return json(400, { error: 'ids array is required' });
+    if (!patch) return json(400, { error: 'patch object is required' });
+
+    const now = new Date().toISOString();
+    const updated = [];
+    const notFound = [];
+    for (const id of ids) {
+      const existing = await store.getLicense(id);
+      if (!existing) { notFound.push(id); continue; }
+      const result = validatePayload(patch, existing);
+      if (result.error) continue;
+      const merged = {
+        ...result.license,
+        lastEditedAt: now,
+        lastEditedByOid: user.oid,
+        lastEditedByName: user.name || null,
+      };
+      await store.upsertLicense(merged);
+      updated.push(merged);
+    }
+    return json(200, { updated, notFound });
+  },
+});
