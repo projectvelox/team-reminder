@@ -514,15 +514,10 @@
       badge.title = `Renewal cycle: ${lic.renewalCycle}`;
       tdCustomer.appendChild(badge);
     }
-    // Multi-line bundle indicator
+    // Bundle membership is communicated on the Email button below (its label
+    // changes to "Email 10" etc.). No badge in the customer cell so the
+    // customer name has more room to breathe.
     const bundle = bundleFor(lic);
-    if (bundle.length >= 2) {
-      const b = document.createElement("span");
-      b.className = "bundle-badge";
-      b.textContent = `Bundle: ${bundle.length}`;
-      b.title = `Part of a ${bundle.length}-license renewal package for ${lic.customer}. The Email button will draft one combined message.`;
-      tdCustomer.appendChild(b);
-    }
     tr.appendChild(tdCustomer);
 
     const tdType = document.createElement("td");
@@ -585,8 +580,14 @@
     const emailBtn = document.createElement("button");
     emailBtn.type = "button";
     emailBtn.className = "btn ghost small";
-    emailBtn.textContent = "Email";
-    emailBtn.title = "Open Outlook with a pre-filled renewal notice to the customer";
+    if (bundle.length >= 2) {
+      emailBtn.textContent = `Email ${bundle.length}`;
+      emailBtn.title = `Drafts ONE combined email covering all ${bundle.length} licenses for ${lic.customer} expiring around this date.`;
+      emailBtn.classList.add("email-bundle");
+    } else {
+      emailBtn.textContent = "Email";
+      emailBtn.title = "Open Outlook with a pre-filled renewal notice to the customer";
+    }
     emailBtn.addEventListener("click", (e) => { e.stopPropagation(); emailCustomer(lic); });
     tdActions.appendChild(emailBtn);
     const renewBtn = document.createElement("button");

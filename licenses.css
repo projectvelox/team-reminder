@@ -403,15 +403,19 @@ body[data-theme="dark"] .lic-table th {
   border-bottom-color: #3d3d42;
 }
 
-/* Column-specific sizing so wrapping happens where it should
-   (customer, license type) and never where it should not (date, users, status). */
+/* Column-specific sizing. Explicit widths win against table-layout: auto's
+   content-driven growth, so the table looks the same regardless of how long
+   any one customer's name is. */
 .lic-table th:nth-child(1), .lic-table td:nth-child(1) { /* Customer */
-  min-width: 200px;
+  width: 240px;
+  min-width: 220px;
   max-width: 280px;
 }
 .lic-table th:nth-child(2), .lic-table td:nth-child(2) { /* License type */
+  width: 200px;
   min-width: 150px;
-  max-width: 240px;
+  max-width: 220px;
+  word-break: break-word;
 }
 .lic-table th:nth-child(3), .lic-table td:nth-child(3) { /* Users */
   width: 1%; white-space: nowrap; text-align: right;
@@ -1055,26 +1059,18 @@ body[data-theme="dark"] .bulk-bar {
 .lic-row-checkbox { cursor: pointer; }
 .lic-table tbody tr.selected { background: var(--accent-bg, rgba(56, 174, 235, 0.12)); }
 
-/* Bundle indicator badge on customer cell — kept small and quiet so it doesn't
-   compete visually with the customer name or the row's other content. */
-.bundle-badge {
-  display: inline-block;
-  margin-left: 6px;
-  padding: 0 5px;
-  border-radius: 3px;
-  font-size: 9px;
-  font-weight: 700;
-  letter-spacing: 0.02em;
-  background: rgba(0, 153, 188, 0.12);
+/* Email button on a bundled row gets a subtle accent so it's clear the
+   click drafts something bigger than a single-line email. */
+.lic-table td.actions .btn.email-bundle {
+  border-color: rgba(0, 153, 188, 0.5);
   color: #007a9a;
-  border: 1px solid rgba(0, 153, 188, 0.3);
-  cursor: help;
-  vertical-align: middle;
-  white-space: nowrap;
+  font-weight: 600;
 }
-body[data-theme="dark"] .bundle-badge { color: #4eb8d4; background: rgba(0, 153, 188, 0.18); }
+body[data-theme="dark"] .lic-table td.actions .btn.email-bundle {
+  color: #4eb8d4;
+}
 
-/* Cycle badge gets the same quiet treatment so a multi-badge row stays calm. */
+/* Cycle badge kept quiet so it reads as an annotation, not a label. */
 .cycle-badge {
   font-size: 9px;
   padding: 0 5px;
