@@ -1441,3 +1441,39 @@ body[data-theme="dark"] .rolled-badge { color: #f0c040; }
   .week-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px; }
   .week-day { min-height: 100px; }
 }
+
+/* ---------- v1.7.40 dialog close X (auto-injected via JS) ---------- */
+dialog { position: relative; }
+.dialog-close-x {
+  position: absolute;
+  top: 10px;
+  right: 12px;
+  width: 32px;
+  height: 32px;
+  border-radius: 6px;
+  background: transparent;
+  border: 0;
+  color: var(--muted, #6a6a6a);
+  font-size: 22px;
+  line-height: 1;
+  cursor: pointer;
+  z-index: 100;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.dialog-close-x:hover {
+  background: rgba(0, 0, 0, 0.08);
+  color: var(--text, #1c1c1e);
+}
+.dialog-close-x:focus-visible {
+  outline: 2px solid var(--accent, #38AEEB);
+  outline-offset: 2px;
+}
+body:is([data-theme="dark"], [data-theme="contrast"]) .dialog-close-x {
+  color: #b0b0b8;
+}
+body:is([data-theme="dark"], [data-theme="contrast"]) .dialog-close-x:hover {
+  background: rgba(255, 255, 255, 0.12);
+  color: #f0f0f2;
+}

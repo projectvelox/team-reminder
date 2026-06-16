@@ -52,11 +52,19 @@ function escapeHtml(s) {
 }
 
 function corsHeaders() {
+  // v1.7.40 — origin locked to GitHub Pages prod. Auth is Bearer-token, so
+  // CSRF is N/A, but tightening prevents arbitrary pages from attaching a
+  // stolen token and reading our responses.
   return {
-    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Origin': 'https://projectvelox.github.io',
+    'Vary': 'Origin',
     'Access-Control-Allow-Headers': 'Authorization, Content-Type',
     'Access-Control-Allow-Methods': 'GET, POST, PATCH, DELETE, OPTIONS',
+    'Access-Control-Max-Age': '600',
     'Content-Type': 'application/json',
+    'X-Content-Type-Options': 'nosniff',
+    'Referrer-Policy': 'no-referrer',
+    'Cache-Control': 'no-store',
   };
 }
 
@@ -395,7 +403,10 @@ app.http('licensesComments', {
     const body = await request.json().catch(() => ({}));
     const text = String(body.text || '').trim();
     if (!text) return json(400, { error: 'text is required' });
-    if (text.length > 2000) return json(400, { error: 'text max 2000 chars' });
+    // v1.7.40 — Azure Tables strings cap at 32KB UTF-16. The whole comments
+    // array is one JSON-encoded property, so cap individual text + total count
+    // conservatively. 30 × 1000 chars + JSON overhead stays comfortably under.
+    if (text.length > 1000) return json(400, { error: 'text max 1000 chars' });
 
     const now = new Date().toISOString();
     const comment = {
@@ -407,7 +418,7 @@ app.http('licensesComments', {
     };
     const comments = Array.isArray(existing.comments) ? existing.comments.slice() : [];
     comments.push(comment);
-    if (comments.length > 100) comments.splice(0, comments.length - 100);
+    if (comments.length > 30) comments.splice(0, comments.length - 30);
 
     const merged = {
       ...existing,

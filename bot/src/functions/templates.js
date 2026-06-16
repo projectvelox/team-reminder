@@ -9,11 +9,17 @@ const { verifyTeamsToken } = require('../lib/auth');
 const store = require('../lib/store');
 
 function corsHeaders() {
+  // v1.7.40 — see customers.js for rationale.
   return {
-    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Origin': 'https://projectvelox.github.io',
+    'Vary': 'Origin',
     'Access-Control-Allow-Headers': 'Authorization, Content-Type',
     'Access-Control-Allow-Methods': 'GET, PUT, OPTIONS',
+    'Access-Control-Max-Age': '600',
     'Content-Type': 'application/json',
+    'X-Content-Type-Options': 'nosniff',
+    'Referrer-Policy': 'no-referrer',
+    'Cache-Control': 'no-store',
   };
 }
 

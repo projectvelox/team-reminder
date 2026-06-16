@@ -156,6 +156,25 @@
 
   // ---------- DOM ----------
   const $ = (id) => document.getElementById(id);
+
+  // v1.7.40 — auto-add a corner close X to every <dialog>. Idempotent so it can
+  // be called after dynamic dialog insertion. Pairs with .dialog-close-x in CSS.
+  function installDialogCloseButtons() {
+    document.querySelectorAll("dialog").forEach((d) => {
+      if (d.querySelector(":scope > .dialog-close-x")) return;
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "dialog-close-x";
+      btn.setAttribute("aria-label", "Close");
+      btn.title = "Close (Esc)";
+      btn.innerHTML = "&times;";
+      btn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        if (d.open) d.close();
+      });
+      d.prepend(btn);
+    });
+  }
   const addForm = $("addForm");
   const titleInput = $("title");
   const timeInput = $("time");
@@ -3029,6 +3048,7 @@
       reminders = rems;
       userTemplates = Array.isArray(userTpls) ? userTpls : [];
       render();
+      installDialogCloseButtons();
     } catch (err) {
       console.error("Boot failed", err);
       postTelemetry("tab.boot.failed", {

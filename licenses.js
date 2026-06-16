@@ -413,6 +413,27 @@
     return wrap;
   }
 
+  // v1.7.40 — auto-add a corner close X to every <dialog> so users don't have
+  // to scroll to find a Cancel/Close button or remember Esc. Positioned via
+  // CSS (top-right of the dialog). Skipped if a dialog already has its own X
+  // (so this is idempotent and safe to call after dynamic inserts).
+  function installDialogCloseButtons() {
+    document.querySelectorAll("dialog").forEach((d) => {
+      if (d.querySelector(":scope > .dialog-close-x")) return;
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "dialog-close-x";
+      btn.setAttribute("aria-label", "Close");
+      btn.title = "Close (Esc)";
+      btn.innerHTML = "&times;";
+      btn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        if (d.open) d.close();
+      });
+      d.prepend(btn);
+    });
+  }
+
   function ownerNameByOid(oid) {
     if (!oid) return "(none)";
     // Prefer the in-memory members list (auto-registered), fall back to the
@@ -2519,12 +2540,17 @@
       });
     }
 
-    // Search
+    // Search — v1.7.40 debounced to 150ms so render doesn't fire every keystroke
+    // when the user is typing fast in a tab with hundreds of licenses.
     const searchInput = $("searchInput");
+    let searchDebounce = null;
     searchInput.addEventListener("input", () => {
-      searchText = searchInput.value.trim();
-      $("searchClear").hidden = !searchText;
-      render();
+      $("searchClear").hidden = !searchInput.value.trim();
+      clearTimeout(searchDebounce);
+      searchDebounce = setTimeout(() => {
+        searchText = searchInput.value.trim();
+        render();
+      }, 150);
     });
     $("searchClear").addEventListener("click", () => {
       searchInput.value = "";
@@ -3515,6 +3541,21 @@
   // so changes by another tenant user (Dona renews, Rey reassigns) appear
   // without a manual refresh. Skipped while a dialog is open to avoid clobbering
   // an in-progress edit. Errors are silent — keep-warm noise isn't worth a toast.
+  // v1.7.40 — cheap signature so we can skip the full render when the poll
+  // returns identical data. Compares id + the fields that drive every row:
+  // expiry, status, owner, comment count, leadFired, edit timestamp.
+  function licensesSignature(arr) {
+    if (!Array.isArray(arr)) return "0";
+    const parts = [String(arr.length)];
+    for (const l of arr) {
+      parts.push(
+        `${l.id}|${l.expiryDate || ""}|${l.status || ""}|${l.ownerOid || ""}|${l.lastEditedAt || ""}|${Array.isArray(l.comments) ? l.comments.length : 0}|${Array.isArray(l.lastFiredLeadDays) ? l.lastFiredLeadDays.length : 0}`
+      );
+    }
+    return parts.join("~");
+  }
+  let lastLicensesSig = "";
+
   async function pollOnce() {
     if (document.visibilityState !== "visible") return;
     const anyDialogOpen = document.querySelectorAll("dialog[open]").length > 0;
@@ -3522,11 +3563,17 @@
     try {
       const res = await api("GET", "/licenses");
       const next = res.licenses || [];
-      // Merge: keep any pending-undo items the server hasn't seen.
       const pendingIds = new Set([...pendingDeletes.keys()]);
       const filtered = next.filter((l) => !pendingIds.has(l.id));
-      licenses = filtered;
       lastSyncedAt = Date.now();
+      const sig = licensesSignature(filtered);
+      if (sig === lastLicensesSig) {
+        // Nothing changed server-side; skip the render entirely.
+        updateSyncIndicator();
+        return;
+      }
+      lastLicensesSig = sig;
+      licenses = filtered;
       render();
       updateSyncIndicator();
     } catch (_) { /* swallow — next poll will retry */ }
@@ -3649,6 +3696,7 @@
       const { licenses: lics } = await api("GET", "/licenses");
       licenses = lics || [];
       lastSyncedAt = Date.now();
+      lastLicensesSig = licensesSignature(licenses);
       updateSyncIndicator();
 
       // Hide the boot indicator now that we have data.
@@ -3662,6 +3710,8 @@
       // v1.7.39 — wire Ctrl+K palette and global shortcuts.
       wireCmdk();
       wireGlobalShortcuts();
+      // v1.7.40 — add an X close button to every dialog.
+      installDialogCloseButtons();
     } catch (err) {
       const bi = $("bootIndicator");
       if (bi) bi.classList.add("gone");

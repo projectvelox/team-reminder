@@ -341,14 +341,15 @@ function serializeLeadDays(v) {
   return null;
 }
 
-// v1.7.39 — per-license comment thread, capped at 100 to keep Table rows light.
+// v1.7.39 — per-license comment thread. v1.7.40 tightened cap to 30 so the
+// JSON-encoded property stays under Azure Tables' 32KB string limit.
 // Each: { id, at, byOid, byName, text }.
 function parseComments(v) {
   if (!v || typeof v !== 'string') return [];
   try {
     const parsed = JSON.parse(v);
     if (!Array.isArray(parsed)) return [];
-    return parsed.slice(-100);
+    return parsed.slice(-30);
   } catch { return []; }
 }
 
@@ -454,7 +455,7 @@ async function upsertLicense(license) {
     lastEscalatedDays: typeof license.lastEscalatedDays === 'number' ? license.lastEscalatedDays : null,
     leadSnoozedUntil: license.leadSnoozedUntil || null,
     events: JSON.stringify(Array.isArray(license.events) ? license.events.slice(-50) : []),
-    comments: JSON.stringify(Array.isArray(license.comments) ? license.comments.slice(-100) : []),
+    comments: JSON.stringify(Array.isArray(license.comments) ? license.comments.slice(-30) : []),
   }, 'Replace');
 }
 

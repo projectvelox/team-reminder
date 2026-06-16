@@ -7,11 +7,19 @@ const { verifyTeamsToken } = require('../lib/auth');
 const store = require('../lib/store');
 
 function corsHeaders() {
+  // v1.7.40 — origin locked to GitHub Pages prod. Auth is Bearer-token, so
+  // CSRF is N/A, but tightening prevents arbitrary pages from attaching a
+  // stolen token and reading our responses.
   return {
-    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Origin': 'https://projectvelox.github.io',
+    'Vary': 'Origin',
     'Access-Control-Allow-Headers': 'Authorization, Content-Type',
     'Access-Control-Allow-Methods': 'GET, POST, PATCH, DELETE, OPTIONS',
+    'Access-Control-Max-Age': '600',
     'Content-Type': 'application/json',
+    'X-Content-Type-Options': 'nosniff',
+    'Referrer-Policy': 'no-referrer',
+    'Cache-Control': 'no-store',
   };
 }
 

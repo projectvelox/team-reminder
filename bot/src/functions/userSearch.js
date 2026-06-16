@@ -12,11 +12,18 @@ const { verifyTeamsToken } = require('../lib/auth');
 const { searchUsers, getUserPhoto } = require('../lib/graph');
 
 function corsHeaders(extra) {
+  // v1.7.40 — see customers.js for rationale. `extra` is used by the photo
+  // endpoint to override Content-Type and Cache-Control.
   return {
-    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Origin': 'https://projectvelox.github.io',
+    'Vary': 'Origin',
     'Access-Control-Allow-Headers': 'Authorization, Content-Type',
     'Access-Control-Allow-Methods': 'GET, OPTIONS',
+    'Access-Control-Max-Age': '600',
     'Content-Type': 'application/json',
+    'X-Content-Type-Options': 'nosniff',
+    'Referrer-Policy': 'no-referrer',
+    'Cache-Control': 'no-store',
     ...(extra || {}),
   };
 }
@@ -69,14 +76,19 @@ app.http('usersPhoto', {
 
     try {
       const photo = await getUserPhoto(oid);
-      if (!photo) return { status: 204, headers: corsHeaders() };
+      if (!photo) {
+        // v1.7.40 — let the browser remember the 204 for 5 min so we don't
+        // re-pound Graph every render for a user who has no photo.
+        return { status: 204, headers: corsHeaders({ 'Cache-Control': 'private, max-age=300' }) };
+      }
+      // v1.7.40 — restrict origin, extend client cache to 24h, allow ~5 min
+      // staleness while we revalidate. Profile photos change rarely.
       return {
         status: 200,
-        headers: {
-          'Access-Control-Allow-Origin': '*',
+        headers: corsHeaders({
           'Content-Type': photo.contentType,
-          'Cache-Control': 'private, max-age=3600',
-        },
+          'Cache-Control': 'private, max-age=86400, stale-while-revalidate=300',
+        }),
         body: photo.buffer,
       };
     } catch (err) {

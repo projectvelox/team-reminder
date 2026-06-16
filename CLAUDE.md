@@ -73,6 +73,26 @@ Secrets, GUIDs, and connection strings live in the Claude memory file `project_d
 
 ## What ships today (v1.7.x)
 
+### v1.7.40 — security + perf audit + dialog close X
+
+Defense-in-depth + performance pass triggered by the user's "heavy security and optimization audit" ask. Plus a usability ask: every modal now has a corner **× close button** so users don't have to scroll to find Cancel or remember Esc.
+
+**User-visible**
+- Auto-injected `×` close button (top-right) on every `<dialog>` across both tabs — Edit license, Settings, Renew, Customer, CSV import, Templates, Bulk reassign, Day overflow, Guide, Command palette, Shortcuts, and the Reminders tab's Settings / What's new / Row options / Templates. Implemented as a one-shot `installDialogCloseButtons()` helper called after boot.
+
+**Security (defense-in-depth)**
+- **CORS lockdown**: `Access-Control-Allow-Origin: '*'` → `https://projectvelox.github.io` everywhere. Bearer-token auth meant CSRF was already N/A, but origin reflection prevents arbitrary pages from attaching a stolen token and reading our responses. Added `Vary: Origin`, `Access-Control-Max-Age: 600` for preflight caching.
+- **Standard security headers** on every JSON response: `X-Content-Type-Options: nosniff`, `Referrer-Policy: no-referrer`, `Cache-Control: no-store`. Eleven endpoint files updated.
+- **Storage-limit guard on comments**: pre-existing 100 × 2000 char cap could exceed Azure Tables' 32KB UTF-16 per-property string limit. Tightened to **30 × 1000 chars** so the JSON-encoded property stays well under. Cap applies on read + write + UI textarea maxlength.
+- New `bot/src/lib/cors.js` with allowlist-based reflection helper, plus a no-arg drop-in style kept on each endpoint to minimize per-call-site refactor.
+
+**Performance**
+- **Search debounce** (150ms). Was firing `render()` on every keystroke; with 100+ licenses + multiple breakdowns + active-filter bar that adds up.
+- **Skip no-op poll renders**: live poll now computes a cheap signature (`id|expiry|status|owner|lastEditedAt|commentCount|leadFireCount`) and bails out of `render()` when the server returned identical data. Cuts redundant re-paints every 60s.
+- **Photo proxy cache headers**: `Cache-Control: private, max-age=86400, stale-while-revalidate=300` for 200 responses (was 1h); `private, max-age=300` for 204s. Profile photos rarely change — browsers will hit the proxy once a day per owner instead of every poll.
+
+Cache-bust `v=1.7.40` on Licenses tab, `v=1.5.3` on Reminders tab (close-X helper added). **Backend redeploy required** (CORS + comment caps + photo cache headers).
+
 ### v1.7.39 — quality-of-life bundle
 
 Big multi-feature release; tab + bot (comments + saved-views endpoints).
