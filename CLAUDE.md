@@ -73,6 +73,18 @@ Secrets, GUIDs, and connection strings live in the Claude memory file `project_d
 
 ## What ships today (v1.7.x)
 
+### v1.7.50 — fix the 3 FAILs + 1 PARTIAL from v1.7.49 regression
+
+The v1.7.49 design re-run still surfaced real issues. Real fixes this round.
+
+- **Sticky table header (4th attempt, correct this time)** — v1.7.49 added `overflow-x: auto` on `.lic-table-wrap`. Per CSS spec, that *implicitly* sets `overflow-y: auto` (the two axes can't independently be `visible`/`scroll` without one getting coerced), establishing a scroll container that trapped `position: sticky` on `th`. **v1.7.50: removed the overflow from the wrap entirely at desktop width.** Below 1100px the media query restores `overflow-x: auto` (sacrificing sticky for narrow viewports, which is the standard trade-off). Also tightened col-customer / col-licensetype widths so the 8-column table fits inside a Teams iframe at ~1000px effective main-column width without horizontal scroll.
+- **Reminders footer version** — was stuck on `v1.4.6` for users running with a stale cached HTML. Now set via JS (`document.getElementById("versionLabel").textContent = TAB_VERSION` on `DOMContentLoaded`). The JS itself is cache-busted, so even a year-old cached HTML now shows the current build label.
+- **Customer drawer backdrop (real fix)** — bumped from 0.55 → 0.70 opacity + added `backdrop-filter: blur(2px)`. At 0.55, dark mode rendered the backdrop nearly invisible against an already-dark page. 0.70 + blur is the Stripe / Linear standard and gives clear visual separation.
+- **Undo toast 5s → 8s** — testers couldn't spot + click Undo within the old 5-second window. 8s is the GitHub / Linear standard. Applies to: single delete (Reminders + Licenses), bulk delete, bulk done. Action-bearing toasts via `toast(msg, { actionLabel, onAction })` also get 8s.
+- **Reset dismissed hints button** in Reminders Settings → clears `localStorage["rem.dragHintSeen"]` etc. so the drag-to-reschedule hint comes back next time you visit Week / Day view. Closes the "can't re-test the once-only hint" gap from §2-4.
+
+Cache-bust `v=1.7.50` on Licenses, `v=1.5.8` on Reminders. No backend changes.
+
 ### v1.7.49 — close the 4 remaining v1.7.48 failures
 
 Tab-only release. Addresses the 4 fails reported in the v1.7.48 design re-run.

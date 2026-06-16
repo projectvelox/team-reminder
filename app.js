@@ -7,7 +7,9 @@
 
   const API_BASE = "https://func-day-reminders-17023.azurewebsites.net/api";
   const DONE_AGE_MS = 24 * 60 * 60 * 1000;
-  const UNDO_MS = 5000;
+  // v1.7.50 — 5s wasn't enough time for new users to spot + click Undo.
+  // 8s is the GitHub / Linear standard.
+  const UNDO_MS = 8000;
   const APP_VERSION = "1.4.6";
   const VIEWS = ["lines", "grid", "calendar", "week"];
   const TAG_PALETTE = [
@@ -156,6 +158,22 @@
 
   // ---------- DOM ----------
   const $ = (id) => document.getElementById(id);
+
+  // v1.7.50 — set the footer version label via JS. The HTML can get cached
+  // very aggressively by Teams desktop (some users were stuck on `v1.4.6`
+  // even after multiple cache-bust bumps). Because the JS file is itself
+  // cache-busted via `?v=` on every release, setting the label here means
+  // a stale HTML cache no longer lies to users about the build they're on.
+  const TAB_VERSION = "v1.5.8";
+  document.addEventListener("DOMContentLoaded", () => {
+    const lbl = document.getElementById("versionLabel");
+    if (lbl) lbl.textContent = TAB_VERSION;
+  });
+  // Idempotent fallback for the case where DOMContentLoaded already fired.
+  if (document.readyState !== "loading") {
+    const lbl = document.getElementById("versionLabel");
+    if (lbl) lbl.textContent = TAB_VERSION;
+  }
 
   // v1.7.44 — Next-up hero: surfaces the single next timed reminder + countdown.
   // Looks at today + tomorrow only so "your next item" is actually next.
@@ -512,6 +530,18 @@
 
   $("openSettings").addEventListener("click", () => openDialog(settingsDialog, openSettings));
   $("settingsCancel").addEventListener("click", () => settingsDialog.close());
+  // v1.7.50 — reset one-time dismissed hints (drag-to-reschedule, etc.)
+  $("resetHintsBtn").addEventListener("click", () => {
+    try { localStorage.removeItem("rem.dragHintSeen"); } catch (_) {}
+    toastRegion && toastRegion.appendChild(Object.assign(document.createElement("div"), {
+      className: "toast",
+      textContent: "Tips reset. Switch to Week or Day view to see the drag hint again.",
+    }));
+    setTimeout(() => {
+      const t = toastRegion && toastRegion.lastElementChild;
+      if (t) t.remove();
+    }, 3500);
+  });
   $("setLeadPreset").addEventListener("change", (e) => {
     const val = e.target.value;
     const customRow = $("setLeadCustomRow");
@@ -2816,7 +2846,7 @@
     });
     toast.append(label, action);
     toastRegion.appendChild(toast);
-    setTimeout(() => { if (!fired) toast.remove(); }, 6000);
+    setTimeout(() => { if (!fired) toast.remove(); }, 8000);
   }
   async function bulkTogglePriority() {
     const targets = selectedReminders();

@@ -84,20 +84,24 @@ body[data-view="calendar"] .lic-shell { grid-template-columns: 1fr; }
   .lic-aside > section { flex: 1 1 220px; }
 }
 
-/* Table wrap. v1.7.49: horizontal scroll inside the wrap so very wide tables
-   (e.g. on the Teams iframe at 1000px effective width) don't get clipped —
-   user can scroll the wrap horizontally to reach Owner / Product line /
-   Status / Edit columns. Sticky `th` still works because `.lic-main`'s
-   `overflow-x: clip` doesn't establish a scroll container that would trap
-   sticky. */
+/* Table wrap. v1.7.50: NO overflow on the wrap. `overflow-x: auto` (which
+   we had in v1.7.49) implicitly forces `overflow-y: auto` per CSS spec,
+   establishing a scroll container that traps `position: sticky` on `th`.
+   Without overflow here, sticky `th` binds to the page-level scroll where
+   it actually works. `.lic-main` has `overflow-x: clip` to prevent the table
+   from visually overflowing into the sidebar. Narrow viewports lose access
+   to the rightmost columns; below 1100px the media query restores
+   `overflow-x: auto` and accepts the sticky-thead trade-off. */
 .lic-table-wrap {
   width: 100%;
   max-width: 100%;
-  overflow-x: auto;
 }
 .lic-table {
   width: 100%;
-  table-layout: auto; /* let cells size to content; min-widths set per column */
+  table-layout: auto;
+}
+@media (max-width: 1100px) {
+  .lic-table-wrap { overflow-x: auto; }
 }
 
 /* Aside-specific overrides: stack summary chips vertically, compact stats. */
@@ -509,15 +513,18 @@ body:is([data-theme="dark"], [data-theme="contrast"]) .lic-table th {
 /* Column-specific sizing via class names. Classes survive the bulk-mode shift
    (where a checkbox column is inserted at position 1) without breaking the
    nth-child positions. */
+/* v1.7.50: trimmed widths so the eight-column table fits inside a Teams
+   iframe at ~1000px effective main-column width without horizontal scroll. */
 .lic-table th.col-customer, .lic-table td.col-customer {
-  width: 280px;
-  min-width: 240px;
-  max-width: 320px;
+  width: 220px;
+  min-width: 180px;
+  max-width: 260px;
+  word-break: break-word;
 }
 .lic-table th.col-licensetype, .lic-table td.col-licensetype {
-  width: 220px;
-  min-width: 170px;
-  max-width: 240px;
+  width: 170px;
+  min-width: 140px;
+  max-width: 200px;
   word-break: break-word;
 }
 .lic-table th.col-users, .lic-table td.col-users {
@@ -748,15 +755,16 @@ body:is([data-theme="dark"], [data-theme="contrast"]) .lic-table td.actions .btn
 .lic-dialog.small {
   max-width: 380px;
 }
-/* v1.7.49: universal dialog::backdrop selector — catches every <dialog>
-   shown via showModal(), including the customer drawer (which the v1.7.48
-   .lic-dialog::backdrop / #customerDialog::backdrop rules somehow weren't
-   hitting reliably in Teams). Using just `dialog::backdrop` has highest
-   confidence of applying across all surfaces. */
+/* v1.7.50: bumped backdrop opacity to 0.70 — dark mode rendered 0.55 too
+   subtly against an already-dark page, so users couldn't tell the dialog
+   was modal. 0.70 is the Stripe/Linear standard. Also added explicit
+   backdrop-filter blur for additional visual separation. */
 dialog::backdrop,
 .lic-dialog::backdrop,
 #customerDialog::backdrop {
-  background: rgba(0, 0, 0, 0.55) !important;
+  background: rgba(0, 0, 0, 0.70) !important;
+  backdrop-filter: blur(2px);
+  -webkit-backdrop-filter: blur(2px);
 }
 .lic-dialog h2 { margin: 0 0 var(--space-4, 16px); }
 /* v1.7.48 — symmetric padding so the h2 isn't cramped against the top edge.

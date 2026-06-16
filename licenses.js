@@ -285,7 +285,8 @@
     const span = document.createElement("span");
     span.textContent = msg;
     t.appendChild(span);
-    const durationMs = (opts && opts.durationMs) || (opts && opts.actionLabel ? 6000 : 2400);
+    // v1.7.50 — actionable toasts (Undo) get 8s window so users can spot them.
+    const durationMs = (opts && opts.durationMs) || (opts && opts.actionLabel ? 8000 : 2400);
     if (opts && opts.actionLabel && typeof opts.onAction === "function") {
       const btn = document.createElement("button");
       btn.type = "button";
@@ -2333,7 +2334,7 @@
       });
       pendingDeletes.delete(lic.id);
       t.hidden = true;
-    }, 5000);
+    }, 8000); // v1.7.50: 5s -> 8s for Undo
     pendingDeletes.set(lic.id, { license: lic, timer });
   }
 
@@ -2842,7 +2843,7 @@
         try { await api("DELETE", `/licenses/${lic.id}`); } catch { failed++; }
       }
       if (failed) toast(`Delete failed for ${failed} of ${removed.length}`);
-    }, 6000);
+    }, 8000); // v1.7.50: 6s -> 8s for bulk Undo
     toast(`Deleted ${removed.length} license${removed.length === 1 ? "" : "s"}`, {
       actionLabel: "Undo",
       onAction: () => {
