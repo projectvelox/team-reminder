@@ -390,11 +390,17 @@ body[data-theme="dark"] .lic-group-header td {
   font-size: 11px;
   text-transform: uppercase;
   letter-spacing: 0.04em;
-  opacity: 0.7;
-  background: var(--card-bg, transparent);
+  background: #f4f4f6;
+  color: #605e5c;
   position: sticky;
   top: 0;
   white-space: nowrap;
+  border-bottom: 1px solid var(--border, #d1d1d1);
+}
+body[data-theme="dark"] .lic-table th {
+  background: #232328;
+  color: #c8c8cc;
+  border-bottom-color: #3d3d42;
 }
 
 /* Column-specific sizing so wrapping happens where it should
@@ -1121,10 +1127,6 @@ body[data-theme="dark"] #importFile {
 }
 body[data-theme="dark"] .lic-cal-cell.muted {
   --card-bg: #232328;
-}
-body[data-theme="dark"] .lic-table th {
-  background: #2b2b30;
-  border-bottom-color: #3d3d42;
 }
 body[data-theme="dark"] .lic-table td {
   border-bottom-color: #3d3d42;
