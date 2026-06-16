@@ -205,7 +205,14 @@ body:is([data-theme="dark"], [data-theme="contrast"]) .lic-aside .lic-stats {
    text color is brightened so the pills read as calm labels, not saturated
    filled chips. */
 body:is([data-theme="dark"], [data-theme="contrast"]) .status-pill.status-notStarted        { color: #d6d6d6; }
-body:is([data-theme="dark"], [data-theme="contrast"]) .status-pill.status-noticeSent        { color: #f0c040; }
+/* v1.7.51 — Notice sent text was #f0c040 on a faint amber tint, low
+   effective contrast in Teams dark. Brighten the foreground and the
+   surrounding tint so the pill reads cleanly. */
+body:is([data-theme="dark"], [data-theme="contrast"]) .status-pill.status-noticeSent {
+  color: #ffd66b;
+  background: rgba(210, 146, 0, 0.28);
+  border-color: rgba(210, 146, 0, 0.55);
+}
 body:is([data-theme="dark"], [data-theme="contrast"]) .status-pill.status-awaitingCustomer  { color: #ff8c4a; }
 body:is([data-theme="dark"], [data-theme="contrast"]) .status-pill.status-customerConfirmed { color: #4ba8ee; }
 body:is([data-theme="dark"], [data-theme="contrast"]) .status-pill.status-renewed           { color: #5dbb5d; }
@@ -636,6 +643,16 @@ body:is([data-theme="dark"], [data-theme="contrast"]) .lic-table td.actions .btn
 .lic-day-badge.exp-active    { background: #43a047; color: #fff; }
 /* Legacy .overdue class kept for old code paths; matches exp-expired. */
 .lic-day-badge.overdue       { background: #d32f2f; color: #fff; }
+/* v1.7.51 — dark-mode legibility pass. The yellow / amber buckets had
+   dark text on a 10px chip, which read poorly against dark table rows.
+   Solid bright bg + white text + drop shadow matches the GitHub /
+   Linear status-chip pattern and stays legible at small sizes. */
+body:is([data-theme="dark"], [data-theme="contrast"]) .lic-day-badge.exp-soon {
+  background: #ff9a3c; color: #fff; text-shadow: 0 1px 2px rgba(0,0,0,0.4);
+}
+body:is([data-theme="dark"], [data-theme="contrast"]) .lic-day-badge.exp-thisMonth {
+  background: #e0a008; color: #fff; text-shadow: 0 1px 2px rgba(0,0,0,0.4);
+}
 
 /* Empty state */
 .lic-empty {
@@ -2401,7 +2418,16 @@ body:is([data-theme="dark"], [data-theme="contrast"]) .lic-table thead th {
 }
 .lic-aside details.aside-group[open] > summary::after { transform: rotate(180deg); }
 .lic-aside details.aside-group > summary:hover { color: var(--accent, #0078d4); }
-.lic-aside details.aside-group > .aside-group-body { padding-bottom: var(--space-3, 10px); }
+/* v1.7.51 — sections inside an accordion body were direct block siblings
+   with no vertical rhythm, so the summary chips and the LICENSES stats
+   box visually touched. Flex column + gap restores the breathing room
+   the parent .lic-aside already gives to top-level sections. */
+.lic-aside details.aside-group > .aside-group-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3, 12px);
+  padding-bottom: var(--space-3, 10px);
+}
 
 /* ---------- v1.7.44 customer hover preview ---------- */
 .customer-hover-card {

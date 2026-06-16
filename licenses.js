@@ -6,6 +6,15 @@
   "use strict";
 
   const API_BASE = "https://func-day-reminders-17023.azurewebsites.net/api";
+  // v1.7.51 — version set in JS so a stale cached HTML still shows the
+  // current build label (the JS itself is cache-busted via ?v=...).
+  const LIC_VERSION = "v1.7.51";
+  function paintVersionLabel() {
+    const lbl = document.getElementById("licVersionLabel");
+    if (lbl) lbl.textContent = LIC_VERSION;
+  }
+  if (document.readyState !== "loading") paintVersionLabel();
+  else document.addEventListener("DOMContentLoaded", paintVersionLabel);
   const DEFAULT_LEAD_DAYS = 14;
   const STATUSES = ["notStarted", "noticeSent", "awaitingCustomer", "customerConfirmed", "renewed"];
   const STATUS_LABEL = {
@@ -479,18 +488,26 @@
     wrap.style.background = ownerColor(lic.ownerOid);
     wrap.style.fontSize = `${Math.max(9, size * 0.42)}px`;
     wrap.title = lic.ownerName || (lic.ownerOid ? lic.ownerOid.slice(0, 8) : "(none)");
-    if (lic.ownerOid) {
-      const img = document.createElement("img");
-      img.src = ownerAvatarUrl(lic.ownerOid);
-      img.alt = "";
-      img.loading = "lazy";
-      img.addEventListener("error", () => { img.remove(); });
-      wrap.appendChild(img);
-    }
     const initials = document.createElement("span");
     initials.className = "owner-avatar-initials";
     initials.textContent = ownerInitials(lic.ownerName);
     wrap.appendChild(initials);
+    // v1.7.51 — probe the photo off-DOM. Only attach the <img> on a real
+    // successful load with non-zero dimensions, so the browser's broken-image
+    // glyph never paints over the initials when the photo proxy returns 204
+    // (no photo) or any non-image payload.
+    if (lic.ownerOid) {
+      const probe = new Image();
+      probe.onload = () => {
+        if (!probe.naturalWidth || !probe.naturalHeight) return;
+        const img = document.createElement("img");
+        img.src = probe.src;
+        img.alt = "";
+        wrap.appendChild(img);
+      };
+      probe.onerror = () => {};
+      probe.src = ownerAvatarUrl(lic.ownerOid);
+    }
     return wrap;
   }
 
