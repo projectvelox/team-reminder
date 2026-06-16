@@ -737,6 +737,54 @@ body[data-theme="dark"] .split-menu {
   box-shadow: 0 6px 20px rgba(0, 0, 0, 0.4);
 }
 
+/* Per-row kebab menu */
+.row-kebab {
+  background: none;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  padding: 2px 6px;
+  cursor: pointer;
+  color: inherit;
+  font: inherit;
+  margin-left: 3px;
+  opacity: 0.55;
+}
+.row-kebab:hover { opacity: 1; border-color: var(--border, #d1d1d1); }
+.row-menu {
+  position: absolute;
+  min-width: 160px;
+  background: var(--card-bg, #fff);
+  border: 1px solid var(--border, #d1d1d1);
+  border-radius: 8px;
+  padding: 4px;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.15);
+  z-index: 200;
+}
+.row-menu button {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 8px 12px;
+  background: none;
+  border: none;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+  border-radius: 4px;
+}
+.row-menu button:hover { background: var(--row-hover, rgba(0, 120, 212, 0.08)); }
+.row-menu button.danger { color: #c50f1f; }
+body[data-theme="dark"] .row-menu {
+  --card-bg: #2b2b30;
+  --border: #3d3d42;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.4);
+}
+body[data-theme="dark"] .row-menu button.danger { color: #ff6b6b; }
+
+/* Import preview row statuses gain an "update" variant */
+.import-table tr.status-update .status-cell { color: #0078d4; font-weight: 700; }
+body[data-theme="dark"] .import-table tr.status-update .status-cell { color: #66c0ff; }
+
 /* Inline link-style button inside text. */
 .link-btn {
   background: none;

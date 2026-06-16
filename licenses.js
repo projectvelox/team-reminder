@@ -591,6 +591,15 @@
     renewBtn.title = "Mark this license renewed";
     renewBtn.addEventListener("click", (e) => { e.stopPropagation(); openRenewDialog(lic.id); });
     tdActions.appendChild(renewBtn);
+    // Kebab overflow menu (Delete, future actions)
+    const kebab = document.createElement("button");
+    kebab.type = "button";
+    kebab.className = "row-kebab";
+    kebab.setAttribute("aria-label", "More actions");
+    kebab.setAttribute("aria-haspopup", "true");
+    kebab.textContent = "⋯"; // horizontal ellipsis ⋯
+    kebab.addEventListener("click", (e) => { e.stopPropagation(); openRowMenu(lic, kebab); });
+    tdActions.appendChild(kebab);
     tr.appendChild(tdActions);
 
     tr.addEventListener("click", () => openEditDialog(lic));
@@ -889,14 +898,42 @@
       showError("Save failed", err);
     }
   }
+  // Open the shared row-action menu next to the clicked kebab button.
+  function openRowMenu(lic, anchorEl) {
+    const menu = $("rowMenu");
+    menu.innerHTML = "";
+    const delBtn = document.createElement("button");
+    delBtn.type = "button";
+    delBtn.className = "danger";
+    delBtn.textContent = "Delete this license";
+    delBtn.addEventListener("click", () => {
+      menu.hidden = true;
+      deleteLicenseById(lic.id);
+    });
+    menu.appendChild(delBtn);
+    // Position relative to the clicked anchor.
+    const r = anchorEl.getBoundingClientRect();
+    menu.style.top = `${window.scrollY + r.bottom + 4}px`;
+    menu.style.left = `${window.scrollX + r.right - 160}px`;
+    menu.hidden = false;
+  }
+  function closeRowMenu() { $("rowMenu").hidden = true; }
+  document.addEventListener("click", (e) => {
+    const menu = $("rowMenu");
+    if (!menu || menu.hidden) return;
+    if (!menu.contains(e.target)) closeRowMenu();
+  });
+
   // Soft delete: remove from local state and show an Undo toast for 5s. Commit
   // to the server when the timer elapses or the user navigates away.
   function deleteLicense() {
     if (!editingId) return;
-    const id = editingId;
+    deleteLicenseById(editingId);
+    closeEditDialog();
+  }
+  function deleteLicenseById(id) {
     const lic = licenses.find((l) => l.id === id);
     if (!lic) return;
-    closeEditDialog();
     licenses = licenses.filter((l) => l.id !== id);
     render();
     softDeleteWithUndo(lic);
@@ -1349,6 +1386,18 @@
       importRows = [];
     });
     $("importConfirmBtn").addEventListener("click", confirmImport);
+    // Re-classify all rows when user toggles the dup-mode dropdown.
+    $("importDupMode").addEventListener("change", () => {
+      for (const r of importRows) {
+        // Re-classify only rows that previously matched an existing license.
+        if (r.existingId || r.status === "duplicate" || r.status === "update") {
+          const cls = classifyRow(r);
+          r.status = cls.status;
+          r.reason = cls.reason || null;
+        }
+      }
+      renderImportPreview();
+    });
     $("importBulkProductLine").addEventListener("input", () => {
       // Just visual; bulk PL is read at confirm time.
     });
@@ -1664,13 +1713,18 @@
   function classifyRow(row) {
     if (!row.customer || !row.licenseType) return { status: "invalid", reason: "missing customer or license type" };
     if (!row.expiryDate) return { status: "invalid", reason: "missing or invalid expiry date" };
-    // Duplicate detection: same customer + licenseType + expiryDate as an existing license.
-    const dup = licenses.find((l) =>
+    // Match detection: same customer + licenseType + expiryDate as an existing license.
+    const match = licenses.find((l) =>
       l.customer.trim().toLowerCase() === row.customer.trim().toLowerCase() &&
       l.licenseType.trim().toLowerCase() === row.licenseType.trim().toLowerCase() &&
       l.expiryDate === row.expiryDate
     );
-    if (dup) return { status: "duplicate", reason: "already in licenses" };
+    if (match) {
+      row.existingId = match.id;
+      const mode = $("importDupMode") ? $("importDupMode").value : "skip";
+      if (mode === "update") return { status: "update", reason: "will update this row" };
+      return { status: "duplicate", reason: "already in licenses (will skip)" };
+    }
     if (!row.ownerOid) return { status: "needsOwner", reason: "owner not matched" };
     return { status: "ready" };
   }
@@ -1789,6 +1843,7 @@
       tdStatus.textContent = row.status === "ready" ? "✓" :
                              row.status === "needsOwner" ? "⚠" :
                              row.status === "duplicate" ? "↻" :
+                             row.status === "update" ? "↻" :
                              "✗";
       tr.appendChild(tdStatus);
 
@@ -1875,30 +1930,35 @@
 
   function updateImportStats() {
     const ready = importRows.filter((r) => r.status === "ready").length;
+    const updates = importRows.filter((r) => r.status === "update").length;
     const needsOwner = importRows.filter((r) => r.status === "needsOwner").length;
     const invalid = importRows.filter((r) => r.status === "invalid").length;
     const dup = importRows.filter((r) => r.status === "duplicate").length;
     const parts = [];
-    if (ready) parts.push(`${ready} ready`);
+    if (ready) parts.push(`${ready} new`);
+    if (updates) parts.push(`${updates} to update`);
     if (needsOwner) parts.push(`${needsOwner} need owner`);
-    if (dup) parts.push(`${dup} duplicate`);
+    if (dup) parts.push(`${dup} skip (duplicate)`);
     if (invalid) parts.push(`${invalid} invalid`);
     $("importStats").textContent = parts.join(" · ");
     const btn = $("importConfirmBtn");
-    btn.disabled = ready === 0;
-    btn.textContent = ready === 1 ? `Import 1 license` : `Import ${ready} licenses`;
+    const actionable = ready + updates;
+    btn.disabled = actionable === 0;
+    if (updates && !ready) btn.textContent = updates === 1 ? `Update 1 license` : `Update ${updates} licenses`;
+    else if (updates && ready) btn.textContent = `Import ${ready} + update ${updates}`;
+    else btn.textContent = ready === 1 ? `Import 1 license` : `Import ${ready} licenses`;
   }
 
   async function confirmImport() {
     const bulkPL = $("importBulkProductLine").value.trim() || null;
-    const toImport = importRows.filter((r) => r.status === "ready");
-    if (!toImport.length) return;
+    const toCreate = importRows.filter((r) => r.status === "ready");
+    const toUpdate = importRows.filter((r) => r.status === "update" && r.existingId);
+    if (!toCreate.length && !toUpdate.length) return;
     const btn = $("importConfirmBtn");
     btn.disabled = true;
     btn.textContent = "Importing…";
-    let success = 0;
-    let failed = 0;
-    for (const row of toImport) {
+    let created = 0, updated = 0, failed = 0;
+    for (const row of toCreate) {
       try {
         const payload = {
           customer: row.customer,
@@ -1912,19 +1972,36 @@
         };
         const { license } = await api("POST", "/licenses", payload);
         licenses.push(license);
-        success++;
+        created++;
       } catch (err) {
         console.error("import row failed", row, err);
         failed++;
       }
     }
+    for (const row of toUpdate) {
+      try {
+        // Only patch fields the importer can carry (don't blow away status / cycle).
+        const payload = {
+          userCount: row.userCount,
+          notes: row.notes,
+        };
+        if (row.ownerOid) { payload.ownerOid = row.ownerOid; payload.ownerName = row.ownerName; }
+        if (bulkPL || row.productLine) payload.productLine = bulkPL || row.productLine;
+        const { license } = await api("PATCH", `/licenses/${row.existingId}`, payload);
+        licenses = licenses.map((l) => l.id === license.id ? license : l);
+        updated++;
+      } catch (err) {
+        console.error("update row failed", row, err);
+        failed++;
+      }
+    }
     $("importDialog").close();
     render();
-    if (failed) {
-      toast(`Imported ${success}, ${failed} failed (check console)`);
-    } else {
-      toast(`Imported ${success} license${success === 1 ? "" : "s"}`);
-    }
+    const parts = [];
+    if (created) parts.push(`${created} added`);
+    if (updated) parts.push(`${updated} updated`);
+    if (failed) parts.push(`${failed} failed`);
+    toast(parts.join(", "));
     importRows = [];
   }
 
