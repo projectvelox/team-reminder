@@ -404,13 +404,14 @@ body[data-theme="dark"] .lic-table th {
 }
 
 /* Column-specific sizing so wrapping happens where it should
-   (license type, customer) and never where it should not (date, users, status). */
+   (customer, license type) and never where it should not (date, users, status). */
 .lic-table th:nth-child(1), .lic-table td:nth-child(1) { /* Customer */
-  min-width: 130px;
-  max-width: 180px;
+  min-width: 200px;
+  max-width: 280px;
 }
 .lic-table th:nth-child(2), .lic-table td:nth-child(2) { /* License type */
-  min-width: 160px;
+  min-width: 150px;
+  max-width: 240px;
 }
 .lic-table th:nth-child(3), .lic-table td:nth-child(3) { /* Users */
   width: 1%; white-space: nowrap; text-align: right;
@@ -1054,20 +1055,31 @@ body[data-theme="dark"] .bulk-bar {
 .lic-row-checkbox { cursor: pointer; }
 .lic-table tbody tr.selected { background: var(--accent-bg, rgba(56, 174, 235, 0.12)); }
 
-/* Bundle indicator badge on customer cell */
+/* Bundle indicator badge on customer cell — kept small and quiet so it doesn't
+   compete visually with the customer name or the row's other content. */
 .bundle-badge {
   display: inline-block;
   margin-left: 6px;
-  padding: 1px 6px;
-  border-radius: 4px;
-  font-size: 10px;
+  padding: 0 5px;
+  border-radius: 3px;
+  font-size: 9px;
   font-weight: 700;
-  background: rgba(0, 153, 188, 0.18);
-  color: #0099bc;
-  border: 1px solid rgba(0, 153, 188, 0.4);
+  letter-spacing: 0.02em;
+  background: rgba(0, 153, 188, 0.12);
+  color: #007a9a;
+  border: 1px solid rgba(0, 153, 188, 0.3);
   cursor: help;
+  vertical-align: middle;
+  white-space: nowrap;
 }
-body[data-theme="dark"] .bundle-badge { color: #5ec5dd; }
+body[data-theme="dark"] .bundle-badge { color: #4eb8d4; background: rgba(0, 153, 188, 0.18); }
+
+/* Cycle badge gets the same quiet treatment so a multi-badge row stays calm. */
+.cycle-badge {
+  font-size: 9px;
+  padding: 0 5px;
+  margin-left: 4px;
+}
 
 /* Customer registry info shown in Customer 360 drawer */
 .customer-registry-info {
