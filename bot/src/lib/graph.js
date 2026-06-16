@@ -164,4 +164,64 @@ async function getUserPhoto(oid) {
   return entry;
 }
 
-module.exports = { sendReminderActivity, searchUsers, getUserPhoto };
+// Fetch a single user's basic profile (oid -> email / displayName).
+// Used by the cold-owner nudge so we know where to send the heads-up email.
+async function getUserBasic(oid) {
+  if (!oid) return null;
+  const token = await getAppToken();
+  const res = await fetch(`${GRAPH_BASE}/users/${oid}?$select=id,displayName,mail,userPrincipalName,jobTitle`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (res.status === 404) return null;
+  if (!res.ok) {
+    const txt = await res.text().catch(() => '');
+    const err = new Error(`Graph user lookup ${res.status}: ${txt.slice(0, 200)}`);
+    err.status = res.status;
+    throw err;
+  }
+  const u = await res.json();
+  return {
+    oid: u.id,
+    displayName: u.displayName || '',
+    mail: u.mail || u.userPrincipalName || null,
+    jobTitle: u.jobTitle || null,
+  };
+}
+
+// Send mail from the configured digest mailbox (Mail.Send application permission).
+// `from` defaults to LICENSE_DIGEST_FROM env var; falls back to a sensible value
+// so a missing env var doesn't silently break the digest.
+async function sendMail({ to, subject, body, contentType = 'HTML', from }) {
+  const sender = (from || process.env.LICENSE_DIGEST_FROM || 'assist@kationtechnologies.com').trim();
+  if (!sender) throw new Error('sendMail: no sender configured (LICENSE_DIGEST_FROM)');
+  const recipients = (Array.isArray(to) ? to : [to]).filter(Boolean).map((addr) => ({
+    emailAddress: typeof addr === 'string' ? { address: addr } : { address: addr.address, name: addr.name || undefined },
+  }));
+  if (!recipients.length) throw new Error('sendMail: no recipients');
+  const token = await getAppToken();
+  const url = `${GRAPH_BASE}/users/${encodeURIComponent(sender)}/sendMail`;
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      message: {
+        subject,
+        body: { contentType, content: body },
+        toRecipients: recipients,
+      },
+      saveToSentItems: 'true',
+    }),
+  });
+  if (!res.ok) {
+    const txt = await res.text().catch(() => '');
+    const err = new Error(`Graph sendMail ${res.status}: ${txt.slice(0, 300)}`);
+    err.status = res.status;
+    throw err;
+  }
+  return true;
+}
+
+module.exports = { sendReminderActivity, searchUsers, getUserPhoto, getUserBasic, sendMail };

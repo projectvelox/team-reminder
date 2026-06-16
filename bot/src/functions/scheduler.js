@@ -11,6 +11,7 @@ const { app } = require('@azure/functions');
 const { MessageFactory } = require('botbuilder');
 const { adapter } = require('../lib/bot');
 const { reminderCard, eodCard, licenseFollowUpCard, licenseBriefingCard } = require('../lib/cards');
+const { getUserBasic, sendMail } = require('../lib/graph');
 const store = require('../lib/store');
 const { sendReminderActivity } = require('../lib/graph');
 
@@ -75,6 +76,15 @@ app.timer('scheduler', {
     }
     context.log(`[scheduler] tick PH=${ph.date} ${String(ph.hour).padStart(2, '0')}:${String(ph.minute).padStart(2, '0')} (${ph.weekday}) users=${userOids.length}`);
     await Promise.all(tasks);
+
+    // Monthly digest: 1st of each PH month, 8:00-8:10 AM window.
+    // Iterates EVERY tenant license owner (including cold owners) so the digest
+    // arrives in email regardless of whether they've ever opened the bot.
+    const dayOfMonth = parseInt(ph.date.split('-')[2], 10);
+    if (dayOfMonth === 1 && ph.minutesOfDay >= 8 * 60 && ph.minutesOfDay < 8 * 60 + 10) {
+      try { await processMonthlyDigest(ph, context); }
+      catch (err) { context.error(`[scheduler] monthly digest failed: ${err?.message || err}`); }
+    }
   },
 });
 
@@ -251,6 +261,110 @@ async function processLicenseBriefing(appId, user, ph, context) {
   } catch (err) {
     context.error(`[scheduler] briefing send failed for ${user.oid}: ${err?.message || err}`);
   }
+}
+
+// Once-per-month per-owner email digest of upcoming license renewals.
+// Idempotent: marks user.lastDigestSentMonth = YYYY-MM and skips if already
+// set, so multiple ticks in the 10-minute window can't double-send.
+async function processMonthlyDigest(ph, context) {
+  const yyyyMm = ph.date.slice(0, 7); // YYYY-MM
+  let licenses;
+  try { licenses = await store.listLicenses(); }
+  catch (err) { context.error(`[digest] listLicenses failed: ${err?.message || err}`); return; }
+
+  // Determine current and next calendar month for the "expiring soon" cut.
+  const [yr, mo] = yyyyMm.split('-').map(Number);
+  const nextMo = mo === 12 ? 1 : mo + 1;
+  const nextYr = mo === 12 ? yr + 1 : yr;
+  const currentPrefix = `${yr}-${String(mo).padStart(2, '0')}`;
+  const nextPrefix = `${nextYr}-${String(nextMo).padStart(2, '0')}`;
+
+  // Group expiring licenses by owner.
+  const byOwner = new Map(); // ownerOid -> { thisMonth: [], nextMonth: [], overdue: [] }
+  for (const lic of licenses) {
+    if (!lic.ownerOid) continue;
+    if (lic.state === 'abandoned') continue;
+    if (lic.status === 'renewed') continue;
+    if (!lic.expiryDate) continue;
+    const slot = byOwner.get(lic.ownerOid) || { thisMonth: [], nextMonth: [], overdue: [] };
+    if (lic.expiryDate < ph.date) slot.overdue.push(lic);
+    else if (lic.expiryDate.startsWith(currentPrefix)) slot.thisMonth.push(lic);
+    else if (lic.expiryDate.startsWith(nextPrefix)) slot.nextMonth.push(lic);
+    byOwner.set(lic.ownerOid, slot);
+  }
+
+  context.log(`[digest] ${yyyyMm}: ${byOwner.size} owners with upcoming/overdue licenses`);
+
+  for (const [ownerOid, buckets] of byOwner) {
+    if (!buckets.thisMonth.length && !buckets.nextMonth.length && !buckets.overdue.length) continue;
+    try {
+      const user = await store.getUser(ownerOid);
+      if (user.lastDigestSentMonth === yyyyMm) continue;
+      const profile = await getUserBasic(ownerOid).catch(() => null);
+      if (!profile || !profile.mail) {
+        // Mark as sent anyway so we don't retry every minute for an unreachable user.
+        user.lastDigestSentMonth = yyyyMm;
+        await store.upsertUser(ownerOid, user);
+        continue;
+      }
+      const html = buildDigestHtml(profile.displayName, buckets);
+      const subject = `Day Reminders monthly digest: ${buckets.thisMonth.length + buckets.overdue.length} renewals this month`;
+      await sendMail({ to: { address: profile.mail, name: profile.displayName }, subject, body: html, contentType: 'HTML' });
+      user.lastDigestSentMonth = yyyyMm;
+      user.displayName = user.displayName || profile.displayName || null;
+      await store.upsertUser(ownerOid, user);
+      context.log(`[digest] sent to ${profile.mail} (${buckets.thisMonth.length} this month, ${buckets.nextMonth.length} next, ${buckets.overdue.length} overdue)`);
+    } catch (err) {
+      context.error(`[digest] ${ownerOid}: ${err?.message || err}`);
+    }
+  }
+}
+
+function buildDigestHtml(displayName, buckets) {
+  const firstName = (displayName || '').split(/\s+/)[0] || 'there';
+  const deepLink = 'https://teams.microsoft.com/l/entity/5a03bfa3-63c4-417c-b668-b02234ebc11b/dayReminders.licenses';
+  const section = (title, items, color) => {
+    if (!items.length) return '';
+    const rows = items
+      .slice()
+      .sort((a, b) => (a.expiryDate || '').localeCompare(b.expiryDate || ''))
+      .map((l) => `<tr>
+        <td style="padding:6px 10px;border-bottom:1px solid #eee;">${esc(l.customer || '')}</td>
+        <td style="padding:6px 10px;border-bottom:1px solid #eee;">${esc(l.licenseType || '')}</td>
+        <td style="padding:6px 10px;border-bottom:1px solid #eee;text-align:right;">${l.userCount || 0}</td>
+        <td style="padding:6px 10px;border-bottom:1px solid #eee;white-space:nowrap;">${l.expiryDate || ''}</td>
+        <td style="padding:6px 10px;border-bottom:1px solid #eee;">${esc(statusLabel(l.status))}</td>
+      </tr>`)
+      .join('');
+    return `<h3 style="margin:24px 0 8px;color:${color};">${title} (${items.length})</h3>
+      <table style="border-collapse:collapse;width:100%;font-size:13px;">
+        <thead><tr style="background:#f4f4f6;">
+          <th style="padding:6px 10px;text-align:left;">Customer</th>
+          <th style="padding:6px 10px;text-align:left;">License type</th>
+          <th style="padding:6px 10px;text-align:right;">Users</th>
+          <th style="padding:6px 10px;text-align:left;">Expires</th>
+          <th style="padding:6px 10px;text-align:left;">Status</th>
+        </tr></thead>
+        <tbody>${rows}</tbody>
+      </table>`;
+  };
+  return `
+    <p>Hi ${esc(firstName)},</p>
+    <p>Here's your monthly snapshot of license renewals you own:</p>
+    ${section('Overdue (action needed)', buckets.overdue, '#c50f1f')}
+    ${section('Expiring this month', buckets.thisMonth, '#ca5010')}
+    ${section('Expiring next month', buckets.nextMonth, '#0078d4')}
+    <p style="margin-top:24px"><a href="${deepLink}">Open Day Reminders in Teams</a> to update status, mark renewed, or email customers.</p>
+    <p style="color:#888;font-size:12px;margin-top:24px">Sent once per month from Day Reminders. Renewing or marking a row as Renewed removes it from next month's digest.</p>
+  `;
+}
+
+function statusLabel(s) {
+  return { notStarted: 'Not started', noticeSent: 'Notice sent', awaitingCustomer: 'Awaiting customer', customerConfirmed: 'Customer confirmed', renewed: 'Renewed' }[s] || s || 'Not started';
+}
+
+function esc(s) {
+  return String(s || '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
 }
 
 async function sendProactive(appId, user, activity) {

@@ -6,6 +6,50 @@
 const { app } = require('@azure/functions');
 const { verifyTeamsToken } = require('../lib/auth');
 const store = require('../lib/store');
+const { getUserBasic, sendMail } = require('../lib/graph');
+
+// Cold-owner nudge (v1.7.20). Sends a one-time email to a newly-assigned owner
+// who has never opened Day Reminders. Dedupe by coldNudgedAt on the user record.
+//
+// Fire-and-forget: callers don't await this so a Graph slowdown can't make
+// /api/licenses slow. Errors are logged but don't surface to the user.
+async function maybeNudgeColdOwner({ ownerOid, customer, licenseType, assignedByName }) {
+  if (!ownerOid) return;
+  try {
+    const user = await store.getUser(ownerOid);
+    if (user.conversationRef) return; // they've opened the bot, no need
+    if (user.coldNudgedAt) return; // we already nudged them once
+    const profile = await getUserBasic(ownerOid).catch(() => null);
+    if (!profile || !profile.mail) return;
+    const firstName = (profile.displayName || '').split(/\s+/)[0] || 'there';
+    const deepLink = 'https://teams.microsoft.com/l/entity/5a03bfa3-63c4-417c-b668-b02234ebc11b/dayReminders.licenses';
+    const subject = `You're the owner of a license renewal in Day Reminders`;
+    const html = `
+      <p>Hi ${escapeHtml(firstName)},</p>
+      <p>${assignedByName ? escapeHtml(assignedByName) + ' has assigned' : 'You have been assigned'} you as the owner of a license renewal in Day Reminders:</p>
+      <ul>
+        <li><strong>${escapeHtml(customer || 'a customer')}</strong> &mdash; ${escapeHtml(licenseType || 'license')}</li>
+      </ul>
+      <p>To get Teams alerts ahead of each renewal, open Day Reminders once:</p>
+      <p><a href="${deepLink}">Open Day Reminders &rarr; Licenses</a></p>
+      <p>Once you've opened it, the bot will start chasing you 14 days before each expiry, with a quick morning briefing on weekdays summarising what needs attention.</p>
+      <p style="color:#888;font-size:12px;margin-top:24px">Sent automatically by Day Reminders. You'll only get this once.</p>
+    `;
+    await sendMail({ to: { address: profile.mail, name: profile.displayName }, subject, body: html, contentType: 'HTML' });
+    // Mark nudged so we don't spam on reassignment churn.
+    user.coldNudgedAt = new Date().toISOString();
+    user.displayName = user.displayName || profile.displayName || null;
+    await store.upsertUser(ownerOid, user);
+  } catch (err) {
+    // Log only; never let nudge failure affect the parent request.
+    // eslint-disable-next-line no-console
+    console.error(`[coldNudge] ${ownerOid}: ${err && err.message ? err.message : err}`);
+  }
+}
+
+function escapeHtml(s) {
+  return String(s || '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
+}
 
 function corsHeaders() {
   return {
@@ -186,6 +230,14 @@ app.http('licensesCollection', {
     await store.upsertLicense(license);
     // Ensure a stub customer entry exists so the registry stays in sync.
     try { await store.ensureCustomer(license.customer); } catch {}
+    // Cold-owner nudge: if the new owner has never opened Day Reminders, send
+    // a one-time email so they know to install. Fire-and-forget.
+    maybeNudgeColdOwner({
+      ownerOid: license.ownerOid,
+      customer: license.customer,
+      licenseType: license.licenseType,
+      assignedByName: user.name || null,
+    });
     return json(201, { license });
   },
 });
@@ -238,6 +290,13 @@ app.http('licensesItem', {
     // Owner reassignment is worth logging.
     if (existing.ownerOid !== merged.ownerOid) {
       appendEvent(merged, 'ownerChanged', user, `${existing.ownerName || existing.ownerOid || '(none)'} -> ${merged.ownerName || merged.ownerOid || '(none)'}`);
+      // Cold-owner nudge for the new owner.
+      maybeNudgeColdOwner({
+        ownerOid: merged.ownerOid,
+        customer: merged.customer,
+        licenseType: merged.licenseType,
+        assignedByName: user.name || null,
+      });
     }
     // Expiry change worth logging too.
     if (existing.expiryDate !== merged.expiryDate) {
@@ -324,6 +383,7 @@ app.http('licensesBulk', {
     const now = new Date().toISOString();
     const updated = [];
     const notFound = [];
+    const nudgedOids = new Set();
     for (const id of ids) {
       const existing = await store.getLicense(id);
       if (!existing) { notFound.push(id); continue; }
@@ -337,6 +397,16 @@ app.http('licensesBulk', {
       };
       await store.upsertLicense(merged);
       updated.push(merged);
+      // Cold-owner nudge once per oid even across a bulk reassign of many rows.
+      if (existing.ownerOid !== merged.ownerOid && merged.ownerOid && !nudgedOids.has(merged.ownerOid)) {
+        nudgedOids.add(merged.ownerOid);
+        maybeNudgeColdOwner({
+          ownerOid: merged.ownerOid,
+          customer: merged.customer,
+          licenseType: merged.licenseType,
+          assignedByName: user.name || null,
+        });
+      }
     }
     return json(200, { updated, notFound });
   },

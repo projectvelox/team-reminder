@@ -56,6 +56,8 @@ async function getUser(oid) {
       displayName: entity.displayName || null,
       lastBriefingDate: entity.lastBriefingDate || null,
       briefingSnoozedUntil: entity.briefingSnoozedUntil || null,
+      coldNudgedAt: entity.coldNudgedAt || null,
+      lastDigestSentMonth: entity.lastDigestSentMonth || null,
     };
   } catch (err) {
     if (err.statusCode === 404) {
@@ -69,6 +71,8 @@ async function getUser(oid) {
         displayName: null,
         lastBriefingDate: null,
         briefingSnoozedUntil: null,
+        coldNudgedAt: null,
+        lastDigestSentMonth: null,
       };
     }
     throw err;
@@ -91,8 +95,35 @@ async function upsertUser(oid, patch) {
     displayName: merged.displayName || null,
     lastBriefingDate: merged.lastBriefingDate || null,
     briefingSnoozedUntil: merged.briefingSnoozedUntil || null,
+    coldNudgedAt: merged.coldNudgedAt || null,
+    lastDigestSentMonth: merged.lastDigestSentMonth || null,
   }, 'Replace');
   return merged;
+}
+
+// Iterate every user record (with or without a conversationRef). Used by the
+// monthly digest which mails owners regardless of whether they've opened the bot.
+async function* iterateAllUsers() {
+  await ensureTable();
+  const iter = getClient().listEntities({
+    queryOptions: { filter: "RowKey eq '_user'" },
+  });
+  for await (const e of iter) {
+    yield {
+      oid: e.partitionKey,
+      settings: e.settings ? JSON.parse(e.settings) : { ...DEFAULT_SETTINGS },
+      conversationRef: e.conversationRef ? JSON.parse(e.conversationRef) : null,
+      lastEodDate: e.lastEodDate || null,
+      lastRolloverDate: e.lastRolloverDate || null,
+      tenantId: e.tenantId || null,
+      serviceUrl: e.serviceUrl || null,
+      displayName: e.displayName || null,
+      lastBriefingDate: e.lastBriefingDate || null,
+      briefingSnoozedUntil: e.briefingSnoozedUntil || null,
+      coldNudgedAt: e.coldNudgedAt || null,
+      lastDigestSentMonth: e.lastDigestSentMonth || null,
+    };
+  }
 }
 
 async function* iterateUsersWithConversationRefs() {
@@ -563,6 +594,7 @@ module.exports = {
   getUser,
   upsertUser,
   iterateUsersWithConversationRefs,
+  iterateAllUsers,
   listReminders,
   getReminder,
   upsertReminder,

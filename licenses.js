@@ -61,9 +61,11 @@
   let currentView = "table";
   let summaryFilter = null; // null | 'week' | 'month' | 'overdue'
   let quickFilter = "all";  // 'all' | 'mine' | 'month' | 'overdue' | 'attention'
-  let ownerFilter = null;   // null | ownerOid — set by owner breakdown chip
-  let productFilter = null; // null | productLine string — set by product breakdown chip
-  let statusFilter = null;  // null | status — set by status breakdown chip
+  // v1.7.20: breakdown chips are multi-select. Empty set = no filter on that
+  // axis; otherwise only rows whose value is in the set pass.
+  let ownerFilter = new Set();   // Set<ownerOid>
+  let productFilter = new Set(); // Set<productLine>
+  let statusFilter = new Set();  // Set<status>
   let groupBy = "none";     // 'none' | 'customer' | 'ownerName' | 'productLine'
   let searchText = "";
   let sortKey = "expiryDate";
@@ -199,10 +201,10 @@
     else if (f === "overdue") ok = d !== null && d < 0 && lic.state !== "abandoned";
     else if (f === "week") ok = d !== null && d >= 0 && d <= 7;
     else if (f === "attention") ok = needsAttention(lic, today);
-    // additive owner / product / status breakdown filters
-    if (ok && ownerFilter && lic.ownerOid !== ownerFilter) ok = false;
-    if (ok && productFilter && lic.productLine !== productFilter) ok = false;
-    if (ok && statusFilter && lic.status !== statusFilter) ok = false;
+    // additive owner / product / status breakdown filters (multi-select)
+    if (ok && ownerFilter.size > 0 && !ownerFilter.has(lic.ownerOid)) ok = false;
+    if (ok && productFilter.size > 0 && !productFilter.has(lic.productLine)) ok = false;
+    if (ok && statusFilter.size > 0 && !statusFilter.has(lic.status || "notStarted")) ok = false;
     return ok;
   }
 
@@ -316,7 +318,7 @@
       const btn = document.createElement("button");
       btn.type = "button";
       btn.className = "lic-breakdown-chip";
-      btn.setAttribute("aria-pressed", ownerFilter === e.oid ? "true" : "false");
+      btn.setAttribute("aria-pressed", ownerFilter.has(e.oid) ? "true" : "false");
       const sw = document.createElement("span");
       sw.className = "swatch";
       sw.style.background = ownerColor(e.oid);
@@ -334,9 +336,10 @@
         btn.appendChild(nx);
       }
       btn.addEventListener("click", () => {
-        ownerFilter = ownerFilter === e.oid ? null : e.oid;
-        // Clicking an owner chip overrides the Mine quick-filter so the chip wins.
-        if (ownerFilter && quickFilter === "mine") quickFilter = "all";
+        if (ownerFilter.has(e.oid)) ownerFilter.delete(e.oid);
+        else ownerFilter.add(e.oid);
+        // Owner-chip selection overrides the Mine quick-filter so the chip wins.
+        if (ownerFilter.size > 0 && quickFilter === "mine") quickFilter = "all";
         render();
       });
       wrap.appendChild(btn);
@@ -362,7 +365,7 @@
       const btn = document.createElement("button");
       btn.type = "button";
       btn.className = "lic-breakdown-chip";
-      btn.setAttribute("aria-pressed", statusFilter === status ? "true" : "false");
+      btn.setAttribute("aria-pressed", statusFilter.has(status) ? "true" : "false");
       const pill = document.createElement("span");
       pill.className = `status-pill status-${status}`;
       pill.textContent = STATUS_LABEL[status];
@@ -372,7 +375,8 @@
       cnt.textContent = count;
       btn.appendChild(cnt);
       btn.addEventListener("click", () => {
-        statusFilter = statusFilter === status ? null : status;
+        if (statusFilter.has(status)) statusFilter.delete(status);
+        else statusFilter.add(status);
         render();
       });
       wrap.appendChild(btn);
@@ -396,14 +400,15 @@
       const btn = document.createElement("button");
       btn.type = "button";
       btn.className = "lic-breakdown-chip";
-      btn.setAttribute("aria-pressed", productFilter === name ? "true" : "false");
+      btn.setAttribute("aria-pressed", productFilter.has(name) ? "true" : "false");
       btn.appendChild(document.createTextNode(name));
       const cnt = document.createElement("span");
       cnt.className = "chip-count";
       cnt.textContent = count;
       btn.appendChild(cnt);
       btn.addEventListener("click", () => {
-        productFilter = productFilter === name ? null : name;
+        if (productFilter.has(name)) productFilter.delete(name);
+        else productFilter.add(name);
         render();
       });
       wrap.appendChild(btn);
@@ -1629,6 +1634,9 @@
     // CSV export
     $("exportCsvBtn").addEventListener("click", exportCsv);
 
+    // Manual refresh
+    $("refreshBtn").addEventListener("click", refreshAll);
+
     // CSV import + split-button menu
     $("importCsvBtn").addEventListener("click", openImportDialog);
     $("licEmptyImport").addEventListener("click", openImportDialog);
@@ -2275,6 +2283,35 @@
     if (failed) parts.push(`${failed} failed`);
     toast(parts.join(", "));
     importRows = [];
+  }
+
+  // ---------- manual refresh ----------
+  async function refreshAll() {
+    const btn = $("refreshBtn");
+    if (!btn) return;
+    const originalText = btn.innerHTML;
+    btn.disabled = true;
+    btn.textContent = "Refreshing…";
+    try {
+      const [licRes, memRes, custRes, tplRes] = await Promise.all([
+        api("GET", "/licenses"),
+        api("GET", "/members").catch(() => ({ members })),
+        api("GET", "/customers").catch(() => ({ customers })),
+        api("GET", "/email-templates").catch(() => ({ templates: emailTemplates })),
+      ]);
+      licenses = licRes.licenses || [];
+      members = memRes.members || members;
+      customers = custRes.customers || customers;
+      emailTemplates = tplRes.templates || emailTemplates;
+      saveCachedMembers(members);
+      render();
+      toast(`Refreshed (${licenses.length} licenses)`);
+    } catch (err) {
+      showError("Refresh failed", err);
+    } finally {
+      btn.disabled = false;
+      btn.innerHTML = originalText;
+    }
   }
 
   // ---------- CSV export ----------
