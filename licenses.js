@@ -68,6 +68,8 @@
   let statusFilter = new Set();  // Set<status>  -- workflow status (notStarted/...)
   let expiryFilter = new Set();  // Set<'expired'|'soon'|'thisMonth'|'active'>  -- v1.7.38 date-derived
   let monthFilter = "";          // YYYY-MM, applies to expiryDate; "" = any month
+  let dateFromFilter = "";       // YYYY-MM-DD inclusive (v1.7.42)
+  let dateToFilter = "";         // YYYY-MM-DD inclusive (v1.7.42)
   let groupBy = "none";     // 'none' | 'customer' | 'ownerName' | 'productLine'
   let searchText = "";
   let sortKey = "expiryDate";
@@ -175,6 +177,54 @@
       localStorage.setItem(LS_EXPIRY_FILTER, JSON.stringify([...expiryFilter]));
       localStorage.setItem(LS_MONTH_FILTER, monthFilter || "");
     } catch (_) {}
+    syncFiltersToHash();
+  }
+
+  // v1.7.42 — URL hash state so filtered views are shareable links. Teams
+  // strips/rewrites query strings on tab loads, so we use the hash fragment
+  // (preserved across reloads inside the iframe). Encoded as URL-safe params.
+  let suppressHashSync = false;
+  function encodeFilterHash() {
+    const params = new URLSearchParams();
+    if (quickFilter && quickFilter !== "all") params.set("q", quickFilter);
+    if (summaryFilter) params.set("s", summaryFilter);
+    if (ownerFilter.size) params.set("o", [...ownerFilter].join(","));
+    if (productFilter.size) params.set("p", [...productFilter].join("|"));
+    if (statusFilter.size) params.set("st", [...statusFilter].join(","));
+    if (expiryFilter.size) params.set("x", [...expiryFilter].join(","));
+    if (monthFilter) params.set("m", monthFilter);
+    if (dateFromFilter) params.set("df", dateFromFilter);
+    if (dateToFilter) params.set("dt", dateToFilter);
+    if (searchText) params.set("q2", searchText);
+    if (currentView && currentView !== "table") params.set("v", currentView);
+    const s = params.toString();
+    return s ? "#" + s : "";
+  }
+  function syncFiltersToHash() {
+    if (suppressHashSync) return;
+    const next = encodeFilterHash();
+    // Avoid clobbering identical state (history noise) and avoid pushing
+    // entries — replaceState keeps the back-button useful for actual nav.
+    if (("#" + (location.hash.slice(1) || "")) === next || next === "" && location.hash === "") return;
+    try { history.replaceState(null, "", location.pathname + location.search + next); } catch (_) {}
+  }
+  function loadFiltersFromHash() {
+    const raw = location.hash.replace(/^#/, "");
+    if (!raw) return false;
+    const params = new URLSearchParams(raw);
+    let touched = false;
+    if (params.has("q")) { quickFilter = params.get("q"); touched = true; }
+    if (params.has("s")) { summaryFilter = params.get("s") || null; touched = true; }
+    if (params.has("o")) { ownerFilter = new Set(params.get("o").split(",").filter(Boolean)); touched = true; }
+    if (params.has("p")) { productFilter = new Set(params.get("p").split("|").filter(Boolean)); touched = true; }
+    if (params.has("st")) { statusFilter = new Set(params.get("st").split(",").filter(Boolean)); touched = true; }
+    if (params.has("x")) { expiryFilter = new Set(params.get("x").split(",").filter(Boolean).filter((b) => EXPIRY_BUCKETS.includes(b))); touched = true; }
+    if (params.has("m")) { monthFilter = params.get("m"); touched = true; }
+    if (params.has("df")) { dateFromFilter = params.get("df"); touched = true; }
+    if (params.has("dt")) { dateToFilter = params.get("dt"); touched = true; }
+    if (params.has("q2")) { searchText = params.get("q2"); touched = true; }
+    if (params.has("v")) { const v = params.get("v"); if (v === "calendar" || v === "table") currentView = v; touched = true; }
+    return touched;
   }
 
   // ---------- date helpers ----------
@@ -331,6 +381,13 @@
     if (ok && monthFilter) {
       if (!lic.expiryDate || lic.expiryDate.slice(0, 7) !== monthFilter) ok = false;
     }
+    // v1.7.42 date-range filter (inclusive). Both ends optional.
+    if (ok && dateFromFilter) {
+      if (!lic.expiryDate || lic.expiryDate < dateFromFilter) ok = false;
+    }
+    if (ok && dateToFilter) {
+      if (!lic.expiryDate || lic.expiryDate > dateToFilter) ok = false;
+    }
     return ok;
   }
 
@@ -479,6 +536,8 @@
       statusFilter.size > 0 ||
       expiryFilter.size > 0 ||
       !!monthFilter ||
+      !!dateFromFilter ||
+      !!dateToFilter ||
       !!searchText
     );
   }
@@ -532,6 +591,17 @@
     }
     if (monthFilter) {
       addChip(`Month: ${fmtMonthShort(monthFilter)}`, () => { monthFilter = ""; persistFilters(); $("monthFilter").value = ""; render(); });
+    }
+    if (dateFromFilter || dateToFilter) {
+      const lbl = dateFromFilter && dateToFilter
+        ? `Expires ${fmtShortDate(dateFromFilter)} – ${fmtShortDate(dateToFilter)}`
+        : dateFromFilter ? `Expires from ${fmtShortDate(dateFromFilter)}` : `Expires until ${fmtShortDate(dateToFilter)}`;
+      addChip(lbl, () => {
+        dateFromFilter = ""; dateToFilter = "";
+        if ($("dateFromFilter")) $("dateFromFilter").value = "";
+        if ($("dateToFilter")) $("dateToFilter").value = "";
+        persistFilters(); render();
+      });
     }
     if (searchText) {
       addChip(`Search: "${searchText}"`, () => { searchText = ""; $("searchInput").value = ""; $("searchClear").hidden = true; render(); });
@@ -587,6 +657,8 @@
       statusFilter: [...statusFilter],
       expiryFilter: [...expiryFilter],
       monthFilter,
+      dateFromFilter,
+      dateToFilter,
       searchText,
       groupBy,
     };
@@ -600,6 +672,8 @@
     statusFilter = new Set(Array.isArray(snap.statusFilter) ? snap.statusFilter : []);
     expiryFilter = new Set(Array.isArray(snap.expiryFilter) ? snap.expiryFilter : []);
     monthFilter = typeof snap.monthFilter === "string" ? snap.monthFilter : "";
+    dateFromFilter = typeof snap.dateFromFilter === "string" ? snap.dateFromFilter : "";
+    dateToFilter = typeof snap.dateToFilter === "string" ? snap.dateToFilter : "";
     searchText = typeof snap.searchText === "string" ? snap.searchText : "";
     if (typeof snap.groupBy === "string") groupBy = snap.groupBy;
     persistFilters();
@@ -608,6 +682,8 @@
     $("searchInput").value = searchText;
     $("searchClear").hidden = !searchText;
     $("monthFilter").value = monthFilter;
+    if ($("dateFromFilter")) $("dateFromFilter").value = dateFromFilter;
+    if ($("dateToFilter")) $("dateToFilter").value = dateToFilter;
   }
   async function saveCurrentView() {
     const name = prompt("Name this view:", `View ${(userSettings.savedLicenseViews || []).length + 1}`);
@@ -724,10 +800,14 @@
     statusFilter.clear();
     expiryFilter.clear();
     monthFilter = "";
+    dateFromFilter = "";
+    dateToFilter = "";
     searchText = "";
     $("searchInput").value = "";
     $("searchClear").hidden = true;
     $("monthFilter").value = "";
+    if ($("dateFromFilter")) $("dateFromFilter").value = "";
+    if ($("dateToFilter")) $("dateToFilter").value = "";
     try { localStorage.setItem(LS_QUICK, "all"); } catch (_) {}
     persistFilters();
     renderExpiryFilterMenu();
@@ -822,6 +902,182 @@
     $("statCustomers").textContent = customers.size;
     $("statRenewed30").textContent = renewed30;
     renderRenewalRate();
+    renderRenewalTrend();
+    renderLeaderboard();
+  }
+
+  // v1.7.42 — 12-month renewal-rate trendline. Buckets license events into
+  // monthly cohorts: renewed (lastRenewedAt's YYYY-MM) vs lapsed (expiryDate
+  // fell in month AND not renewed/abandoned). Plotted on a hand-drawn canvas
+  // (no Chart.js dependency). Hidden if every month is empty.
+  function renderRenewalTrend() {
+    const strip = $("renewalTrendStrip");
+    const canvas = $("renewalTrendChart");
+    if (!strip || !canvas) return;
+    const months = [];
+    const now = new Date();
+    for (let i = 11; i >= 0; i--) {
+      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      months.push({
+        key: `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`,
+        label: d.toLocaleString(undefined, { month: "short" }),
+        renewed: 0, lapsed: 0,
+      });
+    }
+    const idxByKey = new Map(months.map((m, i) => [m.key, i]));
+    const today = todayPh();
+    for (const l of licenses) {
+      if (l.lastRenewedAt) {
+        const k = l.lastRenewedAt.slice(0, 7);
+        if (idxByKey.has(k)) months[idxByKey.get(k)].renewed++;
+      }
+      if (l.expiryDate && l.expiryDate < today && l.state !== "abandoned" && l.status !== "renewed") {
+        const k = l.expiryDate.slice(0, 7);
+        if (idxByKey.has(k)) months[idxByKey.get(k)].lapsed++;
+      }
+    }
+    const rates = months.map((m) => {
+      const t = m.renewed + m.lapsed;
+      return t > 0 ? Math.round((m.renewed / t) * 100) : null;
+    });
+    if (rates.every((r) => r === null)) { strip.hidden = true; return; }
+    strip.hidden = false;
+    const sub = $("renewalTrendSub");
+    const recent = rates.filter((r) => r !== null);
+    if (sub && recent.length >= 2) {
+      const last = recent[recent.length - 1];
+      const prev = recent[recent.length - 2];
+      const delta = last - prev;
+      sub.textContent = delta === 0 ? "Flat vs prior month"
+        : `${delta > 0 ? "▲" : "▼"} ${Math.abs(delta)}pt vs prior month`;
+      sub.classList.remove("trend-up", "trend-down", "trend-flat");
+      sub.classList.add(delta > 0 ? "trend-up" : delta < 0 ? "trend-down" : "trend-flat");
+    } else if (sub) sub.textContent = "";
+
+    // Hand-drawn line + filled-area + month ticks. Resilient to dark mode
+    // by reading the resolved foreground color from computed style.
+    const ratio = window.devicePixelRatio || 1;
+    const w = canvas.clientWidth || 600;
+    const h = canvas.clientHeight || 120;
+    canvas.width = Math.floor(w * ratio);
+    canvas.height = Math.floor(h * ratio);
+    const ctx = canvas.getContext("2d");
+    ctx.scale(ratio, ratio);
+    ctx.clearRect(0, 0, w, h);
+    const PAD_L = 28, PAD_R = 12, PAD_T = 12, PAD_B = 22;
+    const plotW = w - PAD_L - PAD_R;
+    const plotH = h - PAD_T - PAD_B;
+    // grid: 0 / 50 / 100
+    const styles = getComputedStyle(canvas);
+    const muted = styles.getPropertyValue("--muted").trim() || "#6a6a6a";
+    const border = styles.getPropertyValue("--border").trim() || "#e4e4e4";
+    const accent = styles.getPropertyValue("--accent").trim() || "#38AEEB";
+    ctx.strokeStyle = border; ctx.lineWidth = 1; ctx.font = `${10}px Segoe UI, system-ui`;
+    ctx.fillStyle = muted;
+    for (const v of [0, 50, 100]) {
+      const y = PAD_T + plotH - (v / 100) * plotH;
+      ctx.beginPath(); ctx.moveTo(PAD_L, y); ctx.lineTo(PAD_L + plotW, y); ctx.stroke();
+      ctx.fillText(`${v}%`, 4, y + 3);
+    }
+    // x-axis labels (every other month so they don't collide)
+    for (let i = 0; i < months.length; i++) {
+      if (i % 2 !== months.length % 2) continue;
+      const x = PAD_L + (plotW * i) / Math.max(1, months.length - 1);
+      ctx.fillText(months[i].label, x - 9, h - 6);
+    }
+    // Draw the line + filled area for months that have data.
+    const pts = rates.map((r, i) => r === null ? null : ({
+      x: PAD_L + (plotW * i) / Math.max(1, months.length - 1),
+      y: PAD_T + plotH - (r / 100) * plotH,
+      r,
+    }));
+    // Filled area under the curve (segments connecting consecutive non-null points)
+    ctx.fillStyle = accent + "20"; // ~12% opacity
+    ctx.beginPath();
+    let started = false;
+    let lastP = null;
+    for (const p of pts) {
+      if (!p) { if (started && lastP) { ctx.lineTo(lastP.x, PAD_T + plotH); ctx.closePath(); ctx.fill(); ctx.beginPath(); started = false; } continue; }
+      if (!started) { ctx.moveTo(p.x, PAD_T + plotH); ctx.lineTo(p.x, p.y); started = true; }
+      else ctx.lineTo(p.x, p.y);
+      lastP = p;
+    }
+    if (started && lastP) { ctx.lineTo(lastP.x, PAD_T + plotH); ctx.closePath(); ctx.fill(); }
+    // Line on top
+    ctx.strokeStyle = accent; ctx.lineWidth = 2;
+    ctx.beginPath();
+    let move = true;
+    for (const p of pts) {
+      if (!p) { move = true; continue; }
+      if (move) { ctx.moveTo(p.x, p.y); move = false; }
+      else ctx.lineTo(p.x, p.y);
+    }
+    ctx.stroke();
+    // Dots
+    ctx.fillStyle = accent;
+    for (const p of pts) {
+      if (!p) continue;
+      ctx.beginPath(); ctx.arc(p.x, p.y, 3, 0, Math.PI * 2); ctx.fill();
+    }
+  }
+
+  // v1.7.42 — owner leaderboard. Counts renewed-in-window vs total-touched
+  // (renewed + lapsed + abandoned) per owner over the last 90 days. Sorts
+  // by total touched so the most-active owners surface first.
+  function renderLeaderboard() {
+    const strip = $("leaderboardStrip");
+    const list = $("leaderboardList");
+    if (!strip || !list) return;
+    const cutoffIso = new Date(Date.now() - 90 * 86400000).toISOString();
+    const cutoffDate = cutoffIso.slice(0, 10);
+    const today = todayPh();
+    const byOwner = new Map(); // oid -> { name, renewed, lapsed, abandoned }
+    function bump(oid, name, key) {
+      if (!oid) return;
+      const cur = byOwner.get(oid) || { oid, name, renewed: 0, lapsed: 0, abandoned: 0 };
+      cur[key]++;
+      cur.name = name || cur.name;
+      byOwner.set(oid, cur);
+    }
+    for (const l of licenses) {
+      const oid = l.ownerOid;
+      const name = l.ownerName || "(no name)";
+      if (l.lastRenewedAt && l.lastRenewedAt >= cutoffIso) { bump(oid, name, "renewed"); continue; }
+      if (l.state === "abandoned" && Array.isArray(l.events)) {
+        const ab = [...l.events].reverse().find((e) => e && e.type === "abandoned");
+        if (ab && ab.at && ab.at >= cutoffIso) { bump(oid, name, "abandoned"); continue; }
+      }
+      if (l.expiryDate && l.expiryDate >= cutoffDate && l.expiryDate < today &&
+          l.state !== "abandoned" && l.status !== "renewed") {
+        bump(oid, name, "lapsed");
+      }
+    }
+    const rows = [...byOwner.values()].filter((r) => r.renewed + r.lapsed + r.abandoned > 0);
+    if (!rows.length) { strip.hidden = true; return; }
+    rows.sort((a, b) => (b.renewed + b.lapsed + b.abandoned) - (a.renewed + a.lapsed + a.abandoned));
+    strip.hidden = false;
+    list.innerHTML = "";
+    for (const r of rows.slice(0, 6)) {
+      const total = r.renewed + r.lapsed + r.abandoned;
+      const rate = Math.round((r.renewed / total) * 100);
+      const li = document.createElement("li");
+      li.className = "leaderboard-row";
+      const head = document.createElement("div");
+      head.className = "leaderboard-head";
+      const name = document.createElement("span");
+      name.className = "leaderboard-name";
+      name.textContent = r.name;
+      const score = document.createElement("strong");
+      score.className = "leaderboard-score";
+      score.textContent = `${rate}%`;
+      score.classList.add(rate >= 80 ? "rate-good" : rate >= 60 ? "rate-ok" : "rate-bad");
+      head.appendChild(name); head.appendChild(score);
+      const meta = document.createElement("div");
+      meta.className = "leaderboard-meta";
+      meta.textContent = `${r.renewed} of ${total} renewed · ${r.lapsed} lapsed${r.abandoned ? ` · ${r.abandoned} won't renew` : ""}`;
+      li.appendChild(head); li.appendChild(meta);
+      list.appendChild(li);
+    }
   }
 
   // v1.7.41 — last-90-days renewal-rate widget. Definitions:
@@ -1093,6 +1349,17 @@
     renderSavedViews();
     renderActivityStrip();
     populateCalYearJump();
+    // v1.7.42 sync date-range button label
+    const drv = $("dateRangeValue");
+    if (drv) {
+      drv.textContent = (dateFromFilter && dateToFilter)
+        ? `${fmtShortDate(dateFromFilter)} – ${fmtShortDate(dateToFilter)}`
+        : dateFromFilter ? `from ${fmtShortDate(dateFromFilter)}`
+        : dateToFilter ? `until ${fmtShortDate(dateToFilter)}`
+        : "Any";
+    }
+    if ($("dateFromFilter")) $("dateFromFilter").value = dateFromFilter;
+    if ($("dateToFilter")) $("dateToFilter").value = dateToFilter;
     document.querySelectorAll("#viewSwitch .view-btn").forEach((b) => {
       b.setAttribute("aria-pressed", b.dataset.view === currentView ? "true" : "false");
     });
@@ -2730,6 +2997,35 @@
     // v1.7.38 Clear-all-filters button
     $("clearAllFiltersBtn").addEventListener("click", clearAllFilters);
 
+    // v1.7.42 Date-range popover
+    const drBtn = $("dateRangeBtn");
+    const drMenu = $("dateRangeMenu");
+    drBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      const open = !drMenu.hidden;
+      drMenu.hidden = open;
+      drBtn.setAttribute("aria-expanded", String(!open));
+    });
+    document.addEventListener("click", (e) => {
+      if (!drMenu.hidden && !drMenu.contains(e.target) && e.target !== drBtn && !drBtn.contains(e.target)) {
+        drMenu.hidden = true;
+        drBtn.setAttribute("aria-expanded", "false");
+      }
+    });
+    $("dateFromFilter").addEventListener("change", (e) => {
+      dateFromFilter = e.target.value || "";
+      persistFilters(); render();
+    });
+    $("dateToFilter").addEventListener("change", (e) => {
+      dateToFilter = e.target.value || "";
+      persistFilters(); render();
+    });
+    $("dateRangeClear").addEventListener("click", () => {
+      dateFromFilter = ""; dateToFilter = "";
+      $("dateFromFilter").value = ""; $("dateToFilter").value = "";
+      persistFilters(); render();
+    });
+
     // v1.7.39 Save view
     $("saveViewBtn").addEventListener("click", saveCurrentView);
 
@@ -3965,6 +4261,17 @@
       wireGlobalShortcuts();
       // v1.7.40 — add an X close button to every dialog.
       installDialogCloseButtons();
+      // v1.7.42 — hydrate from URL hash if present (shareable link), then
+      // listen for hash changes (back/forward, paste of a new link).
+      if (loadFiltersFromHash()) {
+        persistFilters();
+        render();
+      }
+      window.addEventListener("hashchange", () => {
+        suppressHashSync = true;
+        if (loadFiltersFromHash()) render();
+        suppressHashSync = false;
+      });
     } catch (err) {
       const bi = $("bootIndicator");
       if (bi) bi.classList.add("gone");

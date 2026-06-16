@@ -3,6 +3,65 @@
 [hidden] { display: none !important; }
 
 :root {
+  /* ----- v1.7.42 design tokens (canonical). Older code still references
+     bare hex values + the legacy vars below; new code MUST use tokens. ----- */
+
+  /* Spacing scale (4-px grid, matches Stripe/Linear). Use --space-* on padding,
+     margin, gap. Avoid raw px values for layout. */
+  --space-0: 0;
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 32px;
+  --space-7: 48px;
+  --space-8: 64px;
+
+  /* Type scale. xs = chip/metadata. sm = secondary. base = body. md = card title.
+     lg = section heading. xl = page hero. xxl = numerals (stats). */
+  --text-xs: 11px;
+  --text-sm: 12px;
+  --text-base: 13px;
+  --text-md: 14px;
+  --text-lg: 16px;
+  --text-xl: 20px;
+  --text-xxl: 24px;
+
+  /* Radius scale. */
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 8px;
+  --radius-xl: 12px;
+  --radius-pill: 999px;
+
+  /* Semantic color tokens. Buckets matched to the existing exp-* palette
+     (Expired/Soon/ThisMonth/Active) so the renewal-rate chart, expiry pills,
+     and calendar stripes stay in sync. */
+  --color-danger-fg: #b71c1c;
+  --color-danger-bg: #fdecec;
+  --color-danger-border: rgba(183, 28, 28, 0.25);
+  --color-warning-fg: #c45104;
+  --color-warning-bg: #fff3e0;
+  --color-warning-border: rgba(196, 81, 4, 0.25);
+  --color-caution-fg: #8a6d00;
+  --color-caution-bg: #fffbe6;
+  --color-caution-border: rgba(138, 109, 0, 0.25);
+  --color-success-fg: #1b5e20;
+  --color-success-bg: #e7f6ec;
+  --color-success-border: rgba(27, 94, 32, 0.25);
+  --color-info-fg: #0078d4;
+  --color-info-bg: rgba(56, 174, 235, 0.12);
+  --color-info-border: #38AEEB;
+  --color-neutral-fg: #555;
+
+  /* Motion. Respected when prefers-reduced-motion is no-preference. */
+  --motion-fast: 120ms;
+  --motion-base: 200ms;
+  --motion-slow: 320ms;
+  --ease-out: cubic-bezier(0.2, 0, 0, 1);
+
+  /* ----- legacy aliases preserved so existing CSS keeps working. ----- */
   --bg: #f5f5f5;
   --surface: #ffffff;
   --border: #e1e1e1;
@@ -15,6 +74,18 @@
   --radius: 8px;
 }
 
+/* Honor user motion preferences (WCAG 2.3.3). Suppresses shimmer / slide-in
+   / transition animations for users with vestibular sensitivities. */
+@media (prefers-reduced-motion: reduce) {
+  :root { --motion-fast: 0ms; --motion-base: 0ms; --motion-slow: 0ms; }
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
 body[data-theme="dark"] {
   --bg: #1f1f1f;
   --surface: #2b2b2b;
@@ -23,6 +94,23 @@ body[data-theme="dark"] {
   --muted: #b5b5b5;
   --shadow: 0 1px 2px rgba(0,0,0,.3), 0 2px 8px rgba(0,0,0,.4);
   color-scheme: dark;
+  /* Semantic tokens re-scaled for dark surfaces. */
+  --color-danger-fg: #ffb4b4;
+  --color-danger-bg: rgba(244, 67, 54, 0.18);
+  --color-danger-border: rgba(244, 67, 54, 0.4);
+  --color-warning-fg: #ffd9a8;
+  --color-warning-bg: rgba(255, 152, 0, 0.18);
+  --color-warning-border: rgba(255, 152, 0, 0.4);
+  --color-caution-fg: #ffe98a;
+  --color-caution-bg: rgba(255, 235, 59, 0.16);
+  --color-caution-border: rgba(255, 235, 59, 0.32);
+  --color-success-fg: #a8e0a8;
+  --color-success-bg: rgba(76, 175, 80, 0.18);
+  --color-success-border: rgba(76, 175, 80, 0.4);
+  --color-info-fg: #9ed7f5;
+  --color-info-bg: rgba(56, 174, 235, 0.18);
+  --color-info-border: rgba(56, 174, 235, 0.5);
+  --color-neutral-fg: #aaa;
 }
 
 body[data-theme="contrast"] {

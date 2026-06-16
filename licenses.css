@@ -2050,3 +2050,122 @@ body:is([data-theme="dark"], [data-theme="contrast"]) .merge-candidate-list {
 body:is([data-theme="dark"], [data-theme="contrast"]) .bulk-bar .btn.danger {
   color: #ffb4b4; border-color: #ffb4b4;
 }
+
+/* ---------- v1.7.42 date-range popover ---------- */
+.date-range-popover {
+  min-width: 240px;
+  padding: var(--space-3, 12px);
+  gap: var(--space-2, 8px);
+}
+.date-range-label {
+  display: flex; align-items: center; gap: var(--space-2, 8px);
+  font-size: var(--text-sm, 12px);
+}
+.date-range-label span {
+  font-weight: 600;
+  color: var(--muted, #6a6a6a);
+  width: 36px;
+}
+.date-range-label input[type="date"] {
+  flex: 1; font: inherit;
+  padding: var(--space-1, 4px) var(--space-2, 8px);
+  border: 1px solid var(--border, #d1d1d1);
+  border-radius: var(--radius-md, 6px);
+  background: var(--card-bg, #fff);
+  color: var(--text, #1c1c1e);
+}
+.date-range-actions {
+  display: flex; justify-content: flex-end;
+  margin-top: var(--space-1, 4px);
+}
+body:is([data-theme="dark"], [data-theme="contrast"]) .date-range-label input[type="date"] {
+  background: #2b2b30; border-color: #3d3d42; color: #f0f0f2;
+}
+
+/* ---------- v1.7.42 renewal trend chart ---------- */
+.lic-renewal-trend {
+  background: var(--card-bg, #fff);
+  border: 1px solid var(--border, #e4e4e4);
+  border-radius: var(--radius-lg, 10px);
+  padding: var(--space-3, 12px);
+  margin-top: var(--space-3, 10px);
+}
+.renewal-trend-head {
+  display: flex; justify-content: space-between; align-items: baseline;
+  margin-bottom: var(--space-1, 4px);
+}
+.renewal-trend-label {
+  font-size: var(--text-xs, 11px); font-weight: 600;
+  text-transform: uppercase; letter-spacing: 0.04em;
+  color: var(--muted, #6a6a6a);
+}
+.renewal-trend-sub {
+  font-size: var(--text-xs, 11px); font-weight: 600;
+}
+.renewal-trend-sub.trend-up { color: var(--color-success-fg, #1b5e20); }
+.renewal-trend-sub.trend-down { color: var(--color-danger-fg, #b71c1c); }
+.renewal-trend-sub.trend-flat { color: var(--muted, #6a6a6a); }
+.renewal-trend-canvas {
+  width: 100%; height: 120px; display: block;
+}
+body:is([data-theme="dark"], [data-theme="contrast"]) .lic-renewal-trend {
+  background: #2b2b30; border-color: #3d3d42;
+}
+
+/* ---------- v1.7.42 leaderboard ---------- */
+.lic-leaderboard {
+  border-top: 1px solid var(--border, #ececec);
+  padding-top: var(--space-3, 10px);
+  margin-top: var(--space-3, 12px);
+}
+.lic-leaderboard-title {
+  font-size: var(--text-xs, 11px); font-weight: 700; text-transform: uppercase;
+  letter-spacing: 0.04em; color: var(--muted, #6a6a6a);
+  margin: 0 0 var(--space-2, 6px);
+}
+.lic-leaderboard-list { list-style: none; padding: 0; margin: 0; }
+.leaderboard-row {
+  padding: var(--space-2, 8px) 0;
+  border-bottom: 1px solid var(--border, #f0f0f0);
+}
+.leaderboard-row:last-child { border-bottom: 0; }
+.leaderboard-head {
+  display: flex; justify-content: space-between; align-items: baseline;
+}
+.leaderboard-name {
+  font-size: var(--text-base, 13px); font-weight: 600;
+  color: var(--text, #1c1c1e);
+}
+.leaderboard-score {
+  font-size: var(--text-md, 14px); font-weight: 700;
+}
+.leaderboard-score.rate-good { color: var(--color-success-fg, #1b5e20); }
+.leaderboard-score.rate-ok   { color: var(--color-warning-fg, #c45104); }
+.leaderboard-score.rate-bad  { color: var(--color-danger-fg, #b71c1c); }
+.leaderboard-meta {
+  font-size: var(--text-xs, 11px);
+  color: var(--muted, #6a6a6a);
+  margin-top: 2px;
+}
+
+/* ---------- v1.7.42 mobile layout (Licenses tab) ---------- */
+@media (max-width: 900px) {
+  /* The layout shell is 2-column desktop; collapse the sidebar BELOW the
+     main pane so it doesn't crush the table on narrow screens. */
+  .lic-shell { grid-template-columns: 1fr !important; }
+  .lic-aside { border-left: 0 !important; padding-left: 0 !important; }
+  .topbar-actions { flex-wrap: wrap; }
+  .filter-pills { flex-wrap: wrap; }
+  .lic-table-wrap { overflow-x: auto; }
+  .lic-table { min-width: 720px; } /* horizontal scroll instead of crushed cells */
+}
+@media (max-width: 600px) {
+  /* Tighter again — single-axis filter row, larger touch targets. */
+  .filter-pills .filter-pill,
+  .filter-dropdown,
+  .filter-dropdown-btn { font-size: var(--text-base, 13px); min-height: 36px; }
+  .lic-stats { flex-wrap: wrap; gap: var(--space-2, 8px); }
+  .lic-cal-cell { min-height: 80px; padding: var(--space-1, 4px); }
+  .lic-cal-pill { font-size: var(--text-xs, 11px); padding: 2px 4px; }
+  .renewal-trend-canvas { height: 100px; }
+}

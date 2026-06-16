@@ -21,10 +21,10 @@
   <link rel="preconnect" href="https://func-day-reminders-17023.azurewebsites.net" crossorigin />
   <link rel="dns-prefetch" href="https://func-day-reminders-17023.azurewebsites.net" />
   <link rel="preconnect" href="https://res.cdn.office.net" crossorigin />
-  <link rel="preload" as="script" href="licenses.js?v=1.7.41" />
-  <link rel="preload" as="style" href="licenses.css?v=1.7.41" />
-  <link rel="stylesheet" href="styles.css?v=1.7.41" />
-  <link rel="stylesheet" href="licenses.css?v=1.7.41" />
+  <link rel="preload" as="script" href="licenses.js?v=1.7.42" />
+  <link rel="preload" as="style" href="licenses.css?v=1.7.42" />
+  <link rel="stylesheet" href="styles.css?v=1.7.42" />
+  <link rel="stylesheet" href="licenses.css?v=1.7.42" />
   <script src="https://res.cdn.office.net/teams-js/2.24.0/js/MicrosoftTeams.min.js"
           integrity="sha384-79NK4sbfVpgLoDFqyfj18/S1Uj8jhLBeRGvKO1Cqw5634RznExQ90myY/qV/0gsN"
           crossorigin="anonymous"></script>
@@ -102,6 +102,27 @@
             <span class="filter-dropdown-caret" aria-hidden="true">&#9662;</span>
           </button>
           <div id="expiryFilterMenu" class="filter-popover" role="menu" hidden></div>
+        </div>
+
+        <div class="filter-dropdown-wrap filter-dropdown-popover">
+          <button type="button" id="dateRangeBtn" class="filter-dropdown filter-dropdown-btn" aria-haspopup="true" aria-expanded="false" aria-label="Filter by expiry date range">
+            <span class="filter-dropdown-label">Range</span>
+            <span id="dateRangeValue">Any</span>
+            <span class="filter-dropdown-caret" aria-hidden="true">&#9662;</span>
+          </button>
+          <div id="dateRangeMenu" class="filter-popover date-range-popover" role="menu" hidden>
+            <label class="date-range-label">
+              <span>From</span>
+              <input type="date" id="dateFromFilter" aria-label="Expiry on or after" />
+            </label>
+            <label class="date-range-label">
+              <span>To</span>
+              <input type="date" id="dateToFilter" aria-label="Expiry on or before" />
+            </label>
+            <div class="date-range-actions">
+              <button type="button" id="dateRangeClear" class="btn ghost">Clear</button>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -212,6 +233,14 @@
         <span class="lic-stat"><strong id="statRenewed30">0</strong> renewed last 30 days</span>
       </section>
 
+      <section id="renewalTrendStrip" class="lic-renewal-trend" aria-label="Renewal rate by month (last 12 months)" hidden>
+        <div class="renewal-trend-head">
+          <span class="renewal-trend-label">Renewal rate by month</span>
+          <span class="renewal-trend-sub" id="renewalTrendSub"></span>
+        </div>
+        <canvas id="renewalTrendChart" class="renewal-trend-canvas" width="600" height="120" role="img" aria-label="Renewal rate per month line chart"></canvas>
+      </section>
+
       <section id="renewalRateStrip" class="lic-renewal-rate" aria-label="Renewal rate (last 90 days)" hidden>
         <div class="renewal-rate-head">
           <span class="renewal-rate-label">Renewal rate · last 90 days</span>
@@ -242,6 +271,11 @@
       <section id="productStrip" class="lic-breakdown" aria-label="By product line" hidden>
         <span class="lic-breakdown-label">Product</span>
         <div id="productChips" class="lic-breakdown-chips"></div>
+      </section>
+
+      <section id="leaderboardStrip" class="lic-leaderboard" aria-label="Owner leaderboard (last 90 days)" hidden>
+        <h3 class="lic-leaderboard-title">Owner leaderboard · last 90 days</h3>
+        <ol id="leaderboardList" class="lic-leaderboard-list"></ol>
       </section>
 
       <section id="activityStrip" class="lic-activity-strip" aria-label="Recent activity" hidden>
@@ -364,7 +398,7 @@
   <!-- Renewed action sub-dialog -->
   <dialog id="renewDialog" class="lic-dialog small">
     <form id="renewForm" method="dialog">
-      <h2>Mark as renewed</h2>
+      <h2>Mark renewed</h2>
       <p class="lic-hint">Pick how long the renewal covers, and the new expiry date will be set automatically.</p>
       <div class="renew-presets" role="radiogroup" aria-label="Renewal length">
         <button type="button" class="btn ghost" data-years="1">+1 year</button>
@@ -647,7 +681,7 @@
     </section>
 
     <div class="lic-dialog-actions">
-      <span class="lic-version" id="licVersionLabel" title="Licenses tab build version">v1.7.41</span>
+      <span class="lic-version" id="licVersionLabel" title="Licenses tab build version">v1.7.42</span>
       <button type="button" class="btn primary" id="licGuideCloseBtn">Close</button>
     </div>
   </dialog>
@@ -762,6 +796,6 @@
 
   <div id="toast" class="toast" hidden></div>
 
-  <script src="licenses.js?v=1.7.41" defer></script>
+  <script src="licenses.js?v=1.7.42" defer></script>
 </body>
 </html>

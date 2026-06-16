@@ -73,6 +73,30 @@ Secrets, GUIDs, and connection strings live in the Claude memory file `project_d
 
 ## What ships today (v1.7.x)
 
+### v1.7.42 — design language + shareable filters + strategic reporting
+
+Polish pass to close the gap toward Linear/Stripe-tier internal tools. Tab-only release; no backend changes.
+
+**Foundation**
+- **Design-token system** in `styles.css`: `--space-{0..8}` (4px grid), `--text-{xs..xxl}`, `--radius-{sm/md/lg/xl/pill}`, semantic colors `--color-{danger/warning/caution/success/info/neutral}-{fg/bg/border}`, motion vars. Light/dark/contrast all override the semantic tokens. Legacy vars (`--bg`, `--accent`, etc.) preserved so existing CSS keeps working — new code MUST use tokens.
+- `@media (prefers-reduced-motion: reduce)` globally suppresses shimmer / slide-in / transition animations (WCAG 2.3.3).
+
+**Filtering**
+- **URL hash state** — every filter axis encodes into `location.hash` (URLSearchParams; e.g. `#o=oid1,oid2&p=BC|M365&x=expired,soon&q2=acme`). Pasting a filtered link applies it on load. `hashchange` listener picks up back/forward. Implemented as `encodeFilterHash() / loadFiltersFromHash() / syncFiltersToHash()` with a `suppressHashSync` guard to prevent self-loops.
+- **Date-range filter** (`from`/`to` inclusive). New popover in the filter row with two date inputs + Clear. Active selection shows in the chip strip as `Expires Jun 1, 2026 – Jul 15, 2026`. Wired into `matchesFilter`, persisted, URL-encoded, saved-view-snapshotted.
+
+**Reports**
+- **Renewal-rate trend chart** — 12-month time-series on a hand-drawn canvas (no Chart.js dependency). Buckets `lastRenewedAt` and lapsed (`expiryDate` in window AND not renewed/abandoned) per month, plots renewal-% line with filled area. Subtitle shows delta vs prior month (▲/▼ Npt). Auto-hidden if all months are empty. Uses computed-style colors so dark mode looks right.
+- **Owner leaderboard** — sidebar widget ranking owners by total touched (renewed + lapsed + abandoned) over the last 90 days. Each row shows `Name · NN% · M of N renewed · K lapsed · J won't renew`. Color-coded score (green ≥80, amber ≥60, red below). Hidden when no events.
+
+**Design**
+- **Mobile/narrow viewport** layout (Licenses tab). `@media (max-width: 900px)` collapses the sidebar below the main pane, gives the table a horizontal scroll instead of crushed cells. `@media (max-width: 600px)` enlarges touch targets, wraps the stats strip.
+- **Microcopy pass** — unified "Mark renewed" (was mix of "Mark as renewed" / "Mark renewed" / "Mark Renewed"). Status terms verified consistent.
+
+What I deliberately skipped (would be over-engineering at this scale): facet preview counts, expression-language operators, i18n scaffolding (no second-language demand), cohort/funnel analytics (Power BI's job), scheduled custom reports.
+
+Cache-bust `v=1.7.42`. No bot redeploy needed.
+
 ### v1.7.41 — concurrency, merge, bulk, dashboard, CSP
 
 Five-feature bundle building on the v1.7.40 audit. Backend + frontend + headers.
