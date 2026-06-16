@@ -904,14 +904,17 @@
     const sorted = [...rows].sort((a, b) => (a.expiryDate || "").localeCompare(b.expiryDate || ""));
     for (const lic of sorted) {
       const li = document.createElement("li");
+      const body = document.createElement("div");
+      body.className = "cl-body";
       const title = document.createElement("div");
       title.className = "cl-title";
       title.textContent = lic.licenseType;
-      li.appendChild(title);
+      body.appendChild(title);
       const meta = document.createElement("div");
       meta.className = "cl-meta";
       meta.textContent = `${lic.userCount || 0} users · expires ${fmtShortDate(lic.expiryDate)} · owner ${lic.ownerName || "—"}`;
-      li.appendChild(meta);
+      body.appendChild(meta);
+      li.appendChild(body);
       const pill = document.createElement("span");
       const sv = lic.status || "notStarted";
       pill.className = `status-pill status-${sv}`;
