@@ -73,6 +73,19 @@ Secrets, GUIDs, and connection strings live in the Claude memory file `project_d
 
 ## What ships today (v1.7.x)
 
+### v1.7.49 — close the 4 remaining v1.7.48 failures
+
+Tab-only release. Addresses the 4 fails reported in the v1.7.48 design re-run.
+
+- **A3 sidebar overlap (real fix).** v1.7.48 used `table-layout: fixed` + `max-width: 100%`, but per-column declared widths still summed wider than the Teams iframe's effective main column at common viewport widths, pushing OWNER / PRODUCT LINE / STATUS / actions visually under the sticky sidebar. v1.7.49: `overflow-x: clip` on `.lic-main` (clips horizontal overflow to the grid column without establishing a scroll container, so sticky `th` still works), AND `overflow-x: auto` on `.lic-table-wrap` so the user can horizontally scroll the table within its column to reach hidden columns. `table-layout: auto` returns so cells size to content.
+- **B5 customer drawer backdrop.** v1.7.48 added `.lic-dialog::backdrop` + `#customerDialog::backdrop` rules, but Teams' Chromium wasn't picking them up reliably. v1.7.49: universal `dialog::backdrop` selector with `!important` — highest confidence cross-browser/cross-host.
+- **B9 cross-tab ⚙ position.** Moved `+ Add license` to BEFORE the utility cluster on Licenses so the `⚙` and `?` icons are the rightmost elements on BOTH tabs (matching Reminders). Same right-edge mental model for Settings + Help across surfaces.
+- **C3 Reminders footer label.** Was still hard-coded `v1.5.5` despite the cache-bust being `v=1.5.6` in v1.7.48. Bumped both to `v1.5.7`.
+
+Also addressed the side-finding from the design re-run: shortcuts overlay now lists `↑/↓ or j/k` for table focus nav and `Home/End` for jump-to-first/last (the row-nav shortcuts were always wired in JS, just missing from the overlay's documented list).
+
+Cache-bust `v=1.7.49` on Licenses, `v=1.5.7` on Reminders. No backend changes.
+
 ### v1.7.48 — senior design-review fix bundle (Licenses + Reminders)
 
 13 fixes from the v1.7.47 senior design review. Tab-only release, no backend.

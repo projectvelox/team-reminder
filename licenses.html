@@ -21,10 +21,10 @@
   <link rel="preconnect" href="https://func-day-reminders-17023.azurewebsites.net" crossorigin />
   <link rel="dns-prefetch" href="https://func-day-reminders-17023.azurewebsites.net" />
   <link rel="preconnect" href="https://res.cdn.office.net" crossorigin />
-  <link rel="preload" as="script" href="licenses.js?v=1.7.48" />
-  <link rel="preload" as="style" href="licenses.css?v=1.7.48" />
-  <link rel="stylesheet" href="styles.css?v=1.7.48" />
-  <link rel="stylesheet" href="licenses.css?v=1.7.48" />
+  <link rel="preload" as="script" href="licenses.js?v=1.7.49" />
+  <link rel="preload" as="style" href="licenses.css?v=1.7.49" />
+  <link rel="stylesheet" href="styles.css?v=1.7.49" />
+  <link rel="stylesheet" href="licenses.css?v=1.7.49" />
   <script src="https://res.cdn.office.net/teams-js/2.24.0/js/MicrosoftTeams.min.js"
           integrity="sha384-79NK4sbfVpgLoDFqyfj18/S1Uj8jhLBeRGvKO1Cqw5634RznExQ90myY/qV/0gsN"
           crossorigin="anonymous"></script>
@@ -59,8 +59,11 @@
       <button id="bulkSelectBtn" class="btn ghost" aria-pressed="false" title="Select multiple licenses (S)">Select</button>
       <span class="topbar-spacer" aria-hidden="true"></span>
       <span id="syncIndicator" class="sync-indicator" title="Background poll refreshes every 60s">Syncing&hellip;</span>
-      <!-- v1.7.45 — icon-only utility cluster: secondary actions compress into
-           glyph buttons so the eye lands on the primary "Add license" button. -->
+      <!-- v1.7.49 — primary "+ Add license" comes BEFORE the utility cluster so
+           the ⚙ / ? icons are the rightmost elements on both tabs (matching
+           Reminders), giving users a consistent right-edge mental model for
+           Settings + Help across surfaces. -->
+      <button id="addLicenseBtn" class="btn primary primary-cta">+ Add license</button>
       <div class="topbar-utility" role="group" aria-label="Utilities">
         <button id="trashBtn" class="btn ghost icon-only" type="button" title="Recently deleted (recover within 30 days)" aria-label="Recently deleted">
           <span class="topbar-icon">&#x1F5D1;</span>
@@ -76,7 +79,6 @@
           <span class="topbar-icon">?</span>
         </button>
       </div>
-      <button id="addLicenseBtn" class="btn primary primary-cta">+ Add license</button>
     </div>
   </header>
 
@@ -718,7 +720,7 @@
     </section>
 
     <div class="lic-dialog-actions">
-      <span class="lic-version" id="licVersionLabel" title="Licenses tab build version">v1.7.48</span>
+      <span class="lic-version" id="licVersionLabel" title="Licenses tab build version">v1.7.49</span>
       <button type="button" class="btn primary" id="licGuideCloseBtn">Close</button>
     </div>
   </dialog>
@@ -889,8 +891,9 @@
           <dt><kbd>Ctrl</kbd>+<kbd>K</kbd></dt><dd>Command palette</dd>
           <dt><kbd>/</kbd></dt><dd>Focus search</dd>
           <dt><kbd>?</kbd></dt><dd>Show this overlay</dd>
-          <dt><kbd>&uarr;</kbd> <kbd>&darr;</kbd></dt><dd>Move table focus</dd>
+          <dt><kbd>&uarr;</kbd> <kbd>&darr;</kbd> or <kbd>j</kbd> <kbd>k</kbd></dt><dd>Move table focus</dd>
           <dt><kbd>Enter</kbd></dt><dd>Open focused row</dd>
+          <dt><kbd>Home</kbd> <kbd>End</kbd></dt><dd>Jump to first / last row</dd>
           <dt><kbd>Esc</kbd></dt><dd>Close any dialog</dd>
         </dl>
       </div>
@@ -916,6 +919,6 @@
 
   <div id="toast" class="toast" hidden></div>
 
-  <script src="licenses.js?v=1.7.48" defer></script>
+  <script src="licenses.js?v=1.7.49" defer></script>
 </body>
 </html>

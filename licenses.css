@@ -50,10 +50,11 @@ body:is([data-theme="dark"], [data-theme="contrast"]) .lic-boot { background: rg
   align-items: start;
   max-width: none;
 }
-/* v1.7.46: dropped `overflow: hidden` because it breaks sticky thead by
-   establishing a containing block that sticky positioning can't escape.
-   The grid template handles column min-width on its own via minmax(0, 1fr). */
-.lic-main { min-width: 0; }
+/* v1.7.49: `overflow: clip` clips horizontal table overflow to the grid
+   column without establishing a scroll container, so the sidebar can't get
+   overlapped. Sticky `th` still works because clip (unlike hidden/auto)
+   doesn't trap sticky positioning. */
+.lic-main { min-width: 0; overflow-x: clip; }
 .lic-aside {
   display: flex;
   flex-direction: column;
@@ -83,19 +84,20 @@ body[data-view="calendar"] .lic-shell { grid-template-columns: 1fr; }
   .lic-aside > section { flex: 1 1 220px; }
 }
 
-/* Table wrap. v1.7.48: kept clean of overflow declarations so `position:
-   sticky` on the thead `th` can bind to the page-level scroll context.
-   Content is constrained via `table-layout: fixed` + per-column widths
-   below, so the table never outgrows the grid column and pushes content
-   under the sidebar. */
+/* Table wrap. v1.7.49: horizontal scroll inside the wrap so very wide tables
+   (e.g. on the Teams iframe at 1000px effective width) don't get clipped —
+   user can scroll the wrap horizontally to reach Owner / Product line /
+   Status / Edit columns. Sticky `th` still works because `.lic-main`'s
+   `overflow-x: clip` doesn't establish a scroll container that would trap
+   sticky. */
 .lic-table-wrap {
   width: 100%;
   max-width: 100%;
+  overflow-x: auto;
 }
 .lic-table {
   width: 100%;
-  max-width: 100%;
-  table-layout: fixed;
+  table-layout: auto; /* let cells size to content; min-widths set per column */
 }
 
 /* Aside-specific overrides: stack summary chips vertically, compact stats. */
@@ -746,10 +748,16 @@ body:is([data-theme="dark"], [data-theme="contrast"]) .lic-table td.actions .btn
 .lic-dialog.small {
   max-width: 380px;
 }
-/* v1.7.48: bumped from 0.4 → 0.55 so customer drawer + other dialogs all
-   visibly dim the page underneath. */
-.lic-dialog::backdrop { background: rgba(0, 0, 0, 0.55); }
-#customerDialog::backdrop { background: rgba(0, 0, 0, 0.55); }
+/* v1.7.49: universal dialog::backdrop selector — catches every <dialog>
+   shown via showModal(), including the customer drawer (which the v1.7.48
+   .lic-dialog::backdrop / #customerDialog::backdrop rules somehow weren't
+   hitting reliably in Teams). Using just `dialog::backdrop` has highest
+   confidence of applying across all surfaces. */
+dialog::backdrop,
+.lic-dialog::backdrop,
+#customerDialog::backdrop {
+  background: rgba(0, 0, 0, 0.55) !important;
+}
 .lic-dialog h2 { margin: 0 0 var(--space-4, 16px); }
 /* v1.7.48 — symmetric padding so the h2 isn't cramped against the top edge.
    The base dialog already has padding set; this adds breathing room above
