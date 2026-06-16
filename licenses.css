@@ -209,19 +209,23 @@ body:is([data-theme="dark"], [data-theme="contrast"]) .status-pill.status-renewe
 }
 body:is([data-theme="dark"], [data-theme="contrast"]) .cycle-badge { color: #b18ed8; }
 
-/* Clickable customer link in table */
+/* Clickable customer link in table. Color is set explicitly per theme so
+   browser <button> defaults don't bleed through (some renderers force a
+   light blue link color on buttons with text-decoration). */
 .customer-link {
   background: none;
   border: none;
   padding: 0;
   font: inherit;
-  color: inherit;
+  color: #1c1c1e;
   text-align: left;
   cursor: pointer;
   text-decoration: underline dotted;
   text-underline-offset: 3px;
 }
-.customer-link:hover { color: var(--accent, #38AEEB); }
+.customer-link:hover { color: var(--accent, #0078d4); }
+body:is([data-theme="dark"], [data-theme="contrast"]) .customer-link { color: #f0f0f2; }
+body:is([data-theme="dark"], [data-theme="contrast"]) .customer-link:hover { color: #66c0ff; }
 
 /* Activity log inside edit dialog */
 .lic-activity {
@@ -449,7 +453,13 @@ body:is([data-theme="dark"], [data-theme="contrast"]) .lic-group-header td {
   margin-top: 12px;
   font-size: 13px;
   table-layout: auto;
+  color: #1c1c1e;
 }
+body:is([data-theme="dark"], [data-theme="contrast"]) .lic-table { color: #f0f0f2; }
+body:is([data-theme="dark"], [data-theme="contrast"]) .lic-table td { color: #f0f0f2; }
+body:is([data-theme="dark"], [data-theme="contrast"]) .lic-day-badge { color: #c8c8cc; }
+body:is([data-theme="dark"], [data-theme="contrast"]) .lic-day-badge.overdue { color: #ff6b6b; }
+body:is([data-theme="dark"], [data-theme="contrast"]) .product-tag { color: #d8d8dc; border-color: #5a5a60; }
 .lic-table th, .lic-table td {
   text-align: left;
   padding: 8px 10px;
