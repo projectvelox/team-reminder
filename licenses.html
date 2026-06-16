@@ -9,10 +9,10 @@
   <link rel="preconnect" href="https://func-day-reminders-17023.azurewebsites.net" crossorigin />
   <link rel="dns-prefetch" href="https://func-day-reminders-17023.azurewebsites.net" />
   <link rel="preconnect" href="https://res.cdn.office.net" crossorigin />
-  <link rel="preload" as="script" href="licenses.js?v=1.7.8" />
-  <link rel="preload" as="style" href="licenses.css?v=1.7.8" />
-  <link rel="stylesheet" href="styles.css?v=1.7.8" />
-  <link rel="stylesheet" href="licenses.css?v=1.7.8" />
+  <link rel="preload" as="script" href="licenses.js?v=1.7.9" />
+  <link rel="preload" as="style" href="licenses.css?v=1.7.9" />
+  <link rel="stylesheet" href="styles.css?v=1.7.9" />
+  <link rel="stylesheet" href="licenses.css?v=1.7.9" />
   <script src="https://res.cdn.office.net/teams-js/2.24.0/js/MicrosoftTeams.min.js"></script>
 </head>
 <body data-theme="default" data-page="licenses">
@@ -41,6 +41,8 @@
         </div>
       </div>
       <button id="exportCsvBtn" class="btn ghost" title="Export the current filtered view to a CSV file">Export CSV</button>
+      <button id="emailTemplatesBtn" class="btn ghost" title="Edit per-product-line renewal email templates">Templates</button>
+      <button id="bulkSelectBtn" class="btn ghost" aria-pressed="false" title="Select multiple licenses to reassign owner">Select</button>
       <button id="addLicenseBtn" class="btn primary">+ Add license</button>
     </div>
   </header>
@@ -272,11 +274,100 @@
   <dialog id="customerDialog" class="lic-dialog">
     <h2 id="customerDialogTitle">Customer</h2>
     <div id="customerDialogSummary" class="customer-summary"></div>
+    <div id="customerRegistryInfo" class="customer-registry-info" hidden></div>
     <ol id="customerDialogList" class="customer-license-list"></ol>
     <div class="lic-dialog-actions">
+      <button type="button" class="btn primary" id="customerEditBtn">Edit customer details&hellip;</button>
       <button type="button" class="btn ghost" id="customerDialogClose">Close</button>
     </div>
   </dialog>
+
+  <!-- Customer details edit dialog -->
+  <dialog id="customerEditDialog" class="lic-dialog">
+    <form id="customerEditForm" method="dialog">
+      <h2>Edit customer details</h2>
+      <p class="lic-hint" id="customerEditName"></p>
+      <label class="lic-field">
+        <span class="lic-label">Primary email</span>
+        <input id="custPrimaryEmail" type="email" placeholder="oky@beyondinnovations.com" maxlength="200" />
+      </label>
+      <label class="lic-field">
+        <span class="lic-label">Secondary emails (one per line, optional)</span>
+        <textarea id="custSecondaryEmails" rows="3" placeholder="cc1@example.com&#10;cc2@example.com"></textarea>
+      </label>
+      <label class="lic-field">
+        <span class="lic-label">Address (optional)</span>
+        <input id="custAddress" type="text" maxlength="500" />
+      </label>
+      <label class="lic-field">
+        <span class="lic-label">Notes (visible across all this customer's licenses)</span>
+        <textarea id="custNotes" rows="4" maxlength="2000" placeholder="Prefers email over phone. Renewal lead time 60 days. Etc."></textarea>
+      </label>
+      <div class="lic-dialog-actions">
+        <button type="button" class="btn primary" id="custSaveBtn">Save</button>
+        <button type="button" class="btn ghost" id="custCancelBtn">Cancel</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- Email templates editor dialog -->
+  <dialog id="templatesDialog" class="lic-dialog import-dialog">
+    <h2>Renewal email templates</h2>
+    <p class="lic-hint">
+      One template per product line. The Email button on each license picks the template that matches that row's product line, falling back to <code>_default</code>.
+      Variables: <code>{customer}</code>, <code>{customerFirstWord}</code>, <code>{licenseType}</code>, <code>{users}</code>, <code>{expiryDate}</code>, <code>{ownerName}</code>.
+    </p>
+    <div class="templates-layout">
+      <ul id="templatesList" class="templates-list" aria-label="Template list"></ul>
+      <div class="templates-editor">
+        <label class="lic-field">
+          <span class="lic-label">Product line</span>
+          <input id="tplProductLine" type="text" maxlength="100" placeholder="e.g. M365, BC, _default" />
+        </label>
+        <label class="lic-field">
+          <span class="lic-label">Subject</span>
+          <input id="tplSubject" type="text" maxlength="500" />
+        </label>
+        <label class="lic-field">
+          <span class="lic-label">Body</span>
+          <textarea id="tplBody" rows="14" maxlength="5000"></textarea>
+        </label>
+        <div class="lic-dialog-actions">
+          <button type="button" class="btn primary" id="tplSaveBtn">Save template</button>
+          <button type="button" class="btn ghost" id="tplDeleteBtn">Delete</button>
+          <button type="button" class="btn ghost" id="tplNewBtn">+ New template</button>
+        </div>
+      </div>
+    </div>
+    <div class="lic-dialog-actions">
+      <button type="button" class="btn ghost" id="templatesCloseBtn">Close</button>
+    </div>
+  </dialog>
+
+  <!-- Bulk reassign owner dialog -->
+  <dialog id="bulkReassignDialog" class="lic-dialog small">
+    <form method="dialog">
+      <h2>Reassign owner</h2>
+      <p class="lic-hint">Selected: <strong id="bulkReassignCount">0</strong> licenses.</p>
+      <label class="lic-field">
+        <span class="lic-label">New owner</span>
+        <select id="bulkReassignOwner">
+          <option value="">Pick a teammate</option>
+        </select>
+      </label>
+      <div class="lic-dialog-actions">
+        <button type="button" class="btn primary" id="bulkReassignConfirm">Reassign</button>
+        <button type="button" class="btn ghost" id="bulkReassignCancel">Cancel</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- Bulk action bar -->
+  <div id="bulkBar" class="bulk-bar" hidden role="region" aria-label="Bulk actions">
+    <span class="bulk-count"><strong id="bulkBarCount">0</strong> selected</span>
+    <button type="button" class="btn primary" id="bulkReassignBtn">Reassign owner&hellip;</button>
+    <button type="button" class="btn ghost" id="bulkClearBtn">Clear selection</button>
+  </div>
 
   <!-- Day-detail popover (Calendar view) -->
   <dialog id="dayDialog" class="lic-dialog small">
@@ -339,6 +430,6 @@
 
   <div id="toast" class="toast" hidden></div>
 
-  <script src="licenses.js?v=1.7.8" defer></script>
+  <script src="licenses.js?v=1.7.9" defer></script>
 </body>
 </html>

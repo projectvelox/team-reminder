@@ -10,7 +10,7 @@
 const { app } = require('@azure/functions');
 const { MessageFactory } = require('botbuilder');
 const { adapter } = require('../lib/bot');
-const { reminderCard, eodCard, licenseFollowUpCard } = require('../lib/cards');
+const { reminderCard, eodCard, licenseFollowUpCard, licenseBriefingCard } = require('../lib/cards');
 const store = require('../lib/store');
 const { sendReminderActivity } = require('../lib/graph');
 
@@ -157,6 +157,15 @@ async function processUser(appId, user, ph, context) {
     await processLicenseFollowUps(appId, user, context);
   }
 
+  // 1c) Daily morning license briefing. Weekday 8 AM PH (480 minutesOfDay,
+  // tolerate the window 8:00-8:10). Once per PH day per user.
+  const isWeekendDay = ph.weekday === 'Sat' || ph.weekday === 'Sun';
+  if (!isWeekendDay && ph.minutesOfDay >= 8 * 60 && ph.minutesOfDay < 8 * 60 + 10) {
+    if (user.lastBriefingDate !== ph.date && (!user.briefingSnoozedUntil || user.briefingSnoozedUntil <= ph.date)) {
+      await processLicenseBriefing(appId, user, ph, context);
+    }
+  }
+
   // 2) end-of-day check-in
   const isWeekend = ph.weekday === 'Sat' || ph.weekday === 'Sun';
   if (user.settings?.weekdaysOnly && isWeekend) return;
@@ -201,6 +210,46 @@ async function processLicenseFollowUps(appId, user, context) {
     } catch (err) {
       context.error(`[scheduler] license follow-up failed for ${lic.id}: ${err?.message || err}`);
     }
+  }
+}
+
+// Compute the per-owner briefing stats and send a single Teams card if any
+// numbers are non-zero. Updates user.lastBriefingDate to skip the rest of today.
+async function processLicenseBriefing(appId, user, ph, context) {
+  let licenses;
+  try { licenses = await store.listLicenses(); }
+  catch (err) { context.error(`[scheduler] listLicenses (briefing) failed: ${err?.message || err}`); return; }
+  const today = ph.date;
+  const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
+  const now = Date.now();
+  let overdue = 0, expiringThisWeek = 0, stuckInStatus = 0, needsAction = 0;
+  for (const lic of licenses) {
+    if (lic.ownerOid !== user.oid) continue;
+    if (lic.state === 'abandoned') continue;
+    if (lic.status === 'renewed') continue;
+    if (!lic.expiryDate) continue;
+    const expDate = new Date(lic.expiryDate + 'T00:00:00Z');
+    const todayDate = new Date(today + 'T00:00:00Z');
+    const days = Math.floor((expDate - todayDate) / 86400000);
+    if (days < 0) overdue++;
+    else if (days <= 7) expiringThisWeek++;
+    if ((lic.status === 'noticeSent' || lic.status === 'awaitingCustomer') && lic.statusChangedAt) {
+      if (now - Date.parse(lic.statusChangedAt) >= SEVEN_DAYS_MS) stuckInStatus++;
+    }
+    if (lic.status === 'notStarted' && days <= 30 && days >= 0) needsAction++;
+  }
+  const total = overdue + expiringThisWeek + stuckInStatus + needsAction;
+  if (total === 0) {
+    // No urgent queue. Skip the briefing to avoid alert fatigue.
+    await store.upsertUser(user.oid, { lastBriefingDate: today });
+    return;
+  }
+  try {
+    await sendProactive(appId, user, MessageFactory.attachment(licenseBriefingCard({ overdue, expiringThisWeek, stuckInStatus, needsAction }, user.displayName)));
+    await store.upsertUser(user.oid, { lastBriefingDate: today });
+    context.log(`[scheduler] briefing sent to ${user.oid} (overdue=${overdue} week=${expiringThisWeek} stuck=${stuckInStatus} action=${needsAction})`);
+  } catch (err) {
+    context.error(`[scheduler] briefing send failed for ${user.oid}: ${err?.message || err}`);
   }
 }
 

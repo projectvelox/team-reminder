@@ -19,6 +19,8 @@ func-day-reminders-17023.azurewebsites.net  ──►  Azure Function App (Node 
   /api/settings       ── per-user prefs
   /api/licenses       ── CRUD + bulk + renew  (tenant-shared, v1.7)
   /api/members        ── auto-registering Owner picker source (v1.7)
+  /api/customers      ── CRUD (tenant-shared customer registry, v1.7.9)
+  /api/email-templates── per-product-line renewal email templates (v1.7.9)
   scheduler           ── Timer trigger every minute (in Asia/Manila wall-clock)
                                               │
                                               ▼
@@ -28,8 +30,10 @@ func-day-reminders-17023.azurewebsites.net  ──►  Azure Function App (Node 
                                                 RK = `_templates`   saved templates
                                                 RK = `r:<id>`       a reminder
                                               Tenant-shared partitions (v1.7):
-                                                PK = `_licenses`, RK = `l:<id>`
-                                                PK = `_members`,  RK = `m:<oid>`
+                                                PK = `_licenses`,      RK = `l:<id>`
+                                                PK = `_members`,       RK = `m:<oid>`
+                                                PK = `_customers`,     RK = `c:<id>` (v1.7.9)
+                                                PK = `_emailTemplates`,RK = `t:<productLine>` (v1.7.9)
 ```
 
 All Azure resources live in `rg-day-reminders`, except the Bot Service which is `global`. Storage and App Insights are in `southeastasia`, the Function App is in `eastasia` (Linux Consumption in `southeastasia` was stuck in 503 at creation; we recreated in `eastasia`). A keep-warm Logic App (`la-day-reminders-keepwarm`, southeastasia) pings `/api/ping` every 5 min during PH work hours so the Function App's HTTP triggers don't cold-start.
@@ -53,6 +57,8 @@ Secrets, GUIDs, and connection strings live in the Claude memory file `project_d
 | `bot/src/functions/reminders.js` | CRUD for /api/reminders |
 | `bot/src/functions/licenses.js` | CRUD + bulk + renew for /api/licenses (v1.7) |
 | `bot/src/functions/members.js` | Auto-registering Owner picker source (v1.7) |
+| `bot/src/functions/customers.js` | CRUD for /api/customers (v1.7.9) — annotation layer (contact emails, address, cross-license notes) |
+| `bot/src/functions/emailTemplates.js` | GET/PUT/DELETE for /api/email-templates (v1.7.9) — per-product-line renewal email templates |
 | `bot/src/functions/settings.js` | GET/PUT /api/settings |
 | `bot/src/functions/scheduler.js` | Timer trigger — lead-time + EOD check-in |
 | `bot/src/functions/ping.js` | Unauthenticated `GET /api/ping` returning `"ok"` — keep-warm target for the Logic App |
@@ -82,10 +88,22 @@ Second static tab for tracking client license renewals as a tenant-shared datase
 
 ### v1.7.0 — deferred until Dei (Global Admin) consents
 
-Both pieces below need Graph permissions classified as high-privilege in Kation's consent policy. App reg manifest already has the perms requested; pending consent only.
+Needs Graph permission classified as high-privilege in Kation's consent policy. App reg manifest already has the perm requested; pending consent only.
 
-- **Monthly email digest** via `Mail.Send` (application). Sends a per-owner list of expiring licenses on the 1st of each month from `assist@kationtechnologies.com`. Configurable via `LICENSE_DIGEST_FROM` app setting.
-- **Proactive bot install for cold owners** via `TeamsAppInstallation.ReadWriteForUser.All` (application). Lets the bot drop itself into a license owner's Teams personal apps so Teams escalation cards land even if they've never opened Day Reminders. Today, escalation cards work fine for owners who've already opened the bot (because we have their `conversationRef`). This unlock also benefits v1.5 sharing.
+- **Email surface** via `Mail.Send` (application), sent from `assist@kationtechnologies.com` (configurable via `LICENSE_DIGEST_FROM` app setting). Two uses:
+  1. **Monthly digest** on the 1st of each month, per-owner list of expiring licenses.
+  2. **Cold-owner nudge** (added 2026-06-16) — when a license is assigned to a tenant user who has never opened Day Reminders (no `conversationRef` on file), send a one-time email: "You've been assigned as owner of <customer> license. Open Day Reminders in Teams to get renewal alerts." Deduped per oid so they aren't spammed.
+
+### Cold-owner handling (explicitly chose not to auto-install)
+
+We **dropped** the `TeamsAppInstallation.ReadWriteForUser.All` ask (Dei's call, 2026-06-16). Granting a Function App the ability to silently install itself in any tenant user's Teams is too much blast radius if the repo or deploy pipeline is ever compromised. If we want every Kation user to have Day Reminders pre-installed, the right home for that is a Teams admin app-setup policy (admin-gated, one-time), not runtime code pulling from a public GitHub repo.
+
+Fallback pattern that ships instead:
+- **Cold-owner email nudge** (above) — covers the "owner never knew they were assigned" case.
+- **Inline tab warning** — Licenses tab shows "⚠ This owner hasn't opened Day Reminders — they won't get Teams alerts until they do" on any row whose owner has no `conversationRef`. Same warning appears in the Add/Edit dialog the moment the assigner picks a cold owner.
+- Once the owner opens Day Reminders once, the bot captures their `conversationRef` and escalation cards work normally from that point on.
+
+The same pattern carries to v1.5 sharing (recipients without a `conversationRef` get the email-nudge + share-dialog banner, not a silent install).
 
 ### Other v1.7.0 backlog items (in scope, not yet built)
 

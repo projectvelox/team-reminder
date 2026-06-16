@@ -9,3 +9,5 @@ require('./functions/telemetry');
 require('./functions/ping');
 require('./functions/licenses');
 require('./functions/members');
+require('./functions/customers');
+require('./functions/emailTemplates');

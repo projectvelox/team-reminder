@@ -184,6 +184,8 @@ app.http('licensesCollection', {
     };
     appendEvent(license, 'created', user, `${license.customer} · ${license.licenseType}`);
     await store.upsertLicense(license);
+    // Ensure a stub customer entry exists so the registry stays in sync.
+    try { await store.ensureCustomer(license.customer); } catch {}
     return json(201, { license });
   },
 });

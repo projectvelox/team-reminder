@@ -377,6 +377,14 @@ class ReminderBot extends TeamsActivityHandler {
       lic.lastFollowUpAt = new Date().toISOString();
       await store.upsertLicense(lic);
       await context.sendActivity(`OK, I will check in again on this in 7 days.`);
+    } else if (data.action === 'licenseBriefingSnooze') {
+      const days = typeof data.days === 'number' && data.days > 0 ? Math.min(data.days, 14) : 1;
+      const PH_OFFSET = 8 * 60 * 60 * 1000;
+      const ph = new Date(Date.now() + PH_OFFSET);
+      ph.setUTCDate(ph.getUTCDate() + days);
+      const until = `${ph.getUTCFullYear()}-${String(ph.getUTCMonth() + 1).padStart(2, '0')}-${String(ph.getUTCDate()).padStart(2, '0')}`;
+      await store.upsertUser(oid, { briefingSnoozedUntil: until });
+      await context.sendActivity(`OK, I will skip the morning briefing until ${until}.`);
     }
   }
 

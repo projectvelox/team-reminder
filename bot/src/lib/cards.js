@@ -132,4 +132,34 @@ function licenseFollowUpCard(license, daysSince) {
   };
 }
 
-module.exports = { reminderCard, eodCard, menuCard, licenseFollowUpCard };
+// Daily morning briefing card for license owners. Sent once per weekday at
+// 8 AM PH to each owner with a non-trivial queue.
+function licenseBriefingCard(stats, ownerName) {
+  const tabDeepLink = `https://teams.microsoft.com/l/entity/5a03bfa3-63c4-417c-b668-b02234ebc11b/dayReminders.licenses`;
+  const greeting = ownerName ? `Good morning, ${ownerName.split(/\s+/)[0]}.` : 'Good morning.';
+  const lines = [];
+  if (stats.overdue > 0) lines.push(`- ${stats.overdue} overdue`);
+  if (stats.expiringThisWeek > 0) lines.push(`- ${stats.expiringThisWeek} expiring this week`);
+  if (stats.stuckInStatus > 0) lines.push(`- ${stats.stuckInStatus} stuck in a status >7 days`);
+  if (stats.needsAction > 0) lines.push(`- ${stats.needsAction} need a first notice (under 30 days)`);
+  const summary = lines.length ? lines.join('\n') : 'Nothing urgent. Nice work staying on top of it.';
+  return {
+    contentType: 'application/vnd.microsoft.card.adaptive',
+    content: {
+      $schema: 'http://adaptivecards.io/schemas/adaptive-card.json',
+      type: 'AdaptiveCard',
+      version: '1.4',
+      body: [
+        { type: 'TextBlock', text: 'License renewals, your day', weight: 'Bolder', size: 'Small', color: 'Accent' },
+        { type: 'TextBlock', text: greeting, weight: 'Bolder', size: 'Medium' },
+        { type: 'TextBlock', text: summary, wrap: true, spacing: 'Small' },
+      ],
+      actions: [
+        { type: 'Action.OpenUrl', title: 'Open my queue', url: tabDeepLink },
+        { type: 'Action.Submit', title: 'Skip tomorrow', data: { action: 'licenseBriefingSnooze', days: 1 } },
+      ],
+    },
+  };
+}
+
+module.exports = { reminderCard, eodCard, menuCard, licenseFollowUpCard, licenseBriefingCard };

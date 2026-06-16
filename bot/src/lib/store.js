@@ -54,6 +54,8 @@ async function getUser(oid) {
       tenantId: entity.tenantId || null,
       serviceUrl: entity.serviceUrl || null,
       displayName: entity.displayName || null,
+      lastBriefingDate: entity.lastBriefingDate || null,
+      briefingSnoozedUntil: entity.briefingSnoozedUntil || null,
     };
   } catch (err) {
     if (err.statusCode === 404) {
@@ -65,6 +67,8 @@ async function getUser(oid) {
         tenantId: null,
         serviceUrl: null,
         displayName: null,
+        lastBriefingDate: null,
+        briefingSnoozedUntil: null,
       };
     }
     throw err;
@@ -85,6 +89,8 @@ async function upsertUser(oid, patch) {
     tenantId: merged.tenantId || null,
     serviceUrl: merged.serviceUrl || null,
     displayName: merged.displayName || null,
+    lastBriefingDate: merged.lastBriefingDate || null,
+    briefingSnoozedUntil: merged.briefingSnoozedUntil || null,
   }, 'Replace');
   return merged;
 }
@@ -402,6 +408,154 @@ async function listMembers() {
   return out;
 }
 
+// ---------- customers (tenant-shared, v1.7.9) ----------
+// Annotation layer over the per-license `customer` string field. Adds contact
+// emails, address, notes that apply across all that customer's licenses.
+
+const CUSTOMER_PARTITION = '_customers';
+
+function customerIdFromName(name) {
+  return String(name || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 100) || 'unnamed';
+}
+
+function entityToCustomer(e) {
+  let secondaryEmails = [];
+  if (e.secondaryEmails) {
+    try { const p = JSON.parse(e.secondaryEmails); if (Array.isArray(p)) secondaryEmails = p; } catch {}
+  }
+  return {
+    id: e.rowKey.slice(2),
+    name: e.name || '',
+    primaryEmail: e.primaryEmail || null,
+    secondaryEmails,
+    address: e.address || null,
+    notes: e.notes || null,
+    createdAt: e.createdAt || null,
+    updatedAt: e.updatedAt || null,
+  };
+}
+
+async function listCustomers() {
+  await ensureTable();
+  const iter = getClient().listEntities({
+    queryOptions: { filter: `PartitionKey eq '${CUSTOMER_PARTITION}'` },
+  });
+  const out = [];
+  for await (const e of iter) out.push(entityToCustomer(e));
+  return out;
+}
+
+async function getCustomer(id) {
+  await ensureTable();
+  try {
+    const e = await getClient().getEntity(CUSTOMER_PARTITION, `c:${id}`);
+    return entityToCustomer({ ...e, rowKey: `c:${id}` });
+  } catch (err) {
+    if (err.statusCode === 404) return null;
+    throw err;
+  }
+}
+
+async function upsertCustomer(customer) {
+  await ensureTable();
+  await getClient().upsertEntity({
+    partitionKey: CUSTOMER_PARTITION,
+    rowKey: `c:${customer.id}`,
+    name: customer.name || '',
+    primaryEmail: customer.primaryEmail || null,
+    secondaryEmails: JSON.stringify(Array.isArray(customer.secondaryEmails) ? customer.secondaryEmails : []),
+    address: customer.address || null,
+    notes: customer.notes || null,
+    createdAt: customer.createdAt || null,
+    updatedAt: customer.updatedAt || null,
+  }, 'Replace');
+}
+
+async function deleteCustomer(id) {
+  await ensureTable();
+  try {
+    await getClient().deleteEntity(CUSTOMER_PARTITION, `c:${id}`);
+    return true;
+  } catch (err) {
+    if (err.statusCode === 404) return false;
+    throw err;
+  }
+}
+
+// Ensure a stub customer entity exists for this name; idempotent. Called when
+// a license is created or imported so the registry stays in sync with reality.
+async function ensureCustomer(name) {
+  if (!name) return null;
+  const id = customerIdFromName(name);
+  const existing = await getCustomer(id);
+  if (existing) return existing;
+  const now = new Date().toISOString();
+  const stub = {
+    id,
+    name: name.trim(),
+    primaryEmail: null,
+    secondaryEmails: [],
+    address: null,
+    notes: null,
+    createdAt: now,
+    updatedAt: now,
+  };
+  await upsertCustomer(stub);
+  return stub;
+}
+
+// ---------- email templates (tenant-shared, v1.7.9) ----------
+
+const EMAIL_TEMPLATE_PARTITION = '_emailTemplates';
+
+function entityToTemplate(e) {
+  return {
+    productLine: e.rowKey.slice(2),
+    subject: e.subject || '',
+    body: e.body || '',
+    lastEditedAt: e.lastEditedAt || null,
+    lastEditedByOid: e.lastEditedByOid || null,
+    lastEditedByName: e.lastEditedByName || null,
+  };
+}
+
+async function listEmailTemplates() {
+  await ensureTable();
+  const iter = getClient().listEntities({
+    queryOptions: { filter: `PartitionKey eq '${EMAIL_TEMPLATE_PARTITION}'` },
+  });
+  const out = [];
+  for await (const e of iter) out.push(entityToTemplate(e));
+  return out;
+}
+
+async function upsertEmailTemplate(template) {
+  await ensureTable();
+  // Use a sentinel productLine "_default" for the general template.
+  const key = String(template.productLine || '_default').trim().slice(0, 100) || '_default';
+  await getClient().upsertEntity({
+    partitionKey: EMAIL_TEMPLATE_PARTITION,
+    rowKey: `t:${key}`,
+    subject: template.subject || '',
+    body: template.body || '',
+    lastEditedAt: template.lastEditedAt || null,
+    lastEditedByOid: template.lastEditedByOid || null,
+    lastEditedByName: template.lastEditedByName || null,
+  }, 'Replace');
+}
+
+async function deleteEmailTemplate(productLine) {
+  await ensureTable();
+  const key = String(productLine || '_default').trim().slice(0, 100) || '_default';
+  try {
+    await getClient().deleteEntity(EMAIL_TEMPLATE_PARTITION, `t:${key}`);
+    return true;
+  } catch (err) {
+    if (err.statusCode === 404) return false;
+    throw err;
+  }
+}
+
 module.exports = {
   DEFAULT_SETTINGS,
   LICENSE_STATUSES,
@@ -422,4 +576,13 @@ module.exports = {
   deleteLicense,
   registerMember,
   listMembers,
+  listCustomers,
+  getCustomer,
+  upsertCustomer,
+  deleteCustomer,
+  ensureCustomer,
+  customerIdFromName,
+  listEmailTemplates,
+  upsertEmailTemplate,
+  deleteEmailTemplate,
 };

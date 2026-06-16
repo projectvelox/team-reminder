@@ -28,9 +28,35 @@
   // ---------- state ----------
   let licenses = [];
   let members = [];
+  let customers = [];
+  let emailTemplates = []; // [{ productLine, subject, body }]
   let me = { oid: null, name: null };
   let authToken = null;
   let teamsTheme = "default";
+  let bulkMode = false;
+  const bulkSelected = new Set();
+  const pendingDeletes = new Map(); // licenseId -> { license, timer }
+
+  // Default email templates seed the editor when no server-saved templates exist.
+  // Variables: {customer}, {customerFirstWord}, {licenseType}, {users}, {expiryDate}, {ownerName}
+  const DEFAULT_TEMPLATES = {
+    _default: {
+      subject: "Renewal reminder: {licenseType} expires {expiryDate}",
+      body: "Hi {customerFirstWord} team,\n\nThis is a friendly reminder that your subscription for {licenseType} ({users} users) is set to expire on {expiryDate}.\n\nPlease let us know if you would like to:\n  1. Renew at the current {users} users\n  2. Adjust the seat count\n  3. Make any other changes\n\nLooking forward to your reply.\n\nBest regards,\n{ownerName}\nKation Technologies",
+    },
+    M365: {
+      subject: "Microsoft 365 renewal: {customer} - {licenseType} ({expiryDate})",
+      body: "Hi {customerFirstWord} team,\n\nYour Microsoft 365 subscription is coming up for renewal:\n  - {licenseType}: {users} users\n  - Expires: {expiryDate}\n\nPlease let us know if you would like to:\n  1. Renew at the current {users} seats\n  2. Adjust the seat count\n  3. Change plan\n\nLooking forward to your reply.\n\nBest regards,\n{ownerName}\nKation Technologies",
+    },
+    BC: {
+      subject: "Dynamics 365 BC renewal: {customer} - {licenseType} ({expiryDate})",
+      body: "Hi {customerFirstWord} team,\n\nYour Dynamics 365 Business Central subscription is coming up for renewal:\n  - {licenseType}: {users} users\n  - Expires: {expiryDate}\n\nPlease let us know if you would like to renew, adjust the seat count, or change plan.\n\nLooking forward to your reply.\n\nBest regards,\n{ownerName}\nKation Technologies",
+    },
+    BREP: {
+      subject: "BREP renewal: {customer} - {licenseType} ({expiryDate})",
+      body: "Hi {customerFirstWord} team,\n\nThis is a reminder for your Business Ready Enhancement Plan (BREP) renewal:\n  - {licenseType}\n  - Expires: {expiryDate}\n\nPlease confirm if you would like to renew the perpetual license enhancement plan for another term.\n\nBest regards,\n{ownerName}\nKation Technologies",
+    },
+  };
 
   let currentView = "table";
   let summaryFilter = null; // null | 'week' | 'month' | 'overdue'
@@ -445,6 +471,25 @@
   function buildLicenseRow(lic, today) {
     const tr = document.createElement("tr");
     tr.dataset.id = lic.id;
+    if (bulkSelected.has(lic.id)) tr.classList.add("selected");
+
+    if (bulkMode) {
+      const tdCheck = document.createElement("td");
+      const cb = document.createElement("input");
+      cb.type = "checkbox";
+      cb.className = "lic-row-checkbox";
+      cb.checked = bulkSelected.has(lic.id);
+      cb.setAttribute("aria-label", `Select ${lic.customer} ${lic.licenseType}`);
+      cb.addEventListener("click", (e) => { e.stopPropagation(); });
+      cb.addEventListener("change", () => {
+        if (cb.checked) bulkSelected.add(lic.id);
+        else bulkSelected.delete(lic.id);
+        tr.classList.toggle("selected", cb.checked);
+        updateBulkBar();
+      });
+      tdCheck.appendChild(cb);
+      tr.appendChild(tdCheck);
+    }
     const d = daysBetween(today, lic.expiryDate);
     if (d !== null && d < 0 && lic.state !== "abandoned") tr.classList.add("overdue");
     if (lic.state === "abandoned") tr.classList.add("abandoned");
@@ -463,6 +508,15 @@
       badge.textContent = lic.renewalCycle === "biennial" ? "biennial" : "triennial";
       badge.title = `Renewal cycle: ${lic.renewalCycle}`;
       tdCustomer.appendChild(badge);
+    }
+    // Multi-line bundle indicator
+    const bundle = bundleFor(lic);
+    if (bundle.length >= 2) {
+      const b = document.createElement("span");
+      b.className = "bundle-badge";
+      b.textContent = `Bundle: ${bundle.length}`;
+      b.title = `Part of a ${bundle.length}-license renewal package for ${lic.customer}. The Email button will draft one combined message.`;
+      tdCustomer.appendChild(b);
     }
     tr.appendChild(tdCustomer);
 
@@ -546,7 +600,7 @@
     const tr = document.createElement("tr");
     tr.className = "lic-group-header";
     const td = document.createElement("td");
-    td.colSpan = 8;
+    td.colSpan = bulkMode ? 9 : 8;
     const seats = group.reduce((s, l) => s + (typeof l.userCount === "number" ? l.userCount : 0), 0);
     td.textContent = label || "(none)";
     const meta = document.createElement("span");
@@ -563,6 +617,27 @@
     const tbody = $("licTbody");
     const empty = $("licEmpty");
     const tbl = $("licTable");
+    tbl.classList.toggle("bulk-mode", bulkMode);
+    // Insert/remove the checkbox column header dynamically.
+    const headerRow = tbl.querySelector("thead tr");
+    const existingCheckHeader = headerRow.querySelector("th.bulk-header");
+    if (bulkMode && !existingCheckHeader) {
+      const th = document.createElement("th");
+      th.className = "bulk-header";
+      const masterCb = document.createElement("input");
+      masterCb.type = "checkbox";
+      masterCb.setAttribute("aria-label", "Select all visible");
+      masterCb.addEventListener("change", () => {
+        if (masterCb.checked) for (const l of list) bulkSelected.add(l.id);
+        else bulkSelected.clear();
+        renderTable();
+        updateBulkBar();
+      });
+      th.appendChild(masterCb);
+      headerRow.insertBefore(th, headerRow.firstChild);
+    } else if (!bulkMode && existingCheckHeader) {
+      headerRow.removeChild(existingCheckHeader);
+    }
     tbody.innerHTML = "";
     if (!list.length) {
       tbl.hidden = true;
@@ -813,19 +888,64 @@
       showError("Save failed", err);
     }
   }
-  async function deleteLicense() {
+  // Soft delete: remove from local state and show an Undo toast for 5s. Commit
+  // to the server when the timer elapses or the user navigates away.
+  function deleteLicense() {
     if (!editingId) return;
-    if (!confirm("Delete this license? This cannot be undone.")) return;
-    try {
-      await api("DELETE", `/licenses/${editingId}`);
-      licenses = licenses.filter((l) => l.id !== editingId);
-      closeEditDialog();
-      render();
-      toast("Deleted");
-    } catch (err) {
-      showError("Delete failed", err);
-    }
+    const id = editingId;
+    const lic = licenses.find((l) => l.id === id);
+    if (!lic) return;
+    closeEditDialog();
+    licenses = licenses.filter((l) => l.id !== id);
+    render();
+    softDeleteWithUndo(lic);
   }
+
+  function softDeleteWithUndo(lic) {
+    if (pendingDeletes.has(lic.id)) clearTimeout(pendingDeletes.get(lic.id).timer);
+    const t = $("toast");
+    if (!t) return;
+    t.innerHTML = "";
+    const msg = document.createElement("span");
+    msg.textContent = `Deleted ${lic.customer} - ${lic.licenseType}. `;
+    t.appendChild(msg);
+    const undo = document.createElement("button");
+    undo.type = "button";
+    undo.className = "toast-undo";
+    undo.textContent = "Undo";
+    undo.addEventListener("click", () => {
+      const pending = pendingDeletes.get(lic.id);
+      if (pending) clearTimeout(pending.timer);
+      pendingDeletes.delete(lic.id);
+      licenses.push(lic);
+      render();
+      t.hidden = true;
+    });
+    t.appendChild(undo);
+    t.hidden = false;
+    const timer = setTimeout(() => {
+      // commit the delete
+      api("DELETE", `/licenses/${lic.id}`).catch((err) => {
+        // If server delete fails, restore.
+        showError("Delete failed (restored locally)", err);
+        licenses.push(lic);
+        render();
+      });
+      pendingDeletes.delete(lic.id);
+      t.hidden = true;
+    }, 5000);
+    pendingDeletes.set(lic.id, { license: lic, timer });
+  }
+
+  // Commit any pending soft deletes immediately, e.g. before navigating away.
+  function flushPendingDeletes() {
+    for (const { license, timer } of pendingDeletes.values()) {
+      clearTimeout(timer);
+      api("DELETE", `/licenses/${license.id}`).catch(() => {});
+    }
+    pendingDeletes.clear();
+  }
+  window.addEventListener("beforeunload", flushPendingDeletes);
 
   // ---------- renew dialog ----------
   function openRenewDialog(id) {
@@ -845,29 +965,154 @@
   }
 
   // ---------- email customer ----------
+
+  function customerByName(name) {
+    if (!name) return null;
+    const norm = name.trim().toLowerCase();
+    return customers.find((c) => (c.name || "").trim().toLowerCase() === norm) || null;
+  }
+
+  function templateFor(productLine) {
+    if (productLine) {
+      const t = emailTemplates.find((t) => (t.productLine || "").toLowerCase() === productLine.toLowerCase());
+      if (t && (t.subject || t.body)) return t;
+      // Fall through to seeded default for this product line
+      if (DEFAULT_TEMPLATES[productLine]) return { productLine, ...DEFAULT_TEMPLATES[productLine] };
+    }
+    const def = emailTemplates.find((t) => (t.productLine || "") === "_default");
+    return def || { productLine: "_default", ...DEFAULT_TEMPLATES._default };
+  }
+
+  function substitute(text, vars) {
+    return String(text || "").replace(/\{(\w+)\}/g, (_, key) => vars[key] != null ? vars[key] : `{${key}}`);
+  }
+
+  // Detect a multi-line "renewal package": same customer + ≥2 licenses with expiry
+  // dates within 14 days of each other (and matching the row's expiry +/- 14).
+  function bundleFor(lic) {
+    if (!lic || !lic.customer || !lic.expiryDate) return [lic];
+    const cust = lic.customer.trim().toLowerCase();
+    const anchorMs = parseISO(lic.expiryDate)?.getTime();
+    if (!anchorMs) return [lic];
+    const WINDOW = 14 * 86400000;
+    return licenses.filter((l) =>
+      l.state !== "abandoned" && l.status !== "renewed" &&
+      l.customer && l.customer.trim().toLowerCase() === cust &&
+      l.expiryDate && Math.abs((parseISO(l.expiryDate)?.getTime() || 0) - anchorMs) <= WINDOW
+    ).sort((a, b) => (a.expiryDate || "").localeCompare(b.expiryDate || ""));
+  }
+
   function emailCustomer(lic) {
     const ownerName = lic.ownerName || me.name || "";
-    const subject = `Renewal reminder: ${lic.licenseType} expires ${fmtShortDate(lic.expiryDate)}`;
-    const body =
-      `Hi ${lic.customer || "team"},\n\n` +
-      `This is a friendly reminder that your subscription for ${lic.licenseType} (${lic.userCount} users) is set to expire on ${fmtShortDate(lic.expiryDate)}.\n\n` +
-      `Please let us know if you would like to:\n` +
-      `  1. Renew at the current ${lic.userCount} users\n` +
-      `  2. Adjust the seat count\n` +
-      `  3. Make any other changes\n\n` +
-      `Looking forward to hearing from you.\n\n` +
-      `Best regards,\n${ownerName}\n`;
-    const url = `mailto:?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+    const cust = customerByName(lic.customer);
+    const recipient = cust && cust.primaryEmail ? cust.primaryEmail : "";
+    const cc = cust && Array.isArray(cust.secondaryEmails) && cust.secondaryEmails.length
+      ? cust.secondaryEmails.join(",")
+      : "";
+
+    // Check for bundle: 2+ licenses for same customer within 14 days.
+    const bundle = bundleFor(lic);
+    const isBundle = bundle.length >= 2;
+
+    let subject, body;
+    if (isBundle) {
+      subject = `Renewal reminder: ${lic.customer} multiple subscriptions expiring around ${fmtShortDate(lic.expiryDate)}`;
+      const lines = bundle.map((b) => `  - ${b.licenseType}: ${b.userCount} users, expires ${fmtShortDate(b.expiryDate)}`).join("\n");
+      const firstWord = (lic.customer || "").split(/[\s,]+/)[0] || "";
+      body =
+        `Hi ${firstWord} team,\n\n` +
+        `Several of your subscriptions are coming up for renewal:\n\n` +
+        lines + `\n\n` +
+        `Please let us know if you would like to renew, adjust seat counts, or change any of these.\n\n` +
+        `Looking forward to your reply.\n\n` +
+        `Best regards,\n${ownerName}\nKation Technologies`;
+    } else {
+      const tpl = templateFor(lic.productLine);
+      const firstWord = (lic.customer || "").split(/[\s,]+/)[0] || "";
+      const vars = {
+        customer: lic.customer || "",
+        customerFirstWord: firstWord,
+        licenseType: lic.licenseType || "",
+        users: lic.userCount || 0,
+        expiryDate: fmtShortDate(lic.expiryDate),
+        ownerName,
+      };
+      subject = substitute(tpl.subject, vars);
+      body = substitute(tpl.body, vars);
+    }
+
+    const params = [];
+    if (cc) params.push(`cc=${encodeURIComponent(cc)}`);
+    params.push(`subject=${encodeURIComponent(subject)}`);
+    params.push(`body=${encodeURIComponent(body)}`);
+    const url = `mailto:${encodeURIComponent(recipient)}?${params.join("&")}`;
     window.open(url, "_blank");
-    // Bump status if currently notStarted (the click implies you sent the notice).
-    if (lic.status === "notStarted") {
-      api("PATCH", `/licenses/${lic.id}`, { status: "noticeSent" })
-        .then(({ license }) => {
-          licenses = licenses.map((l) => l.id === license.id ? license : l);
-          render();
-          toast(`Status set to Notice sent.`);
-        })
+
+    if (isBundle) toast(`Drafted email for ${bundle.length}-license bundle.`);
+
+    // Mark notStarted licenses in the bundle as noticeSent (click implies you sent the notice).
+    const toMark = bundle.filter((b) => b.status === "notStarted");
+    if (toMark.length === 1) {
+      api("PATCH", `/licenses/${toMark[0].id}`, { status: "noticeSent" })
+        .then(({ license }) => { licenses = licenses.map((l) => l.id === license.id ? license : l); render(); })
         .catch((err) => showError("Status update failed", err));
+    } else if (toMark.length > 1) {
+      api("POST", "/licenses/bulk", { ids: toMark.map((b) => b.id), patch: { status: "noticeSent" } })
+        .then(({ updated }) => {
+          const m = new Map(updated.map((l) => [l.id, l]));
+          licenses = licenses.map((l) => m.get(l.id) || l);
+          render();
+        })
+        .catch((err) => showError("Bulk status update failed", err));
+    }
+  }
+
+  // ---------- bulk select + reassign ----------
+  function setBulkMode(on) {
+    bulkMode = on;
+    $("bulkSelectBtn").setAttribute("aria-pressed", String(on));
+    $("bulkSelectBtn").textContent = on ? "Done selecting" : "Select";
+    if (!on) bulkSelected.clear();
+    updateBulkBar();
+    render();
+  }
+  function updateBulkBar() {
+    const n = bulkSelected.size;
+    $("bulkBar").hidden = !(bulkMode && n > 0);
+    $("bulkBarCount").textContent = n;
+  }
+  function openBulkReassign() {
+    const n = bulkSelected.size;
+    if (!n) return;
+    $("bulkReassignCount").textContent = n;
+    const sel = $("bulkReassignOwner");
+    sel.innerHTML = '<option value="">Pick a teammate</option>';
+    members.forEach((m) => {
+      const opt = document.createElement("option");
+      opt.value = m.oid;
+      opt.textContent = m.displayName || m.upn || m.oid.slice(0, 8);
+      sel.appendChild(opt);
+    });
+    $("bulkReassignDialog").showModal();
+  }
+  async function confirmBulkReassign() {
+    const oid = $("bulkReassignOwner").value;
+    if (!oid) { toast("Pick an owner first"); return; }
+    const owner = members.find((m) => m.oid === oid);
+    const ids = [...bulkSelected];
+    try {
+      const { updated } = await api("POST", "/licenses/bulk", {
+        ids,
+        patch: { ownerOid: oid, ownerName: owner ? (owner.displayName || owner.upn || "") : "" },
+      });
+      const m = new Map(updated.map((l) => [l.id, l]));
+      licenses = licenses.map((l) => m.get(l.id) || l);
+      $("bulkReassignDialog").close();
+      bulkSelected.clear();
+      setBulkMode(false);
+      toast(`Reassigned ${updated.length} licenses to ${owner ? owner.displayName : "new owner"}.`);
+    } catch (err) {
+      showError("Reassign failed", err);
     }
   }
 
@@ -898,6 +1143,35 @@
     stat(" open", active);
     stat(" renewed", renewedCount);
     if (nextExpiry) stat(" next expiry", fmtShortDate(nextExpiry));
+
+    // Show customer registry info (primary email, secondary, address, notes) if present.
+    const cust = customerByName(customer);
+    const info = $("customerRegistryInfo");
+    info.innerHTML = "";
+    if (cust && (cust.primaryEmail || (cust.secondaryEmails && cust.secondaryEmails.length) || cust.address || cust.notes)) {
+      info.hidden = false;
+      function infoRow(label, value) {
+        if (!value) return;
+        const row = document.createElement("div");
+        row.className = "registry-row";
+        const l = document.createElement("span");
+        l.className = "registry-label";
+        l.textContent = label;
+        const v = document.createElement("span");
+        v.textContent = value;
+        row.appendChild(l);
+        row.appendChild(v);
+        info.appendChild(row);
+      }
+      infoRow("Email:", cust.primaryEmail);
+      if (Array.isArray(cust.secondaryEmails) && cust.secondaryEmails.length) infoRow("CC:", cust.secondaryEmails.join(", "));
+      infoRow("Address:", cust.address);
+      infoRow("Notes:", cust.notes);
+    } else {
+      info.hidden = true;
+    }
+    // Wire Edit Customer button to open the customer edit dialog.
+    $("customerEditBtn").onclick = () => openCustomerEditDialog(customer);
 
     const ul = $("customerDialogList");
     ul.innerHTML = "";
@@ -1093,6 +1367,24 @@
     // Customer 360 dialog
     $("customerDialogClose").addEventListener("click", () => $("customerDialog").close());
 
+    // Customer edit dialog
+    $("custSaveBtn").addEventListener("click", saveCustomer);
+    $("custCancelBtn").addEventListener("click", () => { $("customerEditDialog").close(); editingCustomerId = null; });
+
+    // Email templates editor
+    $("emailTemplatesBtn").addEventListener("click", openTemplatesDialog);
+    $("tplSaveBtn").addEventListener("click", saveTemplate);
+    $("tplDeleteBtn").addEventListener("click", deleteTemplate);
+    $("tplNewBtn").addEventListener("click", newTemplate);
+    $("templatesCloseBtn").addEventListener("click", () => $("templatesDialog").close());
+
+    // Bulk select + reassign
+    $("bulkSelectBtn").addEventListener("click", () => setBulkMode(!bulkMode));
+    $("bulkReassignBtn").addEventListener("click", openBulkReassign);
+    $("bulkClearBtn").addEventListener("click", () => { bulkSelected.clear(); updateBulkBar(); render(); });
+    $("bulkReassignConfirm").addEventListener("click", confirmBulkReassign);
+    $("bulkReassignCancel").addEventListener("click", () => $("bulkReassignDialog").close());
+
     // Custom lead days toggle
     $("licLeadDays").addEventListener("change", () => {
       const v = $("licLeadDays").value;
@@ -1130,6 +1422,132 @@
       calCursor = new Date(calCursor.getFullYear() + 1, calCursor.getMonth(), 1);
       render();
     });
+  }
+
+  // ---------- customer edit dialog ----------
+  let editingCustomerId = null;
+  function openCustomerEditDialog(customerName) {
+    const cust = customerByName(customerName);
+    editingCustomerId = cust ? cust.id : null;
+    const fallbackName = customerName || (cust && cust.name) || "";
+    $("customerEditName").textContent = fallbackName;
+    $("custPrimaryEmail").value = cust ? (cust.primaryEmail || "") : "";
+    $("custSecondaryEmails").value = cust && Array.isArray(cust.secondaryEmails) ? cust.secondaryEmails.join("\n") : "";
+    $("custAddress").value = cust ? (cust.address || "") : "";
+    $("custNotes").value = cust ? (cust.notes || "") : "";
+    $("customerDialog").close();
+    $("customerEditDialog").showModal();
+    $("custPrimaryEmail").focus();
+  }
+  async function saveCustomer() {
+    const secondaryRaw = $("custSecondaryEmails").value.trim();
+    const secondaryEmails = secondaryRaw
+      ? secondaryRaw.split(/[\n,]/).map((s) => s.trim()).filter(Boolean)
+      : [];
+    const payload = {
+      name: $("customerEditName").textContent || "",
+      primaryEmail: $("custPrimaryEmail").value.trim() || null,
+      secondaryEmails,
+      address: $("custAddress").value.trim() || null,
+      notes: $("custNotes").value.trim() || null,
+    };
+    try {
+      if (editingCustomerId) {
+        const { customer } = await api("PATCH", `/customers/${editingCustomerId}`, payload);
+        const idx = customers.findIndex((c) => c.id === customer.id);
+        if (idx >= 0) customers[idx] = customer; else customers.push(customer);
+      } else {
+        const { customer } = await api("POST", "/customers", payload);
+        customers.push(customer);
+      }
+      $("customerEditDialog").close();
+      editingCustomerId = null;
+      toast("Customer saved.");
+    } catch (err) {
+      showError("Save failed", err);
+    }
+  }
+
+  // ---------- email templates editor ----------
+  let editingTemplateKey = null; // productLine of the template currently in the form
+  function openTemplatesDialog() {
+    renderTemplatesList();
+    // Default-select _default or first item
+    const first = emailTemplates.find((t) => t.productLine === "_default") || emailTemplates[0] || { productLine: "_default", ...DEFAULT_TEMPLATES._default };
+    selectTemplate(first.productLine);
+    $("templatesDialog").showModal();
+  }
+  function renderTemplatesList() {
+    const ul = $("templatesList");
+    ul.innerHTML = "";
+    // Merge saved + defaults (defaults shown if no saved version exists)
+    const seen = new Set();
+    const all = [];
+    for (const t of emailTemplates) { all.push(t); seen.add(t.productLine.toLowerCase()); }
+    for (const key of Object.keys(DEFAULT_TEMPLATES)) {
+      if (!seen.has(key.toLowerCase())) all.push({ productLine: key, ...DEFAULT_TEMPLATES[key], _default: true });
+    }
+    all.sort((a, b) => (a.productLine === "_default" ? -1 : b.productLine === "_default" ? 1 : a.productLine.localeCompare(b.productLine)));
+    for (const t of all) {
+      const li = document.createElement("li");
+      li.dataset.key = t.productLine;
+      const label = t.productLine === "_default" ? "Default (any product line)" : t.productLine;
+      li.textContent = label + (t._default ? " (built-in)" : "");
+      if (t.productLine === editingTemplateKey) li.classList.add("active");
+      li.addEventListener("click", () => selectTemplate(t.productLine));
+      ul.appendChild(li);
+    }
+  }
+  function selectTemplate(productLine) {
+    editingTemplateKey = productLine;
+    const t = emailTemplates.find((x) => x.productLine === productLine)
+      || (DEFAULT_TEMPLATES[productLine] ? { productLine, ...DEFAULT_TEMPLATES[productLine] } : { productLine, subject: "", body: "" });
+    $("tplProductLine").value = t.productLine;
+    $("tplSubject").value = t.subject || "";
+    $("tplBody").value = t.body || "";
+    renderTemplatesList();
+  }
+  async function saveTemplate() {
+    const key = $("tplProductLine").value.trim() || "_default";
+    const subject = $("tplSubject").value;
+    const body = $("tplBody").value;
+    try {
+      const { templates } = await api("PUT", "/email-templates", {
+        templates: [{ productLine: key, subject, body }],
+      });
+      // Merge into local state
+      const t = templates[0];
+      if (t) {
+        const idx = emailTemplates.findIndex((x) => x.productLine === t.productLine);
+        if (idx >= 0) emailTemplates[idx] = t; else emailTemplates.push(t);
+      }
+      editingTemplateKey = key;
+      renderTemplatesList();
+      toast("Template saved.");
+    } catch (err) {
+      showError("Save failed", err);
+    }
+  }
+  async function deleteTemplate() {
+    if (!editingTemplateKey) return;
+    if (!confirm(`Delete template for "${editingTemplateKey}"? The built-in default will be used instead.`)) return;
+    try {
+      await api("DELETE", `/email-templates/${encodeURIComponent(editingTemplateKey)}`);
+      emailTemplates = emailTemplates.filter((t) => t.productLine !== editingTemplateKey);
+      // Reload the panel with whatever the default is now
+      selectTemplate(editingTemplateKey);
+      toast("Template removed.");
+    } catch (err) {
+      showError("Delete failed", err);
+    }
+  }
+  function newTemplate() {
+    editingTemplateKey = "";
+    $("tplProductLine").value = "";
+    $("tplSubject").value = DEFAULT_TEMPLATES._default.subject;
+    $("tplBody").value = DEFAULT_TEMPLATES._default.body;
+    renderTemplatesList();
+    $("tplProductLine").focus();
   }
 
   // ---------- CSV import ----------
@@ -1598,9 +2016,15 @@
       if (cached) members = cached;
       wireEvents();
 
-      // Kick off both API calls in parallel; render as soon as licenses arrive.
+      // Kick off all secondary calls in parallel; render as soon as licenses arrive.
       const membersPromise = api("GET", "/members")
         .then((res) => { members = res.members || []; saveCachedMembers(members); render(); })
+        .catch(() => {});
+      const customersPromise = api("GET", "/customers")
+        .then((res) => { customers = res.customers || []; render(); })
+        .catch(() => {});
+      const templatesPromise = api("GET", "/email-templates")
+        .then((res) => { emailTemplates = res.templates || []; })
         .catch(() => {});
       const { licenses: lics } = await api("GET", "/licenses");
       licenses = lics || [];
@@ -1609,8 +2033,8 @@
       const bi = $("bootIndicator");
       if (bi) bi.classList.add("gone");
       render();
-      // Don't await members if it's still in flight — it just refreshes the picker.
-      membersPromise;
+      // Don't await secondaries if still in flight; they just refresh state in background.
+      void membersPromise; void customersPromise; void templatesPromise;
     } catch (err) {
       const bi = $("bootIndicator");
       if (bi) bi.classList.add("gone");

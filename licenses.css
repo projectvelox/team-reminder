@@ -782,19 +782,130 @@ body[data-theme="dark"] .split-menu {
   cursor: pointer;
 }
 
-/* Toast */
+/* Toast (with optional inline Undo button for soft delete) */
 .toast {
   position: fixed;
   bottom: 24px;
   left: 50%;
   transform: translateX(-50%);
   padding: 10px 16px;
-  background: rgba(0, 0, 0, 0.85);
+  background: rgba(0, 0, 0, 0.88);
   color: #fff;
   border-radius: 999px;
   font-size: 13px;
   z-index: 1000;
+  display: flex;
+  align-items: center;
+  gap: 10px;
 }
+.toast-undo {
+  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.4);
+  color: #fff;
+  padding: 3px 10px;
+  border-radius: 999px;
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+.toast-undo:hover { background: rgba(255, 255, 255, 0.15); }
+
+/* Bulk action bar */
+.bulk-bar {
+  position: fixed;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  background: var(--card-bg, #fff);
+  border: 1px solid var(--border, #d1d1d1);
+  border-radius: 12px;
+  padding: 10px 16px;
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.15);
+  z-index: 999;
+}
+body[data-theme="dark"] .bulk-bar {
+  --card-bg: #2b2b30;
+  --border: #3d3d42;
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.4);
+}
+.bulk-count { font-size: 13px; opacity: 0.9; }
+.bulk-count strong { font-weight: 700; font-size: 15px; }
+
+/* Bulk select checkbox column */
+.lic-table.bulk-mode th:first-child,
+.lic-table.bulk-mode td:first-child {
+  width: 36px;
+  min-width: 36px;
+  max-width: 36px;
+  padding-right: 4px;
+  text-align: center;
+}
+.lic-row-checkbox { cursor: pointer; }
+.lic-table tbody tr.selected { background: var(--accent-bg, rgba(56, 174, 235, 0.12)); }
+
+/* Bundle indicator badge on customer cell */
+.bundle-badge {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-size: 10px;
+  font-weight: 700;
+  background: rgba(0, 153, 188, 0.18);
+  color: #0099bc;
+  border: 1px solid rgba(0, 153, 188, 0.4);
+  cursor: help;
+}
+body[data-theme="dark"] .bundle-badge { color: #5ec5dd; }
+
+/* Customer registry info shown in Customer 360 drawer */
+.customer-registry-info {
+  background: var(--row-hover, rgba(0, 120, 212, 0.06));
+  border-radius: 8px;
+  padding: 10px 14px;
+  margin-bottom: 12px;
+  font-size: 13px;
+  line-height: 1.5;
+}
+.customer-registry-info .registry-row { display: flex; gap: 8px; margin: 3px 0; }
+.customer-registry-info .registry-label { font-weight: 600; opacity: 0.75; min-width: 80px; }
+body[data-theme="dark"] .customer-registry-info { background: rgba(255, 255, 255, 0.05); }
+
+/* Email templates editor: two-column layout */
+.templates-layout {
+  display: grid;
+  grid-template-columns: 200px 1fr;
+  gap: 16px;
+  margin: 12px 0;
+  min-height: 360px;
+}
+.templates-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  border: 1px solid var(--border, #d1d1d1);
+  border-radius: 8px;
+  max-height: 60vh;
+  overflow-y: auto;
+}
+.templates-list li {
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border, #e4e4e4);
+  cursor: pointer;
+  font-size: 13px;
+}
+.templates-list li:last-child { border-bottom: none; }
+.templates-list li:hover { background: var(--row-hover, rgba(0, 120, 212, 0.06)); }
+.templates-list li.active { background: var(--accent-bg, rgba(56, 174, 235, 0.18)); font-weight: 600; }
+.templates-editor { display: flex; flex-direction: column; gap: 8px; }
+body[data-theme="dark"] .templates-list { --border: #3d3d42; }
+@media (max-width: 700px) {
+  .templates-layout { grid-template-columns: 1fr; }
+}
+
 
 /* Dark theme nudges (Teams dark theme: bg #1f1f1f, surfaces #2b2b30, dividers #4a4a4f). */
 body[data-theme="dark"] .lic-summary-chip,
