@@ -53,9 +53,13 @@ app.http('digestPreview', {
     const buckets = bucketsForOwner(licenses, ownerOid, today);
     const empty = buckets.overdue.length === 0 && buckets.thisMonth.length === 0 && buckets.nextMonth.length === 0;
 
-    // Honor the rollup opt-in if set, same as the real scheduler does.
+    // Honor the rollup opt-in if set, OR an explicit body.rollup override so
+    // the "show me all accounts" preview button can force-include the section
+    // without changing the user's actual monthly digest preference.
+    const body = await request.json().catch(() => ({}));
+    const forceRollup = body && body.rollup === true;
     const stored = await store.getUser(ownerOid);
-    const wantsRollup = !!stored.settings?.licenseRollupDigest;
+    const wantsRollup = forceRollup || !!stored.settings?.licenseRollupDigest;
     const rollupBuckets = wantsRollup ? aggregateAllBuckets(licenses, today) : null;
 
     const html = buildDigestHtml(profile.displayName || user.name, buckets, rollupBuckets);

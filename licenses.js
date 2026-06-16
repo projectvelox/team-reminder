@@ -1753,7 +1753,8 @@
     $("licSettingsBtn").addEventListener("click", openSettingsDialog);
     $("setSaveBtn").addEventListener("click", saveLicSettings);
     $("setCancelBtn").addEventListener("click", () => $("licSettingsDialog").close());
-    $("setSendTestDigestBtn").addEventListener("click", sendTestDigest);
+    $("setSendTestDigestBtn").addEventListener("click", () => sendTestDigest(false));
+    $("setSendTestDigestAllBtn").addEventListener("click", () => sendTestDigest(true));
 
     // Quick guide
     $("licGuideBtn").addEventListener("click", () => $("licGuideDialog").showModal());
@@ -2389,24 +2390,25 @@
     $("setRollupDigest").checked = !!userSettings.licenseRollupDigest;
     $("licSettingsDialog").showModal();
   }
-  async function sendTestDigest() {
-    const btn = $("setSendTestDigestBtn");
+  async function sendTestDigest(forceRollup) {
+    const btn = forceRollup ? $("setSendTestDigestAllBtn") : $("setSendTestDigestBtn");
     const original = btn.textContent;
     btn.disabled = true;
     btn.textContent = "Sending…";
     try {
-      const res = await api("POST", "/licenses/digest/preview", {});
+      const res = await api("POST", "/licenses/digest/preview", { rollup: !!forceRollup });
       const counts = res.counts || {};
       const sentTo = res.sentTo || "your mailbox";
       const total = (counts.overdue || 0) + (counts.thisMonth || 0) + (counts.nextMonth || 0);
-      if (total === 0) {
-        toast(`Sent to ${sentTo} (no licenses in window — empty digest).`);
+      const variant = forceRollup ? " (all-accounts view)" : "";
+      if (total === 0 && !forceRollup) {
+        toast(`Sent to ${sentTo}${variant} (no licenses in window — empty digest).`);
       } else {
         const parts = [];
         if (counts.overdue) parts.push(`${counts.overdue} overdue`);
         if (counts.thisMonth) parts.push(`${counts.thisMonth} this month`);
         if (counts.nextMonth) parts.push(`${counts.nextMonth} next month`);
-        toast(`Sent to ${sentTo} — ${parts.join(", ")}.`);
+        toast(`Sent to ${sentTo}${variant} — ${parts.join(", ") || "all-accounts section attached"}.`);
       }
     } catch (err) {
       showError("Test digest failed", err);
