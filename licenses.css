@@ -50,7 +50,10 @@ body:is([data-theme="dark"], [data-theme="contrast"]) .lic-boot { background: rg
   align-items: start;
   max-width: none;
 }
-.lic-main { min-width: 0; overflow: hidden; }
+/* v1.7.46: dropped `overflow: hidden` because it breaks sticky thead by
+   establishing a containing block that sticky positioning can't escape.
+   The grid template handles column min-width on its own via minmax(0, 1fr). */
+.lic-main { min-width: 0; }
 .lic-aside {
   display: flex;
   flex-direction: column;
@@ -80,13 +83,13 @@ body[data-view="calendar"] .lic-shell { grid-template-columns: 1fr; }
   .lic-aside > section { flex: 1 1 220px; }
 }
 
-/* Table is the primary surface — always scroll horizontally inside its own
-   container instead of breaking the page layout when content is wider than
-   the column (e.g. browser zoom 125%+ or narrow Teams iframes). */
+/* Table wraps the main pane. v1.7.46: dropped `overflow-x: auto` at desktop
+   because it implicitly forces `overflow-y: auto`, which establishes a scroll
+   container that breaks `position: sticky` on the thead. Mobile-width media
+   query (>900px) still adds the horizontal scroll, so narrow viewports are
+   covered without sacrificing sticky headers at desktop. */
 .lic-table-wrap {
   width: 100%;
-  overflow-x: auto;
-  -webkit-overflow-scrolling: touch;
 }
 
 /* Aside-specific overrides: stack summary chips vertically, compact stats. */

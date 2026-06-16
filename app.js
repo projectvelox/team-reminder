@@ -192,7 +192,7 @@
     const r = candidates[0];
     hero.hidden = false;
     const isToday = (r.dueAt || r.createdDate || today) === today;
-    const time12 = formatTime12(r.time);
+    const time12 = formatTime(r.time);
     const [hh, mm] = r.time.split(":").map(Number);
     const minutesUntil = isToday ? (hh * 60 + mm) - phNowMin : ((hh * 60 + mm) + 24 * 60) - phNowMin;
     let countdown;
@@ -218,7 +218,7 @@
     const get = (t) => +parts.find((p) => p.type === t).value;
     return (get("hour") % 24) * 60 + get("minute");
   }
-  // (formatTime12 / phToday already declared earlier in this file)
+  // (formatTime declared further down; todayPh declared earlier in this file)
 
   // v1.7.44 — wire shortcuts dialog open/close.
   function wireRemShortcuts() {

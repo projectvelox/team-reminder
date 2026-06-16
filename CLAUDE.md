@@ -73,6 +73,16 @@ Secrets, GUIDs, and connection strings live in the Claude memory file `project_d
 
 ## What ships today (v1.7.x)
 
+### v1.7.46 — smoke-test bug-fix round
+
+Three real regressions caught in the v1.7.45 smoke test. All fixed.
+
+- **Reminders tab — `formatTime12 is not defined`**. In v1.7.44 I added `renderNextUp()` to `app.js`, called `formatTime12()` for the time formatting, then deleted what I thought was a duplicate helper claiming "already declared earlier in this file". It wasn't — only `formatTime` exists. Every interaction with the add form (typing a title, pressing Add) threw `ReferenceError` and the Reminders tab couldn't render its list. Renamed every `formatTime12` call to `formatTime`. Reminders is back online.
+- **Licenses tab — sticky table header broken**. `.lic-table-wrap` had `overflow-x: auto`, which per CSS spec also implicitly sets `overflow-y: auto`, establishing a scroll container that broke `position: sticky` on `thead`. Plus `.lic-main` had `overflow: hidden` which compounded the issue. Removed both. Mobile media query (≥900px) still adds `overflow-x: auto` so narrow viewports keep horizontal scroll; desktop sticky thead now actually sticks.
+- **Licenses tab — `?` button opened the long-form Quick Guide instead of the keyboard shortcuts overlay**. Wiring mismatch: the `?` key (keyboard) opened `shortcutsDialog`, but the `?` button (top-right) opened `licGuideDialog`. Made the button open the shortcuts overlay too (consistent with the key + the button's title hint). The Quick Guide is still reachable via `Ctrl+K → "Open Quick guide"`. Button tooltip + aria-label updated to "Keyboard shortcuts (?)".
+
+Cache-bust `v=1.7.46` on Licenses, `v=1.5.5` on Reminders. Footer version label on Reminders bumped from the stale `v1.4.6` to `v1.5.5`. No backend changes.
+
 ### v1.7.45 — senior-review polish + Reminders bug fix
 
 **Bug fix (Reminders tab)** — `renderNextUp()` in v1.7.44 called `phToday()`, which doesn't exist (the helper is `todayPh()`). The boot path threw `ReferenceError: phToday is not defined` and the tab couldn't connect. Renamed the call. **Reminders is back online.**

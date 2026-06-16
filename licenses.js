@@ -3336,8 +3336,10 @@
     $("privacyDetailsLink").addEventListener("click", (e) => { e.preventDefault(); $("privacyDialog").showModal(); });
     $("privacyCloseBtn").addEventListener("click", () => $("privacyDialog").close());
 
-    // Quick guide
-    $("licGuideBtn").addEventListener("click", () => $("licGuideDialog").showModal());
+    // v1.7.46 — Topbar ? opens the keyboard shortcuts overlay (matches the
+    // global `?` keystroke + the button's title hint "Quick guide (?)").
+    // Full Quick Guide is still accessible via Cmd+K → "Open Quick guide".
+    $("licGuideBtn").addEventListener("click", () => $("shortcutsDialog").showModal());
     $("licGuideCloseBtn").addEventListener("click", () => $("licGuideDialog").close());
     $("importFile").addEventListener("change", (e) => {
       const f = e.target.files && e.target.files[0];
