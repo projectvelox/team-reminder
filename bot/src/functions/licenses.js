@@ -375,6 +375,52 @@ app.http('licensesRenew', {
   },
 });
 
+// v1.7.39 — POST /api/licenses/{id}/comments
+// Append a comment to the license's thread. Body: { text }.
+app.http('licensesComments', {
+  methods: ['POST', 'OPTIONS'],
+  authLevel: 'anonymous',
+  route: 'licenses/{id}/comments',
+  handler: async (request, context) => {
+    if (request.method === 'OPTIONS') return { status: 204, headers: corsHeaders() };
+    let user;
+    try { user = await authed(request); } catch (err) { return json(err.status || 401, { error: err.message }); }
+    await registerCaller(user);
+
+    const id = request.params.id;
+    if (!id) return json(400, { error: 'id is required' });
+    const existing = await store.getLicense(id);
+    if (!existing) return json(404, { error: 'not found' });
+
+    const body = await request.json().catch(() => ({}));
+    const text = String(body.text || '').trim();
+    if (!text) return json(400, { error: 'text is required' });
+    if (text.length > 2000) return json(400, { error: 'text max 2000 chars' });
+
+    const now = new Date().toISOString();
+    const comment = {
+      id: newId(),
+      at: now,
+      byOid: user.oid,
+      byName: user.name || null,
+      text,
+    };
+    const comments = Array.isArray(existing.comments) ? existing.comments.slice() : [];
+    comments.push(comment);
+    if (comments.length > 100) comments.splice(0, comments.length - 100);
+
+    const merged = {
+      ...existing,
+      comments,
+      lastEditedAt: now,
+      lastEditedByOid: user.oid,
+      lastEditedByName: user.name || null,
+    };
+    await store.upsertLicense(merged);
+    return json(201, { comment, license: merged });
+  },
+});
+
 // POST /api/licenses/bulk — apply the same patch to many licenses (e.g. bulk reassign Owner).
 // Body: { ids: ["id1", ...], patch: { ownerOid, ownerName } }
 app.http('licensesBulk', {

@@ -73,6 +73,28 @@ Secrets, GUIDs, and connection strings live in the Claude memory file `project_d
 
 ## What ships today (v1.7.x)
 
+### v1.7.39 — quality-of-life bundle
+
+Big multi-feature release; tab + bot (comments + saved-views endpoints).
+
+- **Saved filter views** — `+ Save view` button on the active-filter bar names the current filter combo and pins it as a chip above the bar. Stored per-user in `settings.savedLicenseViews` (max 25). Click chip = apply; chip `×` = delete.
+- **Command palette** — `Ctrl+K` / `Cmd+K` opens a Linear/cmdk-style picker. Searches actions (Add license, Refresh, Open Settings, Switch view, Export CSV, …) AND entities (licenses + customers). Arrow keys navigate, Enter selects, Esc closes.
+- **Keyboard shortcuts overlay** — `?` opens a help dialog. Active shortcuts: `Ctrl+K` (palette), `/` (focus search), `a` (add license), `q` (toggle quick-add), `r` (refresh), `g t` / `g c` (go to Table/Calendar), `Esc` (close any dialog).
+- **Quick-renew (+1y)** on each row — clicking *Renew* now does +1y instantly with an **Undo** in the toast. Shift-click still opens the dialog for 2y / 3y / custom date.
+- **Undo toast** — `toast()` extended with `{ actionLabel, onAction }`. Renew uses it; delete already had its own.
+- **Owner avatars** — round photo (backed by the existing `/api/users/{oid}/photo` 60s-cached proxy) with initials-on-color fallback when no photo. Renders next to the owner pill in every row.
+- **Live updates** — 60s background poll on `/api/licenses` when the tab is visible and no dialog is open. New header pill `Updated 12s ago` (refreshed every 10s without server hit) shows freshness. Pending-undo rows are excluded from poll overwrites.
+- **Quick-add inline row** — collapsible `+ Quick add a license` strip above the table for Customer + License type + Expiry + Users without opening the full dialog. Owner defaults to current user.
+- **Comments thread per license** — new `comments[]` field on the license schema (capped 100). Edit dialog gets a Comments section with newest-at-bottom + `Comment` button (Ctrl+Enter to send). Each row's Edit button shows a `💬 N` badge when there are comments. New endpoint: `POST /api/licenses/{id}/comments`.
+- **Calendar density toggle** — `▦ / ▪` switch in the calendar nav. Compact halves the cell height + shrinks pills, for users tracking 100+ renewals per month.
+- **Year jump** in calendar — dropdown of years with data (plus the next 3) so you can land on March 2027 in two clicks instead of 30 forward-arrows. "Same month next year" stays.
+- **Hover-notes tooltip** on every table row (truncated at 600 chars). No more opening a dialog just to read a one-line context note.
+- **Activity sidebar** — last 20 tenant-wide events ("Dona renewed Acme M365 · 3 min ago") in the right sidebar. Click any entry to open the relevant license. Sourced from `license.events[]` — no new endpoint.
+- **Loading skeletons** — replaced the `Loading licenses…` text with 4 shimmer-rows so the layout doesn't jump on first paint.
+- **Tab focus polish** — universal `:focus-visible` ring on every interactive element (buttons, inputs, comment thread, activity links) for keyboard nav.
+
+Cache-bust to `v=1.7.39` on `licenses.html`/`licenses.js`/`licenses.css`. **Backend redeploy required** — new comments endpoint + license schema field + settings field.
+
 ### v1.7.38 — enterprise filter bar (Ella review)
 
 Tab-only release. Addresses Ella's filter-UX review by adding the genuinely-new pieces (active-filters summary, month dropdown, 4-bucket expiry pill) without duplicating what was already shipped (sidebar breakdown chips, quick filters, sortable columns, owner count alongside unique customers).

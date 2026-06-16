@@ -14,10 +14,10 @@
   <link rel="preconnect" href="https://func-day-reminders-17023.azurewebsites.net" crossorigin />
   <link rel="dns-prefetch" href="https://func-day-reminders-17023.azurewebsites.net" />
   <link rel="preconnect" href="https://res.cdn.office.net" crossorigin />
-  <link rel="preload" as="script" href="licenses.js?v=1.7.38" />
-  <link rel="preload" as="style" href="licenses.css?v=1.7.38" />
-  <link rel="stylesheet" href="styles.css?v=1.7.38" />
-  <link rel="stylesheet" href="licenses.css?v=1.7.38" />
+  <link rel="preload" as="script" href="licenses.js?v=1.7.39" />
+  <link rel="preload" as="style" href="licenses.css?v=1.7.39" />
+  <link rel="stylesheet" href="styles.css?v=1.7.39" />
+  <link rel="stylesheet" href="licenses.css?v=1.7.39" />
   <script src="https://res.cdn.office.net/teams-js/2.24.0/js/MicrosoftTeams.min.js"></script>
 </head>
 <body data-theme="default" data-page="licenses">
@@ -48,6 +48,7 @@
       </div>
       <button id="emailTemplatesBtn" class="btn ghost" title="Edit per-product-line renewal email templates">Templates</button>
       <button id="bulkSelectBtn" class="btn ghost" aria-pressed="false" title="Select multiple licenses to reassign owner">Select</button>
+      <span id="syncIndicator" class="sync-indicator" title="Background poll refreshes every 60s">Updated never</span>
       <button id="refreshBtn" class="btn ghost" title="Reload licenses, customers, members, and templates from the server">&#x21bb; Refresh</button>
       <button id="licSettingsBtn" class="btn ghost" title="Settings for the Licenses tab">&#9881; Settings</button>
       <button id="licGuideBtn" class="btn ghost" title="Show the Licenses tab quick guide" aria-label="Show guide">?</button>
@@ -61,7 +62,13 @@
     <main class="lic-main">
       <p id="errorBanner" class="error-banner" hidden></p>
 
-      <div id="bootIndicator" class="lic-boot" aria-live="polite">Loading licenses&hellip;</div>
+      <div id="bootIndicator" class="lic-boot" aria-live="polite">
+        <span class="lic-boot-label">Loading licenses&hellip;</span>
+        <div class="lic-skeleton-row"><span class="lic-skeleton-cell"></span><span class="lic-skeleton-cell"></span><span class="lic-skeleton-cell"></span><span class="lic-skeleton-cell"></span><span class="lic-skeleton-cell"></span><span class="lic-skeleton-cell"></span><span class="lic-skeleton-cell"></span><span class="lic-skeleton-cell"></span></div>
+        <div class="lic-skeleton-row"><span class="lic-skeleton-cell"></span><span class="lic-skeleton-cell"></span><span class="lic-skeleton-cell"></span><span class="lic-skeleton-cell"></span><span class="lic-skeleton-cell"></span><span class="lic-skeleton-cell"></span><span class="lic-skeleton-cell"></span><span class="lic-skeleton-cell"></span></div>
+        <div class="lic-skeleton-row"><span class="lic-skeleton-cell"></span><span class="lic-skeleton-cell"></span><span class="lic-skeleton-cell"></span><span class="lic-skeleton-cell"></span><span class="lic-skeleton-cell"></span><span class="lic-skeleton-cell"></span><span class="lic-skeleton-cell"></span><span class="lic-skeleton-cell"></span></div>
+        <div class="lic-skeleton-row"><span class="lic-skeleton-cell"></span><span class="lic-skeleton-cell"></span><span class="lic-skeleton-cell"></span><span class="lic-skeleton-cell"></span><span class="lic-skeleton-cell"></span><span class="lic-skeleton-cell"></span><span class="lic-skeleton-cell"></span><span class="lic-skeleton-cell"></span></div>
+      </div>
 
       <div id="filterPills" class="filter-pills" role="group" aria-label="Quick filters">
         <button type="button" class="filter-pill" data-quick="all" aria-pressed="true">All</button>
@@ -95,10 +102,27 @@
       <div id="activeFilterBar" class="active-filter-bar" role="region" aria-label="Active filters and result count">
         <span id="resultCount" class="result-count" aria-live="polite"></span>
         <div id="activeFilterChips" class="active-filter-chips"></div>
+        <button type="button" id="saveViewBtn" class="filter-save-view" title="Save these filters as a named view">+ Save view</button>
         <button type="button" id="clearAllFiltersBtn" class="filter-clear-all" hidden>Clear all</button>
       </div>
+      <div id="savedViewsStrip" class="saved-views-strip" role="region" aria-label="Saved filter views" hidden></div>
 
       <section id="tableView">
+        <!-- v1.7.39 Quick-add inline row. Bypasses the full dialog for the
+             most common shape: Customer + License type + Expiry. Owner is the
+             current user; everything else falls back to defaults. -->
+        <details id="quickAddDetails" class="quick-add-details">
+          <summary class="quick-add-summary">+ Quick add a license</summary>
+          <form id="quickAddForm" class="quick-add-form" autocomplete="off">
+            <input id="qaCustomer" class="quick-add-input" type="text" placeholder="Customer" aria-label="Customer" maxlength="200" required />
+            <input id="qaLicenseType" class="quick-add-input" type="text" placeholder="License type" aria-label="License type" maxlength="200" required />
+            <input id="qaExpiry" class="quick-add-input" type="date" aria-label="Expiry date" required />
+            <input id="qaUsers" class="quick-add-input quick-add-users" type="number" min="0" max="1000000" placeholder="Users" aria-label="Number of users" />
+            <button type="submit" class="btn primary">Add</button>
+            <button type="button" id="qaCancelBtn" class="btn ghost">Cancel</button>
+          </form>
+        </details>
+
         <div class="lic-table-wrap">
         <table id="licTable" class="lic-table" hidden>
           <thead>
@@ -132,7 +156,13 @@
           <button type="button" class="btn ghost" id="calToday">Today</button>
           <button type="button" class="btn ghost" id="calNext" title="Next month">&rsaquo;</button>
           <h2 class="lic-cal-title" id="calTitle"></h2>
+          <select id="calYearJump" class="filter-dropdown" aria-label="Jump to year"></select>
           <button type="button" class="btn ghost" id="calNextYear" title="Same month next year">Same month next year</button>
+          <span class="lic-cal-nav-spacer"></span>
+          <div id="calDensity" class="view-switch" role="group" aria-label="Calendar density">
+            <button type="button" data-density="comfortable" class="view-btn" aria-pressed="true" title="Comfortable spacing">▦</button>
+            <button type="button" data-density="compact" class="view-btn" aria-pressed="false" title="Compact spacing">▪</button>
+          </div>
         </div>
         <div class="lic-cal-grid">
           <div class="lic-cal-header">Mon</div>
@@ -186,6 +216,11 @@
       <section id="productStrip" class="lic-breakdown" aria-label="By product line" hidden>
         <span class="lic-breakdown-label">Product</span>
         <div id="productChips" class="lic-breakdown-chips"></div>
+      </section>
+
+      <section id="activityStrip" class="lic-activity-strip" aria-label="Recent activity" hidden>
+        <h3 class="lic-activity-strip-title">Recent activity</h3>
+        <ol id="activityList" class="lic-activity-strip-list"></ol>
       </section>
     </aside>
   </div>
@@ -275,6 +310,15 @@
         <span class="lic-label">Notes (optional)</span>
         <textarea id="licNotes" maxlength="2000" placeholder="Renewal contact, multi-year context, etc." rows="3"></textarea>
       </label>
+
+      <section id="licComments" class="lic-comments" hidden>
+        <h3 class="lic-comments-title">Comments</h3>
+        <ol id="licCommentsList" class="lic-comments-list"></ol>
+        <div class="lic-comment-add">
+          <textarea id="licCommentInput" rows="2" maxlength="2000" placeholder="Add a comment, e.g. 'Called CFO, will confirm Friday' (Ctrl+Enter to send)" aria-label="Add a comment"></textarea>
+          <button type="button" id="licCommentSendBtn" class="btn primary">Comment</button>
+        </div>
+      </section>
 
       <section id="licActivity" class="lic-activity" hidden>
         <h3 class="lic-activity-title">Activity</h3>
@@ -562,7 +606,7 @@
     </section>
 
     <div class="lic-dialog-actions">
-      <span class="lic-version" id="licVersionLabel" title="Licenses tab build version">v1.7.38</span>
+      <span class="lic-version" id="licVersionLabel" title="Licenses tab build version">v1.7.39</span>
       <button type="button" class="btn primary" id="licGuideCloseBtn">Close</button>
     </div>
   </dialog>
@@ -635,8 +679,48 @@
     </form>
   </dialog>
 
+  <!-- v1.7.39 Command palette: Ctrl+K / Cmd+K -->
+  <dialog id="cmdkDialog" class="cmdk-dialog">
+    <input id="cmdkInput" class="cmdk-input" type="text" placeholder="Search licenses, customers, or run an action…" aria-label="Command palette search" autocomplete="off" />
+    <ul id="cmdkResults" class="cmdk-results" role="listbox"></ul>
+    <div class="cmdk-footer">
+      <span><kbd>↑</kbd><kbd>↓</kbd> navigate</span>
+      <span><kbd>Enter</kbd> select</span>
+      <span><kbd>Esc</kbd> close</span>
+    </div>
+  </dialog>
+
+  <!-- v1.7.39 Keyboard shortcuts overlay: ? -->
+  <dialog id="shortcutsDialog" class="lic-dialog small">
+    <h2>Keyboard shortcuts</h2>
+    <div class="shortcuts-grid">
+      <div class="shortcuts-section">
+        <h3>Navigate</h3>
+        <dl>
+          <dt><kbd>Ctrl</kbd>+<kbd>K</kbd></dt><dd>Command palette</dd>
+          <dt><kbd>/</kbd></dt><dd>Focus search</dd>
+          <dt><kbd>?</kbd></dt><dd>Show this overlay</dd>
+          <dt><kbd>Esc</kbd></dt><dd>Close any dialog</dd>
+        </dl>
+      </div>
+      <div class="shortcuts-section">
+        <h3>Act</h3>
+        <dl>
+          <dt><kbd>a</kbd></dt><dd>Add license</dd>
+          <dt><kbd>q</kbd></dt><dd>Toggle quick-add</dd>
+          <dt><kbd>r</kbd></dt><dd>Refresh data</dd>
+          <dt><kbd>g</kbd> <kbd>t</kbd></dt><dd>Go to Table</dd>
+          <dt><kbd>g</kbd> <kbd>c</kbd></dt><dd>Go to Calendar</dd>
+        </dl>
+      </div>
+    </div>
+    <div class="lic-dialog-actions">
+      <button type="button" class="btn primary" id="shortcutsCloseBtn">Got it</button>
+    </div>
+  </dialog>
+
   <div id="toast" class="toast" hidden></div>
 
-  <script src="licenses.js?v=1.7.38" defer></script>
+  <script src="licenses.js?v=1.7.39" defer></script>
 </body>
 </html>

@@ -43,6 +43,8 @@ const DEFAULT_SETTINGS = {
   licenseSkipBriefing: false,    // opt out of the morning briefing card
   licenseSkipMonthlyDigest: false, // opt out of the monthly email digest
   licenseRollupDigest: false,    // opt in to include an all-accounts section in the digest (sales lead use case)
+  // v1.7.39 — per-user saved filter views. Each: { id, name, filters: {...} }
+  savedLicenseViews: [],
 };
 
 // ---------- user ----------
@@ -339,6 +341,17 @@ function serializeLeadDays(v) {
   return null;
 }
 
+// v1.7.39 — per-license comment thread, capped at 100 to keep Table rows light.
+// Each: { id, at, byOid, byName, text }.
+function parseComments(v) {
+  if (!v || typeof v !== 'string') return [];
+  try {
+    const parsed = JSON.parse(v);
+    if (!Array.isArray(parsed)) return [];
+    return parsed.slice(-100);
+  } catch { return []; }
+}
+
 function parseLeadFireLog(v) {
   if (!v) return [];
   if (typeof v !== 'string') return [];
@@ -367,6 +380,7 @@ function entityToLicense(e) {
     leadDays: parseLeadDays(e.leadDays),
     lastFiredLeadDays: parseLeadFireLog(e.lastFiredLeadDays),
     notes: e.notes || null,
+    comments: parseComments(e.comments),
     state: e.state === 'abandoned' ? 'abandoned' : 'active',
     status: LICENSE_STATUSES.includes(e.status) ? e.status : 'notStarted',
     statusChangedAt: e.statusChangedAt || null,
@@ -440,6 +454,7 @@ async function upsertLicense(license) {
     lastEscalatedDays: typeof license.lastEscalatedDays === 'number' ? license.lastEscalatedDays : null,
     leadSnoozedUntil: license.leadSnoozedUntil || null,
     events: JSON.stringify(Array.isArray(license.events) ? license.events.slice(-50) : []),
+    comments: JSON.stringify(Array.isArray(license.comments) ? license.comments.slice(-100) : []),
   }, 'Replace');
 }
 

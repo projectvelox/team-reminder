@@ -109,6 +109,7 @@
     licenseSkipBriefing: false,
     licenseSkipMonthlyDigest: false,
     licenseRollupDigest: false,
+    savedLicenseViews: [],
   };
   let themeOverride = "auto"; // 'auto' | 'default' | 'dark' | 'contrast'
   try {
@@ -224,13 +225,32 @@
     }
     if (err) console.error(msg, err);
   }
-  function toast(msg) {
+  // v1.7.39 — toast accepts an optional { actionLabel, onAction, durationMs }.
+  // When actionLabel is set, the toast renders a clickable button (e.g. Undo)
+  // and stays up longer. Calling toast() with a plain string keeps the old API.
+  function toast(msg, opts) {
     const t = $("toast");
     if (!t) return;
-    t.textContent = msg;
+    t.innerHTML = "";
+    const span = document.createElement("span");
+    span.textContent = msg;
+    t.appendChild(span);
+    const durationMs = (opts && opts.durationMs) || (opts && opts.actionLabel ? 6000 : 2400);
+    if (opts && opts.actionLabel && typeof opts.onAction === "function") {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "toast-action";
+      btn.textContent = opts.actionLabel;
+      btn.addEventListener("click", () => {
+        clearTimeout(toast._t);
+        t.hidden = true;
+        try { opts.onAction(); } catch (err) { console.error(err); }
+      });
+      t.appendChild(btn);
+    }
     t.hidden = false;
     clearTimeout(toast._t);
-    toast._t = setTimeout(() => { t.hidden = true; }, 2400);
+    toast._t = setTimeout(() => { t.hidden = true; }, durationMs);
   }
 
   // ---------- API ----------
@@ -356,6 +376,43 @@
   }
 
   // ---------- v1.7.38 active-filter bar ----------
+  // v1.7.39 — owner avatar URL backed by /api/users/{oid}/photo (60s server
+  // cache). The img tag's onerror falls back to the colored initials pill.
+  function ownerAvatarUrl(oid) {
+    if (!oid) return null;
+    return `${API_BASE}/users/${encodeURIComponent(oid)}/photo`;
+  }
+  function ownerInitials(name) {
+    if (!name) return "?";
+    const parts = name.trim().split(/\s+/).filter(Boolean);
+    if (!parts.length) return "?";
+    if (parts.length === 1) return parts[0][0].toUpperCase();
+    return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+  }
+  function buildOwnerAvatar(lic, opts) {
+    const size = (opts && opts.size) || 22;
+    const wrap = document.createElement("span");
+    wrap.className = "owner-avatar";
+    wrap.style.width = `${size}px`;
+    wrap.style.height = `${size}px`;
+    wrap.style.background = ownerColor(lic.ownerOid);
+    wrap.style.fontSize = `${Math.max(9, size * 0.42)}px`;
+    wrap.title = lic.ownerName || (lic.ownerOid ? lic.ownerOid.slice(0, 8) : "(none)");
+    if (lic.ownerOid) {
+      const img = document.createElement("img");
+      img.src = ownerAvatarUrl(lic.ownerOid);
+      img.alt = "";
+      img.loading = "lazy";
+      img.addEventListener("error", () => { img.remove(); });
+      wrap.appendChild(img);
+    }
+    const initials = document.createElement("span");
+    initials.className = "owner-avatar-initials";
+    initials.textContent = ownerInitials(lic.ownerName);
+    wrap.appendChild(initials);
+    return wrap;
+  }
+
   function ownerNameByOid(oid) {
     if (!oid) return "(none)";
     // Prefer the in-memory members list (auto-registered), fall back to the
@@ -438,6 +495,183 @@
 
     $("clearAllFiltersBtn").hidden = !hasAnyFilter();
   }
+  // ---------- v1.7.39 calendar density ----------
+  let calDensity = "comfortable"; // 'comfortable' | 'compact'
+  try {
+    const d = localStorage.getItem("lic.calDensity");
+    if (d === "compact" || d === "comfortable") calDensity = d;
+  } catch (_) {}
+  function setCalDensity(d) {
+    calDensity = d;
+    try { localStorage.setItem("lic.calDensity", d); } catch (_) {}
+    document.body.dataset.calDensity = d;
+    document.querySelectorAll("#calDensity .view-btn").forEach((b) => {
+      b.setAttribute("aria-pressed", b.dataset.density === d ? "true" : "false");
+    });
+  }
+  function populateCalYearJump() {
+    const sel = $("calYearJump");
+    if (!sel) return;
+    const years = new Set();
+    const thisYear = new Date().getFullYear();
+    years.add(thisYear);
+    years.add(thisYear + 1);
+    years.add(thisYear + 2);
+    years.add(thisYear + 3);
+    for (const l of licenses) {
+      if (l.expiryDate) years.add(parseInt(l.expiryDate.slice(0, 4), 10));
+    }
+    const sorted = [...years].sort();
+    const current = calCursor.getFullYear();
+    sel.innerHTML = "";
+    for (const y of sorted) {
+      const opt = document.createElement("option");
+      opt.value = String(y);
+      opt.textContent = String(y);
+      sel.appendChild(opt);
+    }
+    sel.value = String(current);
+  }
+
+  // ---------- v1.7.39 saved views ----------
+  function currentFilterSnapshot() {
+    return {
+      quickFilter,
+      summaryFilter,
+      ownerFilter: [...ownerFilter],
+      productFilter: [...productFilter],
+      statusFilter: [...statusFilter],
+      expiryFilter: [...expiryFilter],
+      monthFilter,
+      searchText,
+      groupBy,
+    };
+  }
+  function applyFilterSnapshot(snap) {
+    if (!snap || typeof snap !== "object") return;
+    quickFilter = typeof snap.quickFilter === "string" ? snap.quickFilter : "all";
+    summaryFilter = snap.summaryFilter || null;
+    ownerFilter = new Set(Array.isArray(snap.ownerFilter) ? snap.ownerFilter : []);
+    productFilter = new Set(Array.isArray(snap.productFilter) ? snap.productFilter : []);
+    statusFilter = new Set(Array.isArray(snap.statusFilter) ? snap.statusFilter : []);
+    expiryFilter = new Set(Array.isArray(snap.expiryFilter) ? snap.expiryFilter : []);
+    monthFilter = typeof snap.monthFilter === "string" ? snap.monthFilter : "";
+    searchText = typeof snap.searchText === "string" ? snap.searchText : "";
+    if (typeof snap.groupBy === "string") groupBy = snap.groupBy;
+    persistFilters();
+    try { localStorage.setItem(LS_QUICK, quickFilter); } catch (_) {}
+    try { localStorage.setItem(LS_GROUP, groupBy); } catch (_) {}
+    $("searchInput").value = searchText;
+    $("searchClear").hidden = !searchText;
+    $("monthFilter").value = monthFilter;
+  }
+  async function saveCurrentView() {
+    const name = prompt("Name this view:", `View ${(userSettings.savedLicenseViews || []).length + 1}`);
+    if (!name || !name.trim()) return;
+    const view = {
+      id: `v-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`,
+      name: name.trim().slice(0, 80),
+      filters: currentFilterSnapshot(),
+    };
+    const next = {
+      ...userSettings,
+      savedLicenseViews: [...(userSettings.savedLicenseViews || []), view].slice(-25),
+    };
+    try {
+      const { settings } = await api("PUT", "/settings", { settings: next });
+      userSettings = { ...userSettings, ...settings };
+      renderSavedViews();
+      toast(`Saved view: ${view.name}`);
+    } catch (err) { showError("Save view failed", err); }
+  }
+  async function deleteSavedView(id) {
+    const views = (userSettings.savedLicenseViews || []).filter((v) => v.id !== id);
+    const next = { ...userSettings, savedLicenseViews: views };
+    try {
+      const { settings } = await api("PUT", "/settings", { settings: next });
+      userSettings = { ...userSettings, ...settings };
+      renderSavedViews();
+    } catch (err) { showError("Delete view failed", err); }
+  }
+  // v1.7.39 — tenant-wide activity sidebar: last 20 events across all licenses.
+  // Sourced from license.events[] so no new endpoint. Reads "Dona renewed Acme
+  // M365 · 3 min ago" style.
+  function renderActivityStrip() {
+    const strip = $("activityStrip");
+    const list = $("activityList");
+    if (!strip || !list) return;
+    const flat = [];
+    for (const lic of licenses) {
+      if (!Array.isArray(lic.events)) continue;
+      for (const ev of lic.events) {
+        if (!ev || !ev.at) continue;
+        flat.push({ ...ev, licenseId: lic.id, customer: lic.customer, licenseType: lic.licenseType });
+      }
+    }
+    flat.sort((a, b) => b.at.localeCompare(a.at));
+    const top = flat.slice(0, 20);
+    list.innerHTML = "";
+    if (!top.length) { strip.hidden = true; return; }
+    strip.hidden = false;
+    const verbMap = {
+      created: "added",
+      statusChanged: "changed status on",
+      ownerChanged: "reassigned owner on",
+      expiryChanged: "moved expiry on",
+      renewed: "renewed",
+      abandoned: "marked won't renew",
+    };
+    for (const ev of top) {
+      const li = document.createElement("li");
+      li.className = "activity-strip-item";
+      const link = document.createElement("button");
+      link.type = "button";
+      link.className = "activity-strip-link";
+      const verb = verbMap[ev.type] || ev.type;
+      const who = ev.byName || "Someone";
+      const target = `${ev.customer || "?"}, ${ev.licenseType || "?"}`;
+      const when = fmtRelative(Date.parse(ev.at));
+      link.innerHTML = `<strong>${escapeHtml(who)}</strong> ${escapeHtml(verb)} <em>${escapeHtml(target)}</em> · <span class="activity-when">${escapeHtml(when)}</span>`;
+      link.addEventListener("click", () => {
+        const lic = licenses.find((l) => l.id === ev.licenseId);
+        if (lic) openEditDialog(lic);
+      });
+      li.appendChild(link);
+      list.appendChild(li);
+    }
+  }
+  function escapeHtml(s) {
+    return String(s == null ? "" : s)
+      .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+  }
+
+  function renderSavedViews() {
+    const strip = $("savedViewsStrip");
+    if (!strip) return;
+    const views = userSettings.savedLicenseViews || [];
+    strip.innerHTML = "";
+    strip.hidden = views.length === 0;
+    for (const v of views) {
+      const chip = document.createElement("button");
+      chip.type = "button";
+      chip.className = "saved-view-chip";
+      chip.title = `Apply saved view: ${v.name}`;
+      const lab = document.createElement("span");
+      lab.textContent = v.name;
+      chip.appendChild(lab);
+      const x = document.createElement("span");
+      x.className = "saved-view-chip-x";
+      x.setAttribute("role", "button");
+      x.setAttribute("aria-label", `Delete saved view: ${v.name}`);
+      x.textContent = "×";
+      x.addEventListener("click", (e) => { e.stopPropagation(); deleteSavedView(v.id); });
+      chip.appendChild(x);
+      chip.addEventListener("click", () => { applyFilterSnapshot(v.filters); render(); });
+      strip.appendChild(chip);
+    }
+  }
+
   function clearAllFilters() {
     quickFilter = "all";
     summaryFilter = null;
@@ -765,6 +999,9 @@
     renderProductChips();
     renderStatusChips();
     renderActiveFilterBar();
+    renderSavedViews();
+    renderActivityStrip();
+    populateCalYearJump();
     document.querySelectorAll("#viewSwitch .view-btn").forEach((b) => {
       b.setAttribute("aria-pressed", b.dataset.view === currentView ? "true" : "false");
     });
@@ -811,6 +1048,9 @@
     const d = daysBetween(today, lic.expiryDate);
     if (d !== null && d < 0 && lic.state !== "abandoned") tr.classList.add("overdue");
     if (lic.state === "abandoned") tr.classList.add("abandoned");
+    // v1.7.39 — hover-tooltip with full notes so the cell text doesn't need
+    // to be expanded to read context. Truncated for sanity.
+    if (lic.notes) tr.title = lic.notes.length > 600 ? lic.notes.slice(0, 597) + "…" : lic.notes;
 
     const tdCustomer = document.createElement("td");
     tdCustomer.className = "col-customer";
@@ -878,11 +1118,15 @@
 
     const tdOwner = document.createElement("td");
     tdOwner.className = "col-owner";
+    const ownerWrap = document.createElement("span");
+    ownerWrap.className = "owner-cell";
+    ownerWrap.appendChild(buildOwnerAvatar(lic, { size: 22 }));
     const pill = document.createElement("span");
     pill.className = "owner-pill";
     pill.style.background = ownerColor(lic.ownerOid);
     pill.textContent = lic.ownerName || (lic.ownerOid ? lic.ownerOid.slice(0, 8) : "(none)");
-    tdOwner.appendChild(pill);
+    ownerWrap.appendChild(pill);
+    tdOwner.appendChild(ownerWrap);
     tr.appendChild(tdOwner);
 
     const tdProd = document.createElement("td");
@@ -911,6 +1155,16 @@
     editBtn.type = "button";
     editBtn.className = "btn ghost small";
     editBtn.textContent = "Edit";
+    // v1.7.39 — comment count badge so threads are visible from the row.
+    const cmtCount = Array.isArray(lic.comments) ? lic.comments.length : 0;
+    if (cmtCount > 0) {
+      const badge = document.createElement("span");
+      badge.className = "row-comment-badge";
+      badge.textContent = `💬 ${cmtCount}`;
+      badge.title = `${cmtCount} comment${cmtCount === 1 ? "" : "s"}`;
+      editBtn.appendChild(document.createTextNode(" "));
+      editBtn.appendChild(badge);
+    }
     editBtn.addEventListener("click", (e) => { e.stopPropagation(); openEditDialog(lic); });
     tdActions.appendChild(editBtn);
     const emailBtn = document.createElement("button");
@@ -930,8 +1184,14 @@
     renewBtn.type = "button";
     renewBtn.className = "btn primary small";
     renewBtn.textContent = "Renew";
-    renewBtn.title = "Mark this license renewed";
-    renewBtn.addEventListener("click", (e) => { e.stopPropagation(); openRenewDialog(lic.id); });
+    // v1.7.39 — single click = quick +1y (most-common path), Shift-click = open
+    // the dialog for picking 2y/3y/custom-date.
+    renewBtn.title = "Renew +1y (Shift-click for custom)";
+    renewBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      if (e.shiftKey) { openRenewDialog(lic.id); return; }
+      quickRenewOneYear(lic);
+    });
     tdActions.appendChild(renewBtn);
     // Kebab overflow menu (Delete, future actions)
     const kebab = document.createElement("button");
@@ -1300,6 +1560,7 @@
     ensureLeadPicker("licLeadDaysPicker").set([]);
     $("licNotes").value = "";
     $("licActivity").hidden = true;
+    $("licComments").hidden = true;
     $("licEmailBtn").hidden = true;
     $("licRenewBtn").hidden = true;
     $("licDeleteBtn").hidden = true;
@@ -1328,11 +1589,64 @@
     ensureLeadPicker("licLeadDaysPicker").set(leadInit);
     $("licNotes").value = lic.notes || "";
     renderActivityLog(lic);
+    renderComments(lic);
     $("licEmailBtn").hidden = false;
     $("licRenewBtn").hidden = false;
     $("licDeleteBtn").hidden = false;
     $("licDialog").showModal();
     $("licCustomer").focus();
+  }
+
+  // v1.7.39 — per-license comments thread.
+  function renderComments(lic) {
+    const section = $("licComments");
+    const list = $("licCommentsList");
+    if (!section || !list) return;
+    section.hidden = false;
+    list.innerHTML = "";
+    const comments = Array.isArray(lic.comments) ? lic.comments.slice().sort((a, b) => (a.at || "").localeCompare(b.at || "")) : [];
+    if (!comments.length) {
+      const li = document.createElement("li");
+      li.className = "lic-comments-empty";
+      li.textContent = "No comments yet. Add the first one below.";
+      list.appendChild(li);
+      return;
+    }
+    for (const c of comments) {
+      const li = document.createElement("li");
+      li.className = "lic-comment";
+      const head = document.createElement("div");
+      head.className = "lic-comment-head";
+      const who = document.createElement("span");
+      who.className = "lic-comment-who";
+      who.textContent = c.byName || "(unknown)";
+      const when = document.createElement("span");
+      when.className = "lic-comment-when";
+      when.textContent = c.at ? new Date(c.at).toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }) : "";
+      head.appendChild(who); head.appendChild(when);
+      const body = document.createElement("div");
+      body.className = "lic-comment-body";
+      body.textContent = c.text || "";
+      li.appendChild(head); li.appendChild(body);
+      list.appendChild(li);
+    }
+    // Auto-scroll to newest comment
+    list.scrollTop = list.scrollHeight;
+  }
+  async function sendComment() {
+    if (!editingId) return;
+    const input = $("licCommentInput");
+    const text = (input.value || "").trim();
+    if (!text) return;
+    const btn = $("licCommentSendBtn");
+    btn.disabled = true;
+    try {
+      const { license } = await api("POST", `/licenses/${editingId}/comments`, { text });
+      licenses = licenses.map((l) => l.id === license.id ? license : l);
+      input.value = "";
+      renderComments(license);
+    } catch (err) { showError("Send failed", err); }
+    finally { btn.disabled = false; input.focus(); }
   }
 
   function renderActivityLog(lic) {
@@ -2030,6 +2344,31 @@
     }
   }
 
+  // v1.7.39 — inline-row +1y renew. Optimistic UI + Undo via toast.
+  async function quickRenewOneYear(lic) {
+    const before = { ...lic, comments: lic.comments ? [...lic.comments] : [] };
+    try {
+      const { license } = await api("POST", `/licenses/${lic.id}/renew`, { years: 1 });
+      licenses = licenses.map((l) => l.id === license.id ? license : l);
+      render();
+      toast(`Renewed: ${license.customer}, ${license.licenseType}`, {
+        actionLabel: "Undo",
+        onAction: async () => {
+          try {
+            await api("PATCH", `/licenses/${lic.id}`, {
+              expiryDate: before.expiryDate,
+              status: before.status,
+            });
+            const refreshed = await api("GET", "/licenses");
+            licenses = refreshed.licenses || licenses;
+            render();
+            toast("Renewal undone");
+          } catch (err) { showError("Undo failed", err); }
+        },
+      });
+    } catch (err) { showError("Renewal failed", err); }
+  }
+
   // ---------- day dialog (calendar overflow) ----------
   function openDayDialog(isoDate, items) {
     $("dayDialogTitle").textContent = fmtShortDate(isoDate);
@@ -2130,6 +2469,55 @@
 
     // v1.7.38 Clear-all-filters button
     $("clearAllFiltersBtn").addEventListener("click", clearAllFilters);
+
+    // v1.7.39 Save view
+    $("saveViewBtn").addEventListener("click", saveCurrentView);
+
+    // v1.7.39 Comments
+    $("licCommentSendBtn").addEventListener("click", sendComment);
+    $("licCommentInput").addEventListener("keydown", (e) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === "Enter") {
+        e.preventDefault();
+        sendComment();
+      }
+    });
+
+    // v1.7.39 Quick-add inline row
+    const qaForm = $("quickAddForm");
+    if (qaForm) {
+      $("qaExpiry").value = todayPh();
+      qaForm.addEventListener("submit", async (e) => {
+        e.preventDefault();
+        const payload = {
+          customer: $("qaCustomer").value.trim(),
+          licenseType: $("qaLicenseType").value.trim(),
+          expiryDate: $("qaExpiry").value,
+          userCount: parseInt($("qaUsers").value, 10) || 0,
+          ownerOid: me.oid,
+          ownerName: me.name,
+        };
+        if (!payload.customer || !payload.licenseType || !payload.expiryDate) {
+          toast("Customer, license type and expiry are required");
+          return;
+        }
+        try {
+          const { license } = await api("POST", "/licenses", payload);
+          licenses = [...licenses, license];
+          $("qaCustomer").value = "";
+          $("qaLicenseType").value = "";
+          $("qaUsers").value = "";
+          $("qaExpiry").value = todayPh();
+          $("qaCustomer").focus();
+          render();
+          toast(`Added: ${license.customer}, ${license.licenseType}`);
+        } catch (err) { showError("Add failed", err); }
+      });
+      $("qaCancelBtn").addEventListener("click", () => {
+        $("quickAddDetails").open = false;
+        $("qaCustomer").value = "";
+        $("qaLicenseType").value = "";
+      });
+    }
 
     // Search
     const searchInput = $("searchInput");
@@ -2281,6 +2669,19 @@
       calCursor = startOfMonth(new Date());
       render();
     });
+    // v1.7.39 Year jump dropdown
+    $("calYearJump").addEventListener("change", (e) => {
+      const y = parseInt(e.target.value, 10);
+      if (!isFinite(y)) return;
+      calCursor = new Date(y, calCursor.getMonth(), 1);
+      render();
+    });
+    // v1.7.39 Calendar density toggle
+    document.querySelectorAll("#calDensity .view-btn").forEach((b) => {
+      b.addEventListener("click", () => setCalDensity(b.dataset.density));
+    });
+    setCalDensity(calDensity); // initial paint
+
     $("calNextYear").addEventListener("click", () => {
       calCursor = new Date(calCursor.getFullYear() + 1, calCursor.getMonth(), 1);
       render();
@@ -2899,6 +3300,8 @@
       customers = custRes.customers || customers;
       emailTemplates = tplRes.templates || emailTemplates;
       saveCachedMembers(members);
+      lastSyncedAt = Date.now();
+      updateSyncIndicator();
       render();
       toast(`Refreshed (${licenses.length} licenses)`);
     } catch (err) {
@@ -2907,6 +3310,235 @@
       btn.disabled = false;
       btn.innerHTML = originalText;
     }
+  }
+
+  // ---------- v1.7.39 command palette (Ctrl+K) ----------
+  // Two kinds of entries: actions (Add license, Refresh, Open settings, …) and
+  // entities (licenses + customers). Fuzzy-ish substring search on label tokens.
+  function buildCmdkActions() {
+    return [
+      { kind: "action", label: "Add license", hint: "Open the full Add dialog", run: () => openAddDialog() },
+      { kind: "action", label: "Quick add license", hint: "Inline row at top of table", run: () => { $("quickAddDetails").open = true; $("qaCustomer").focus(); } },
+      { kind: "action", label: "Switch to Table view", run: () => switchView("table") },
+      { kind: "action", label: "Switch to Calendar view", run: () => switchView("calendar") },
+      { kind: "action", label: "Refresh data", hint: "Reload from server", run: () => refreshAll() },
+      { kind: "action", label: "Open Settings", run: () => openSettingsDialog() },
+      { kind: "action", label: "Open Quick guide", run: () => $("licGuideDialog").showModal() },
+      { kind: "action", label: "Export CSV (current view)", run: () => exportCsv() },
+      { kind: "action", label: "Import CSV", run: () => $("importCsvFile").click() },
+      { kind: "action", label: "Email templates", run: () => $("emailTemplatesBtn").click() },
+      { kind: "action", label: "Toggle bulk select", run: () => setBulkMode(!bulkMode) },
+      { kind: "action", label: "Clear all filters", run: () => clearAllFilters() },
+      { kind: "action", label: "Save current view…", run: () => saveCurrentView() },
+      { kind: "action", label: "Show keyboard shortcuts", run: () => $("shortcutsDialog").showModal() },
+    ];
+  }
+  function switchView(v) {
+    currentView = v;
+    try { localStorage.setItem(LS_VIEW, v); } catch (_) {}
+    render();
+  }
+  function rankCmdkMatch(query, label) {
+    if (!query) return 1;
+    const q = query.toLowerCase();
+    const l = label.toLowerCase();
+    if (l.startsWith(q)) return 3;
+    if (l.includes(q)) return 2;
+    // token-each match
+    const tokens = q.split(/\s+/).filter(Boolean);
+    if (tokens.every((t) => l.includes(t))) return 1;
+    return 0;
+  }
+  function runCmdkSearch(query) {
+    const results = [];
+    for (const a of buildCmdkActions()) {
+      const score = rankCmdkMatch(query, a.label);
+      if (score > 0) results.push({ ...a, score });
+    }
+    if (query) {
+      for (const lic of licenses) {
+        const label = `${lic.customer} · ${lic.licenseType}`;
+        const score = rankCmdkMatch(query, label);
+        if (score > 0) results.push({ kind: "license", label, hint: lic.expiryDate || "", score, run: () => openEditDialog(lic) });
+      }
+      const seenCust = new Set();
+      for (const lic of licenses) {
+        const c = lic.customer || "";
+        const k = c.trim().toLowerCase();
+        if (!c || seenCust.has(k)) continue;
+        seenCust.add(k);
+        const score = rankCmdkMatch(query, c);
+        if (score > 0) results.push({ kind: "customer", label: c, hint: "Customer profile", score, run: () => openCustomerDialog(c) });
+      }
+    }
+    results.sort((a, b) => b.score - a.score);
+    return results.slice(0, 25);
+  }
+  let cmdkActiveIdx = 0;
+  let cmdkCurrent = [];
+  function renderCmdkResults(results) {
+    cmdkCurrent = results;
+    const list = $("cmdkResults");
+    list.innerHTML = "";
+    if (!results.length) {
+      const li = document.createElement("li");
+      li.className = "cmdk-empty";
+      li.textContent = "No matches";
+      list.appendChild(li);
+      return;
+    }
+    cmdkActiveIdx = Math.min(cmdkActiveIdx, results.length - 1);
+    if (cmdkActiveIdx < 0) cmdkActiveIdx = 0;
+    results.forEach((r, i) => {
+      const li = document.createElement("li");
+      li.className = "cmdk-result" + (i === cmdkActiveIdx ? " active" : "");
+      li.setAttribute("role", "option");
+      const kind = document.createElement("span");
+      kind.className = `cmdk-kind cmdk-kind-${r.kind}`;
+      kind.textContent = r.kind === "action" ? "⚡" : r.kind === "license" ? "📄" : "👤";
+      const lab = document.createElement("span");
+      lab.className = "cmdk-label";
+      lab.textContent = r.label;
+      const hint = document.createElement("span");
+      hint.className = "cmdk-hint";
+      hint.textContent = r.hint || "";
+      li.appendChild(kind);
+      li.appendChild(lab);
+      li.appendChild(hint);
+      li.addEventListener("mouseenter", () => { cmdkActiveIdx = i; refreshActiveHighlight(); });
+      li.addEventListener("click", () => runCmdkResult(r));
+      list.appendChild(li);
+    });
+  }
+  function refreshActiveHighlight() {
+    const items = $("cmdkResults").querySelectorAll(".cmdk-result");
+    items.forEach((el, i) => el.classList.toggle("active", i === cmdkActiveIdx));
+  }
+  function runCmdkResult(r) {
+    closeCmdk();
+    try { r.run(); } catch (err) { showError("Action failed", err); }
+  }
+  function openCmdk() {
+    const d = $("cmdkDialog");
+    if (!d) return;
+    $("cmdkInput").value = "";
+    cmdkActiveIdx = 0;
+    renderCmdkResults(runCmdkSearch(""));
+    d.showModal();
+    setTimeout(() => $("cmdkInput").focus(), 0);
+  }
+  function closeCmdk() {
+    const d = $("cmdkDialog");
+    if (d && d.open) d.close();
+  }
+  function wireCmdk() {
+    $("cmdkInput").addEventListener("input", (e) => {
+      cmdkActiveIdx = 0;
+      renderCmdkResults(runCmdkSearch(e.target.value.trim()));
+    });
+    $("cmdkInput").addEventListener("keydown", (e) => {
+      if (e.key === "ArrowDown") { e.preventDefault(); cmdkActiveIdx = Math.min(cmdkActiveIdx + 1, cmdkCurrent.length - 1); refreshActiveHighlight(); }
+      else if (e.key === "ArrowUp") { e.preventDefault(); cmdkActiveIdx = Math.max(cmdkActiveIdx - 1, 0); refreshActiveHighlight(); }
+      else if (e.key === "Enter") {
+        e.preventDefault();
+        const chosen = cmdkCurrent[cmdkActiveIdx];
+        if (chosen) runCmdkResult(chosen);
+      }
+    });
+    $("shortcutsCloseBtn").addEventListener("click", () => $("shortcutsDialog").close());
+  }
+
+  // ---------- v1.7.39 global keyboard shortcuts ----------
+  let pendingG = false;
+  function wireGlobalShortcuts() {
+    document.addEventListener("keydown", (e) => {
+      // Ctrl+K / Cmd+K — palette (works even inside inputs)
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") {
+        e.preventDefault();
+        if ($("cmdkDialog").open) closeCmdk();
+        else openCmdk();
+        return;
+      }
+      // Suppress single-letter shortcuts if focus is inside an editable element.
+      const t = e.target;
+      const isEditing = t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.tagName === "SELECT" || t.isContentEditable);
+      if (isEditing) return;
+      if (e.altKey || e.ctrlKey || e.metaKey) return;
+
+      if (e.key === "?" || (e.key === "/" && e.shiftKey)) {
+        e.preventDefault();
+        $("shortcutsDialog").showModal();
+      } else if (e.key === "/") {
+        e.preventDefault();
+        $("searchInput").focus();
+      } else if (e.key === "a") {
+        e.preventDefault();
+        openAddDialog();
+      } else if (e.key === "q") {
+        e.preventDefault();
+        const d = $("quickAddDetails");
+        d.open = !d.open;
+        if (d.open) $("qaCustomer").focus();
+      } else if (e.key === "r") {
+        e.preventDefault();
+        refreshAll();
+      } else if (e.key === "g") {
+        pendingG = true;
+        setTimeout(() => { pendingG = false; }, 1200);
+      } else if (pendingG && e.key === "t") {
+        pendingG = false; switchView("table");
+      } else if (pendingG && e.key === "c") {
+        pendingG = false; switchView("calendar");
+      }
+    });
+  }
+
+  // ---------- v1.7.39 live poll + relative-time freshness stamp ----------
+  let lastSyncedAt = 0;
+  let pollTimer = null;
+  function fmtRelative(ms) {
+    if (!ms) return "never";
+    const diff = Math.max(0, Date.now() - ms);
+    if (diff < 5000) return "just now";
+    if (diff < 60000) return `${Math.floor(diff / 1000)}s ago`;
+    if (diff < 3600000) return `${Math.floor(diff / 60000)}m ago`;
+    if (diff < 86400000) return `${Math.floor(diff / 3600000)}h ago`;
+    return `${Math.floor(diff / 86400000)}d ago`;
+  }
+  function updateSyncIndicator() {
+    const el = $("syncIndicator");
+    if (!el) return;
+    el.textContent = `Updated ${fmtRelative(lastSyncedAt)}`;
+    el.title = lastSyncedAt ? new Date(lastSyncedAt).toLocaleString() : "Not synced yet";
+  }
+  // Light background poll: refresh licenses every 60s when the tab is visible
+  // so changes by another tenant user (Dona renews, Rey reassigns) appear
+  // without a manual refresh. Skipped while a dialog is open to avoid clobbering
+  // an in-progress edit. Errors are silent — keep-warm noise isn't worth a toast.
+  async function pollOnce() {
+    if (document.visibilityState !== "visible") return;
+    const anyDialogOpen = document.querySelectorAll("dialog[open]").length > 0;
+    if (anyDialogOpen) return;
+    try {
+      const res = await api("GET", "/licenses");
+      const next = res.licenses || [];
+      // Merge: keep any pending-undo items the server hasn't seen.
+      const pendingIds = new Set([...pendingDeletes.keys()]);
+      const filtered = next.filter((l) => !pendingIds.has(l.id));
+      licenses = filtered;
+      lastSyncedAt = Date.now();
+      render();
+      updateSyncIndicator();
+    } catch (_) { /* swallow — next poll will retry */ }
+  }
+  function startLivePoll() {
+    if (pollTimer) clearInterval(pollTimer);
+    pollTimer = setInterval(pollOnce, 60000);
+    // Also refresh the "Updated X ago" stamp every 10s without hitting the server.
+    setInterval(updateSyncIndicator, 10000);
+    document.addEventListener("visibilitychange", () => {
+      if (document.visibilityState === "visible") pollOnce();
+    });
   }
 
   // ---------- CSV export ----------
@@ -3016,6 +3648,8 @@
         .catch(() => {});
       const { licenses: lics } = await api("GET", "/licenses");
       licenses = lics || [];
+      lastSyncedAt = Date.now();
+      updateSyncIndicator();
 
       // Hide the boot indicator now that we have data.
       const bi = $("bootIndicator");
@@ -3023,6 +3657,11 @@
       render();
       // Don't await secondaries if still in flight; they just refresh state in background.
       void membersPromise; void customersPromise; void templatesPromise; void settingsPromise;
+      // v1.7.39 — start the live poll once initial paint is done.
+      startLivePoll();
+      // v1.7.39 — wire Ctrl+K palette and global shortcuts.
+      wireCmdk();
+      wireGlobalShortcuts();
     } catch (err) {
       const bi = $("bootIndicator");
       if (bi) bi.classList.add("gone");

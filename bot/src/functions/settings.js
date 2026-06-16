@@ -48,6 +48,8 @@ app.http('settings', {
       licenseSkipBriefing: !!incoming.licenseSkipBriefing,
       licenseSkipMonthlyDigest: !!incoming.licenseSkipMonthlyDigest,
       licenseRollupDigest: !!incoming.licenseRollupDigest,
+      // v1.7.39 — saved license-tab filter views (per-user)
+      savedLicenseViews: cleanSavedViews(incoming.savedLicenseViews),
     };
     // Both must be set, or both null — partial config means quiet hours disabled.
     if (!settings.quietStart || !settings.quietEnd) {
@@ -63,6 +65,18 @@ function clampInt(v, min, max, fallback) {
   const n = parseInt(v, 10);
   if (isNaN(n)) return fallback;
   return Math.max(min, Math.min(max, n));
+}
+
+// v1.7.39 — saved view payloads come from the tab; we don't trust the
+// filter contents enough to enforce a schema, but we cap the array length
+// and trim names so a malformed entry can't bloat a user row.
+function cleanSavedViews(v) {
+  if (!Array.isArray(v)) return [];
+  return v.slice(0, 25).map((x) => ({
+    id: typeof x.id === 'string' ? x.id.slice(0, 64) : `v-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`,
+    name: typeof x.name === 'string' ? x.name.slice(0, 80) : 'Unnamed view',
+    filters: x.filters && typeof x.filters === 'object' ? x.filters : {},
+  }));
 }
 
 // Accept array of 0-365 ints (or a scalar from legacy clients). Dedupes,
