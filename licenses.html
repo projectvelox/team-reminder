@@ -9,10 +9,10 @@
   <link rel="preconnect" href="https://func-day-reminders-17023.azurewebsites.net" crossorigin />
   <link rel="dns-prefetch" href="https://func-day-reminders-17023.azurewebsites.net" />
   <link rel="preconnect" href="https://res.cdn.office.net" crossorigin />
-  <link rel="preload" as="script" href="licenses.js?v=1.7.23" />
-  <link rel="preload" as="style" href="licenses.css?v=1.7.23" />
-  <link rel="stylesheet" href="styles.css?v=1.7.23" />
-  <link rel="stylesheet" href="licenses.css?v=1.7.23" />
+  <link rel="preload" as="script" href="licenses.js?v=1.7.24" />
+  <link rel="preload" as="style" href="licenses.css?v=1.7.24" />
+  <link rel="stylesheet" href="styles.css?v=1.7.24" />
+  <link rel="stylesheet" href="licenses.css?v=1.7.24" />
   <script src="https://res.cdn.office.net/teams-js/2.24.0/js/MicrosoftTeams.min.js"></script>
 </head>
 <body data-theme="default" data-page="licenses">
@@ -445,6 +445,17 @@
       <p class="lic-hint">These preferences only affect the Licenses tab and the related emails.</p>
 
       <div class="lic-field">
+        <span class="lic-label">Theme</span>
+        <p class="lic-hint" style="margin: 0 0 6px;">Override the colors. Auto follows Teams (recommended).</p>
+        <select id="setThemeOverride">
+          <option value="auto">Auto (follow Teams)</option>
+          <option value="default">Light</option>
+          <option value="dark">Dark</option>
+          <option value="contrast">High contrast</option>
+        </select>
+      </div>
+
+      <div class="lic-field">
         <span class="lic-label">Default lead time</span>
         <p class="lic-hint" style="margin: 0 0 6px;">How many days before each license expires should the bot remind you? Per-row overrides on individual licenses take precedence.</p>
         <select id="setLicenseLeadDays">
@@ -480,6 +491,6 @@
 
   <div id="toast" class="toast" hidden></div>
 
-  <script src="licenses.js?v=1.7.23" defer></script>
+  <script src="licenses.js?v=1.7.24" defer></script>
 </body>
 </html>

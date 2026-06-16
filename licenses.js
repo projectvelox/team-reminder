@@ -83,6 +83,11 @@
     licenseSkipMonthlyDigest: false,
     licenseRollupDigest: false,
   };
+  let themeOverride = "auto"; // 'auto' | 'default' | 'dark' | 'contrast'
+  try {
+    const saved = localStorage.getItem("lic.themeOverride");
+    if (saved && ["auto", "default", "dark", "contrast"].includes(saved)) themeOverride = saved;
+  } catch (_) {}
   // Precomputed once per render so every row in the same cluster shows the
   // same Bundle: N badge. Recomputed by computeBundles().
   let licenseBundles = new Map(); // licenseId -> { id, members[], size }
@@ -2337,6 +2342,7 @@
 
   // ---------- license-tab settings ----------
   function openSettingsDialog() {
+    $("setThemeOverride").value = themeOverride;
     $("setLicenseLeadDays").value = String(userSettings.licenseLeadDays || 14);
     $("setSkipBriefing").checked = !!userSettings.licenseSkipBriefing;
     $("setSkipMonthlyDigest").checked = !!userSettings.licenseSkipMonthlyDigest;
@@ -2344,6 +2350,15 @@
     $("licSettingsDialog").showModal();
   }
   async function saveLicSettings() {
+    // Theme override is tab-only state, persisted in localStorage. Save first
+    // so users see the new theme apply instantly even if the /api/settings
+    // round-trip fails.
+    const newTheme = $("setThemeOverride").value;
+    if (["auto", "default", "dark", "contrast"].includes(newTheme)) {
+      themeOverride = newTheme;
+      try { localStorage.setItem("lic.themeOverride", newTheme); } catch (_) {}
+      applyTheme(teamsTheme);
+    }
     const next = {
       ...userSettings,
       licenseLeadDays: parseInt($("setLicenseLeadDays").value, 10) || 14,
@@ -2433,7 +2448,10 @@
   // ---------- Teams init + boot ----------
   function applyTheme(theme) {
     teamsTheme = theme;
-    document.body.dataset.theme = theme === "dark" ? "dark" : theme === "contrast" ? "contrast" : "default";
+    const effective = themeOverride && themeOverride !== "auto"
+      ? themeOverride
+      : (theme === "dark" ? "dark" : theme === "contrast" ? "contrast" : "default");
+    document.body.dataset.theme = effective;
   }
 
   // Cache /api/members in localStorage with a short TTL so the Owner picker
