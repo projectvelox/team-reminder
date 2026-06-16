@@ -2274,6 +2274,19 @@ body:is([data-theme="dark"], [data-theme="contrast"]) .lic-comment-edit textarea
   background: #2b2b30; border-color: #3d3d42; color: #f0f0f2;
 }
 
+/* ---------- v1.7.47 shortcuts footnote (Quick guide cross-link) ---------- */
+.shortcuts-footnote {
+  margin: var(--space-4, 16px) 0 0;
+  padding-top: var(--space-3, 12px);
+  border-top: 1px solid var(--border, #ececec);
+  font-size: var(--text-sm, 12px);
+  color: var(--muted, #6a6a6a);
+}
+.shortcuts-footnote .link-btn {
+  font-weight: 600;
+  color: var(--accent, #0078d4);
+}
+
 /* ---------- v1.7.45 table keyboard focus ---------- */
 .lic-table tr.kbd-focus {
   outline: 2px solid var(--accent, #38AEEB);

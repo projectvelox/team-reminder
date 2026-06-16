@@ -21,10 +21,10 @@
   <link rel="preconnect" href="https://func-day-reminders-17023.azurewebsites.net" crossorigin />
   <link rel="dns-prefetch" href="https://func-day-reminders-17023.azurewebsites.net" />
   <link rel="preconnect" href="https://res.cdn.office.net" crossorigin />
-  <link rel="preload" as="script" href="licenses.js?v=1.7.46" />
-  <link rel="preload" as="style" href="licenses.css?v=1.7.46" />
-  <link rel="stylesheet" href="styles.css?v=1.7.46" />
-  <link rel="stylesheet" href="licenses.css?v=1.7.46" />
+  <link rel="preload" as="script" href="licenses.js?v=1.7.47" />
+  <link rel="preload" as="style" href="licenses.css?v=1.7.47" />
+  <link rel="stylesheet" href="styles.css?v=1.7.47" />
+  <link rel="stylesheet" href="licenses.css?v=1.7.47" />
   <script src="https://res.cdn.office.net/teams-js/2.24.0/js/MicrosoftTeams.min.js"
           integrity="sha384-79NK4sbfVpgLoDFqyfj18/S1Uj8jhLBeRGvKO1Cqw5634RznExQ90myY/qV/0gsN"
           crossorigin="anonymous"></script>
@@ -718,7 +718,7 @@
     </section>
 
     <div class="lic-dialog-actions">
-      <span class="lic-version" id="licVersionLabel" title="Licenses tab build version">v1.7.46</span>
+      <span class="lic-version" id="licVersionLabel" title="Licenses tab build version">v1.7.47</span>
       <button type="button" class="btn primary" id="licGuideCloseBtn">Close</button>
     </div>
   </dialog>
@@ -889,6 +889,8 @@
           <dt><kbd>Ctrl</kbd>+<kbd>K</kbd></dt><dd>Command palette</dd>
           <dt><kbd>/</kbd></dt><dd>Focus search</dd>
           <dt><kbd>?</kbd></dt><dd>Show this overlay</dd>
+          <dt><kbd>&uarr;</kbd> <kbd>&darr;</kbd></dt><dd>Move table focus</dd>
+          <dt><kbd>Enter</kbd></dt><dd>Open focused row</dd>
           <dt><kbd>Esc</kbd></dt><dd>Close any dialog</dd>
         </dl>
       </div>
@@ -903,6 +905,10 @@
         </dl>
       </div>
     </div>
+    <p class="shortcuts-footnote">
+      Want the full feature tour?
+      <button type="button" id="shortcutsOpenGuideBtn" class="link-btn">Open the Quick guide</button>
+    </p>
     <div class="lic-dialog-actions">
       <button type="button" class="btn primary" id="shortcutsCloseBtn">Got it</button>
     </div>
@@ -910,6 +916,6 @@
 
   <div id="toast" class="toast" hidden></div>
 
-  <script src="licenses.js?v=1.7.46" defer></script>
+  <script src="licenses.js?v=1.7.47" defer></script>
 </body>
 </html>

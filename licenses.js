@@ -4321,6 +4321,11 @@
       }
     });
     $("shortcutsCloseBtn").addEventListener("click", () => $("shortcutsDialog").close());
+    // v1.7.47 — cross-link from shortcuts overlay to the full Quick guide.
+    $("shortcutsOpenGuideBtn").addEventListener("click", () => {
+      $("shortcutsDialog").close();
+      $("licGuideDialog").showModal();
+    });
   }
 
   // ---------- v1.7.45 table arrow-key navigation ----------

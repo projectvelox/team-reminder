@@ -1,6 +1,8 @@
-# Day Reminders — full regression test plan (v1.7.45)
+# Day Reminders — full regression + design check (v1.7.47)
 
 > Paste any single section (or the whole doc) into a Claude chat / Chrome tab to drive a manual test pass. Each step has an expected outcome.
+>
+> Sections 0–26: functional regression. **Section 27: design / visual sweep.** Run the design sweep on every release; it catches the "feels off" issues that functional tests miss.
 
 ## 0. Bootstrap
 
@@ -214,6 +216,145 @@ Not user-visible, but verify:
 - [ ] `bot/npm run lint` → no syntax errors.
 - [ ] GitHub Actions CI runs on every push → green badge.
 - [ ] Dependabot has opened or scheduled weekly npm PRs.
+
+---
+
+## 27. Design / UI sweep
+
+Visual + interaction polish checks. Flag anything that looks **out of place, inconsistent, broken, or low-effort** against the rest of the app.
+
+### 27.1 Visual hierarchy
+
+- [ ] **One clear primary action per surface.** Topbar primary `+ Add license` has a drop shadow and pops vs the icon-cluster secondaries. No two primary-style buttons compete in the same view.
+- [ ] **Stat numbers dominate stat labels.** In the sidebar Numbers group, the digits read larger / bolder than the unit label next to them.
+- [ ] **Headings descend correctly**: `h1` (page hero) > `h2` (dialog titles) > `h3` (section sublabels). No `h3` larger than an `h2` on the same surface.
+
+### 27.2 Spacing + alignment
+
+- [ ] **Topbar buttons all align to the same baseline.** No element that sits 1–2px taller or shorter than its neighbours.
+- [ ] **Active-filter bar chips align vertically center** with the result count + Save view + Clear all buttons.
+- [ ] **Table cells**: text in non-numeric columns is left-aligned. Numeric (Users, days-left badge) is right-aligned. Owner pill + avatar are vertically centered.
+- [ ] **Dialog action rows** (Cancel / Save buttons) are right-aligned with consistent gap. Delete (if present) sits left, separated by margin-right: auto.
+- [ ] **Sidebar accordion summaries** all start at the same x-coordinate. Group bodies indent uniformly.
+
+### 27.3 Spacing scale consistency
+
+- [ ] **No raw px values where a token would do.** Pull-out test: open DevTools, hover any padding/margin/gap → confirm it resolves to a `--space-*` token (4/8/12/16/24/32 px). Common offenders: ad-hoc `margin: 14px` or `gap: 10px`.
+- [ ] **Vertical rhythm between sections**: 16px (--space-4) between unrelated blocks; 8px (--space-2) within a block. Not 14, 18, 22.
+
+### 27.4 Typography
+
+- [ ] **One font family throughout** (Segoe UI / system). No serif accidentally appearing anywhere.
+- [ ] **Text sizes resolve to the type scale**: 11 / 12 / 13 / 14 / 16 / 20 / 24 px. If you see 15px or 13.5px, that's a leak.
+- [ ] **Microcopy is consistent**: "Mark renewed" not "Mark as Renewed" or "Renewed?" or "Mark as renewed".
+- [ ] **No raw quotation marks vs typographic quotes inconsistency** in user-facing copy ('foo' vs "foo" vs 'foo').
+
+### 27.5 Color usage
+
+- [ ] **Semantic colors only for their semantic meaning.** Red = danger / overdue. Amber = warning. Yellow = caution / this-month. Green = success / active. No "I just picked red because it looked nice" usage.
+- [ ] **Hover states exist on every clickable thing.** Cells, chips, links, table rows. If something is clickable but cursor stays as default arrow, it's wrong.
+- [ ] **Disabled buttons look disabled** (lower opacity, no hover effect). Spot-check Save / Comment / Renew buttons in their loading state.
+- [ ] **Focus rings consistent**: 2px solid accent with 2px offset. NOT browser-default ugly blue dotted outlines.
+- [ ] **No contrast failures** at WCAG AA (4.5:1 body text, 3:1 large text). Try the Chrome DevTools Contrast checker on:
+  - Muted text on card background
+  - Chip text on chip background
+  - Status pill text on its colored fill
+
+### 27.6 Light / dark / contrast theme parity
+
+For each theme (Settings → General → Theme):
+- [ ] **Switch back and forth.** No flash of un-themed content. Every visible element re-themes correctly.
+- [ ] **Dark mode: no leftover white backgrounds** on dropdowns, popovers, dialogs, hover states, calendar pills.
+- [ ] **High contrast mode**: every clickable thing has a visible border. Focus rings still appear. Text is solid black or solid white, no muted greys.
+- [ ] **Status / Expiry pill colors** still legible (not washed out) in dark + contrast.
+- [ ] **Owner avatars** with photos: rendered round, not square. Initials fallback uses theme-appropriate text color.
+
+### 27.7 Empty / loading / error states
+
+- [ ] **Empty hero** ("No licenses yet") — buttons centered, copy ≤ 480px wide, no orphan words.
+- [ ] **Filtered-empty hero** ("No licenses match these filters") — only the "Clear all filters" button shows; Add + Import are hidden.
+- [ ] **Skeleton rows** on boot match the real row height (no layout shift when data lands).
+- [ ] **Error banner** is dismissible OR auto-clears when the offending action succeeds. No banners that linger forever.
+- [ ] **Toast** width caps reasonably; doesn't stretch the full viewport on a 4K monitor.
+
+### 27.8 Modals + popovers
+
+- [ ] **Every `<dialog>` has the corner × close button** (top-right). Includes new dialogs (Recovery, Privacy, Shortcuts, Customer merge).
+- [ ] **Dialog max-width is bounded** (no full-viewport dialog on widescreen).
+- [ ] **Dialog padding is consistent**: same top/right/bottom/left across Edit / Settings / Renew / Templates / Bulk reassign.
+- [ ] **Backdrop** dims the page consistently (not a different opacity per dialog).
+- [ ] **Dialog actions row** never wraps to 2 lines on a normal viewport. If it does, the row needs `flex-wrap` with proper gap.
+
+### 27.9 Forms
+
+- [ ] **Every input has a visible label** (not just placeholder).
+- [ ] **Required vs optional** is marked. Don't make users guess.
+- [ ] **Validation errors appear inline** next to the field, not just as a toast.
+- [ ] **Date / time inputs** look like the rest of the form (browser-native is OK but not the only weird-looking input on the surface).
+- [ ] **Multi-select chip picker** (lead-days, owners, etc.): hit area on remove (×) is ≥ 20×20px; doesn't trigger the chip click.
+
+### 27.10 Topbar + filter bar
+
+- [ ] **Topbar wraps gracefully** at narrow viewports. Buttons don't overlap or get cut off.
+- [ ] **Filter bar wraps** without leaving orphan rows or cutting off the Clear all button.
+- [ ] **Active-filter chips** truncate long values (e.g. very long customer name) instead of pushing the layout.
+- [ ] **Search input** clear (×) button positioned consistently across viewports.
+- [ ] **Sync indicator** doesn't jitter (changes from "Updated 5s ago" → "Updated 6s ago" without nudging adjacent elements).
+
+### 27.11 Table
+
+- [ ] **Sticky header** actually sticks when you scroll the table region.
+- [ ] **Sortable column headers** show direction indicator (▲/▼) when active.
+- [ ] **Row hover state** is subtle but visible.
+- [ ] **Keyboard focus ring** on a row is visible without obscuring the data.
+- [ ] **Row selection (bulk mode)** checkbox is aligned with the column, not floating.
+- [ ] **Row actions column** doesn't stretch wider than the buttons it contains.
+
+### 27.12 Calendar
+
+- [ ] **Today's cell** is visually distinct (not just bolder font).
+- [ ] **Pills don't overflow cells.** Long names truncate with ellipsis, not break the cell.
+- [ ] **+N more** click target is fully clickable, not just the text.
+- [ ] **Owner color is consistent** between table row pill and calendar pill for the same owner.
+- [ ] **Past-due red border** stripe shows on calendar pills the same way it shows on table rows.
+
+### 27.13 Sidebar accordion
+
+- [ ] **Summary chevron** rotates 180° smoothly when toggling (or instantly if reduced-motion is on).
+- [ ] **Group titles don't get cut off** at narrow widths.
+- [ ] **Owner chip avatars** match the table row avatars for the same person (same photo OR same initials + color).
+- [ ] **Trend chart canvas** sizes to its container (not fixed 600px that overflows or shrinks).
+- [ ] **Leaderboard scores** color-code consistently with the renewal-rate widget.
+
+### 27.14 Bot Adaptive Cards
+
+- [ ] **Card text wraps** correctly on narrow Teams windows.
+- [ ] **Card action buttons** don't truncate labels (`Mark renewed (+1y)` shouldn't become `Mark renewed (...)`).
+- [ ] **Card subtitle** color is subtle but legible.
+- [ ] **Owner / due-date metadata** is consistent across the three card types (reminder, license-lead, follow-up, briefing).
+
+### 27.15 Cross-tab consistency
+
+These should look + feel the same on both Reminders and Licenses:
+
+- [ ] **Topbar height** identical.
+- [ ] **Button styles** (.btn.primary / .btn.ghost / .icon-only / .danger) render identically.
+- [ ] **Toast position + animation** identical.
+- [ ] **Dialog corner × close** present and positioned identically.
+- [ ] **Focus ring color** identical.
+- [ ] **Settings icon ⚙** identical placement (top-right utility cluster on Licenses; equivalent on Reminders).
+
+### 27.16 "Out of place" smell test
+
+For each surface, ask:
+
+- [ ] **Could a senior reviewer point to ONE element and say "that doesn't belong"?**
+- [ ] **Does any element look like it was added by a different designer / at a different time?** (E.g. radius / shadow / color tone mismatched with the rest of the surface.)
+- [ ] **Is there any text that reads like a developer wrote it for themselves**, not for the actual user? (E.g. "leadDays" instead of "Lead time".)
+- [ ] **Does any clickable thing fail to telegraph it's clickable** (no underline, no hover state, no cursor change)?
+- [ ] **Does any background color sit awkwardly** against the surface it's on (e.g. a `#fff` card on a `#fafafa` page in dark mode without re-theming)?
+
+If any check above fails, capture a screenshot + the section number → I'll fix it.
 
 ---
 
