@@ -713,7 +713,7 @@ body:is([data-theme="dark"], [data-theme="contrast"]) .lic-table td.actions .btn
   border: 1px solid var(--border, #d1d1d1);
   border-radius: 14px;
   padding: 26px 30px;
-  max-width: 560px;
+  max-width: 640px;
   width: 90vw;
   background: var(--card-bg, #fff);
   color: inherit;
@@ -752,10 +752,23 @@ body:is([data-theme="dark"], [data-theme="contrast"]) .lic-table td.actions .btn
 .lic-dialog-actions {
   display: flex;
   gap: 10px;
-  justify-content: flex-end;
   margin-top: 22px;
   flex-wrap: wrap;
   align-items: center;
+  justify-content: flex-end;
+}
+/* Delete is destructive — pinned to the LEFT and tinted red, separated from
+   the right-aligned action cluster (Email, Renew, Cancel, Save). Classic
+   confirm-dialog button hierarchy: destructive far-left, primary far-right. */
+.lic-dialog-actions .lic-delete-btn {
+  margin-right: auto;
+  color: #c50f1f;
+}
+.lic-dialog-actions .lic-delete-btn:hover {
+  background: rgba(197, 15, 31, 0.1);
+}
+body:is([data-theme="dark"], [data-theme="contrast"]) .lic-dialog-actions .lic-delete-btn {
+  color: #ff6b6b;
 }
 .lic-version {
   margin-right: auto;
