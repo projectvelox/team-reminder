@@ -20,7 +20,7 @@ body[data-theme="dark"] .lic-boot { background: rgba(255, 255, 255, 0.06); }
 /* ---------- Two-column shell: main (table) + aside (summary/breakdowns) ---------- */
 .lic-shell {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 260px;
+  grid-template-columns: minmax(0, 1fr) minmax(220px, 260px);
   gap: 20px;
   align-items: start;
   max-width: none;
@@ -39,8 +39,8 @@ body[data-theme="dark"] .lic-boot { background: rgba(255, 255, 255, 0.06); }
 /* Hide the aside when in calendar view so the month grid gets full width. */
 body[data-view="calendar"] .lic-aside { display: none; }
 body[data-view="calendar"] .lic-shell { grid-template-columns: 1fr; }
-/* Collapse to single column on narrow screens. */
-@media (max-width: 1100px) {
+/* Collapse to single column only on genuinely narrow screens. */
+@media (max-width: 900px) {
   .lic-shell { grid-template-columns: 1fr; }
   .lic-aside {
     position: static;
@@ -50,6 +50,15 @@ body[data-view="calendar"] .lic-shell { grid-template-columns: 1fr; }
     flex-wrap: wrap;
   }
   .lic-aside > section { flex: 1 1 220px; }
+}
+
+/* Table is the primary surface — always scroll horizontally inside its own
+   container instead of breaking the page layout when content is wider than
+   the column (e.g. browser zoom 125%+ or narrow Teams iframes). */
+.lic-table-wrap {
+  width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
 }
 
 /* Aside-specific overrides: stack summary chips vertically, compact stats. */
@@ -431,10 +440,11 @@ body[data-theme="dark"] .lic-group-header td {
 .lic-table td.num { text-align: right; font-variant-numeric: tabular-nums; }
 .lic-table td.actions { text-align: right; white-space: nowrap; }
 .lic-table td.actions .btn {
-  margin-left: 4px;
-  padding: 4px 9px;
-  font-size: 12px;
-  min-height: 26px;
+  margin-left: 3px;
+  padding: 3px 8px;
+  font-size: 11px;
+  min-height: 24px;
+  line-height: 1.4;
 }
 .lic-table tr.overdue td:first-child { border-left: 3px solid #c50f1f; }
 .lic-table tr.overdue td:first-child { padding-left: 9px; }
