@@ -73,6 +73,27 @@ Secrets, GUIDs, and connection strings live in the Claude memory file `project_d
 
 ## What ships today (v1.7.x)
 
+### v1.7.44 — UX/UI polish bundle (both tabs)
+
+Closes the gaps from the v1.7.42 UX audit. Tab-only release. No backend.
+
+**Reminders tab — closing the parity gap with Licenses**
+- **Next-up hero** card at top of tab. Surfaces the single next timed reminder (today after now, or tomorrow's first) with countdown ("in 32 min", "tomorrow at 9:00 AM"). Click to scroll-and-flash the underlying row.
+- **Keyboard shortcuts overlay** (`?` opens). Parity with Licenses. Shortcuts wired: `/`/`f` (search), `n` (new), `s` (select), `t` (templates), `v` (cycle views), `g` (cycle group), `?` (this overlay). Suppressed inside inputs.
+- **First-time drag hint** banner on Week/Day views. Dismissible; once-only via localStorage. Solves the "drag-to-reschedule exists but no one knew" discoverability problem.
+- **Bulk Undo toast** for mark-done AND delete. Mark-done sends a revert PATCH on Undo; delete uses optimistic remove + 6s commit timer.
+
+**Licenses tab — UX audit fixes**
+- **Sticky table header**. `thead` stays put when you scroll 30+ rows. Two lines of CSS, massive ergonomic win.
+- **Comments thread moved to TOP of the Edit dialog** (was below 8 form rows). Comments are the most-changed field — surfaced.
+- **Click-to-drill on the renewal-rate chart**. Click any month → filter table to that YYYY-MM and toast confirmation.
+- **Click-to-filter on leaderboard owner names**. Click → owner filter set to that person; sidebar chip activates.
+- **Sidebar accordion grouping** — 9 stacked sections collapsed into 4 `<details>` groups: *Numbers* (summary + stats, open by default), *Breakdowns* (status/owner/product chips, open), *Trends* (renewal trend + rate + leaderboard, collapsed), *Activity* (collapsed). Sidebar fits above the fold again.
+- **Avatar consistency** — sidebar Owner chips now use the same round photo/initials avatar as the table row, instead of a flat color swatch. Same person reads as same person across surfaces.
+- **Customer hover preview** — 250ms hover on any customer name → fixed-positioned card with licenses count, seats, owners, next expiry, overdue badge. Position-aware (flips left + clamps to viewport).
+
+Cache-bust `v=1.7.44` on Licenses, `v=1.5.4` on Reminders.
+
 ### v1.7.43 — compliance bundle (soft-delete, GDPR DSR, tests, CI, types)
 
 Closes the top gaps identified in the v1.7.42 compliance audit. Tab + bot + repo infrastructure.

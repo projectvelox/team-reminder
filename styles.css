@@ -1565,3 +1565,86 @@ body:is([data-theme="dark"], [data-theme="contrast"]) .dialog-close-x:hover {
   background: rgba(255, 255, 255, 0.12);
   color: #f0f0f2;
 }
+
+/* ---------- v1.7.44 Next-up hero ---------- */
+.next-up-hero {
+  display: flex; flex-direction: column;
+  gap: 4px;
+  margin-bottom: 12px;
+  padding: 12px 14px;
+  background: var(--color-info-bg, rgba(56, 174, 235, 0.12));
+  border: 1px solid var(--color-info-border, #38AEEB);
+  border-radius: 10px;
+}
+.next-up-label {
+  font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em;
+  font-weight: 700; color: var(--color-info-fg, #0078d4);
+}
+.next-up-card {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center; gap: 14px;
+  text-align: left;
+  background: transparent; border: 0;
+  font: inherit; cursor: pointer; padding: 4px 0;
+  color: var(--text, #1c1c1e);
+}
+.next-up-card:hover .next-up-title { text-decoration: underline; }
+.next-up-time {
+  font-size: 18px; font-weight: 700;
+  color: var(--color-info-fg, #0078d4);
+  min-width: 90px;
+}
+.next-up-title { font-size: 14px; font-weight: 600; }
+.next-up-meta { font-size: 12px; color: var(--muted, #6a6a6a); }
+
+/* ---------- v1.7.44 drag hint ---------- */
+.drag-hint {
+  display: flex; align-items: center; gap: 10px;
+  margin-bottom: 10px;
+  padding: 8px 12px;
+  background: var(--color-caution-bg, #fffbe6);
+  color: var(--color-caution-fg, #8a6d00);
+  border: 1px solid var(--color-caution-border, rgba(138, 109, 0, 0.25));
+  border-radius: 8px;
+  font-size: 13px;
+}
+.drag-hint-icon { font-size: 16px; }
+.drag-hint-dismiss {
+  margin-left: auto;
+  background: transparent; border: 0; cursor: pointer;
+  font-size: 18px; line-height: 1;
+  color: inherit; opacity: 0.7;
+  padding: 0 6px; border-radius: 4px;
+}
+.drag-hint-dismiss:hover { opacity: 1; background: rgba(0, 0, 0, 0.08); }
+
+/* ---------- v1.7.44 row flash on jump-to ---------- */
+.flash-highlight {
+  animation: rem-flash 1.5s ease-out;
+}
+@keyframes rem-flash {
+  0% { background: var(--color-info-bg, rgba(56, 174, 235, 0.22)); }
+  100% { background: transparent; }
+}
+
+/* ---------- v1.7.44 shortcuts overlay (parity with Licenses) ---------- */
+#remShortcutsDialog .shortcuts-grid {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 24px;
+}
+#remShortcutsDialog .shortcuts-section h3 {
+  font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em;
+  color: var(--muted, #6a6a6a); margin: 0 0 8px;
+}
+#remShortcutsDialog .shortcuts-section dl {
+  margin: 0; display: grid; grid-template-columns: auto 1fr; gap: 6px 14px;
+}
+#remShortcutsDialog .shortcuts-section dt { font-size: 12px; }
+#remShortcutsDialog .shortcuts-section dd { margin: 0; font-size: 12px; color: var(--text, #1c1c1e); }
+#remShortcutsDialog kbd {
+  display: inline-block; padding: 1px 6px;
+  border: 1px solid var(--border, #d1d1d1); border-bottom-width: 2px;
+  border-radius: 4px; background: var(--surface, #fff);
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+  font-size: 11px; line-height: 1.4;
+}

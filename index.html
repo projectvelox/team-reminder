@@ -6,7 +6,7 @@
   <!-- v1.7.41 — Content Security Policy + SRI on the Teams SDK. See licenses.html for rationale. -->
   <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' https://res.cdn.office.net; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://func-day-reminders-17023.azurewebsites.net; connect-src 'self' https://func-day-reminders-17023.azurewebsites.net; frame-ancestors https://teams.microsoft.com https://*.teams.microsoft.com https://*.cloud.microsoft https://*.skype.com https://*.microsoft.com; form-action 'self'; base-uri 'self';" />
   <title>Day Reminders</title>
-  <link rel="stylesheet" href="styles.css?v=1.5.3" />
+  <link rel="stylesheet" href="styles.css?v=1.5.4" />
   <script src="https://res.cdn.office.net/teams-js/2.24.0/js/MicrosoftTeams.min.js"
           integrity="sha384-79NK4sbfVpgLoDFqyfj18/S1Uj8jhLBeRGvKO1Cqw5634RznExQ90myY/qV/0gsN"
           crossorigin="anonymous"></script>
@@ -37,6 +37,18 @@
   <div class="layout">
     <main>
       <p id="errorBanner" class="error-banner" hidden></p>
+
+      <!-- v1.7.44 Next-up hero: surfaces the next timed reminder + countdown so
+           the most relevant thing is the first thing you see. Hidden if nothing
+           is scheduled in the next 24h. -->
+      <section id="nextUpHero" class="next-up-hero" hidden role="region" aria-label="Next reminder">
+        <div class="next-up-label">Up next</div>
+        <button type="button" id="nextUpCard" class="next-up-card" title="Open this reminder">
+          <span class="next-up-time" id="nextUpTime"></span>
+          <span class="next-up-title" id="nextUpTitle"></span>
+          <span class="next-up-meta" id="nextUpMeta"></span>
+        </button>
+      </section>
 
       <section id="onboardingCard" class="onboarding-card" hidden>
         <div>
@@ -118,6 +130,35 @@
       </section>
     </aside>
   </div>
+
+  <!-- v1.7.44 keyboard shortcuts overlay (parity with Licenses tab) -->
+  <dialog id="remShortcutsDialog" class="dialog">
+    <h2>Keyboard shortcuts</h2>
+    <div class="shortcuts-grid">
+      <div class="shortcuts-section">
+        <h3>Navigate</h3>
+        <dl>
+          <dt><kbd>?</kbd></dt><dd>Show this overlay</dd>
+          <dt><kbd>/</kbd> or <kbd>f</kbd></dt><dd>Focus search</dd>
+          <dt><kbd>v</kbd></dt><dd>Cycle views (Lines / Grid / Day / Week)</dd>
+          <dt><kbd>g</kbd></dt><dd>Cycle group (off / tag / client)</dd>
+          <dt><kbd>Esc</kbd></dt><dd>Close any dialog</dd>
+        </dl>
+      </div>
+      <div class="shortcuts-section">
+        <h3>Act</h3>
+        <dl>
+          <dt><kbd>n</kbd></dt><dd>Focus the new-reminder field</dd>
+          <dt><kbd>s</kbd></dt><dd>Toggle Select (bulk mode)</dd>
+          <dt><kbd>t</kbd></dt><dd>Open templates</dd>
+          <dt>Drag a card</dt><dd>Reschedule between days (Week view) or change time (Day view)</dd>
+        </dl>
+      </div>
+    </div>
+    <div class="dialog-actions">
+      <button type="button" class="btn primary" id="remShortcutsCloseBtn">Got it</button>
+    </div>
+  </dialog>
 
   <dialog id="settingsDialog" class="dialog">
     <form method="dialog" id="settingsForm">
@@ -423,6 +464,6 @@
     <a class="link" href="https://github.com/projectvelox/team-reminder/issues" target="_blank" rel="noopener">Report an issue</a>
   </footer>
 
-  <script src="app.js?v=1.5.3"></script>
+  <script src="app.js?v=1.5.4"></script>
 </body>
 </html>

@@ -514,6 +514,63 @@
     });
   }
 
+  // v1.7.44 — customer hover preview. Attaches a 250ms-delayed enter handler
+  // to any element; opens a fixed-positioned card with summary stats and
+  // cleans up on leave. Reuses the in-memory `licenses` array — no API call.
+  let _hoverCardEl = null;
+  let _hoverTimer = null;
+  function attachCustomerHoverPreview(el, customer) {
+    if (!el || !customer) return;
+    el.addEventListener("mouseenter", () => {
+      _hoverTimer = setTimeout(() => showCustomerHoverCard(el, customer), 250);
+    });
+    el.addEventListener("mouseleave", () => {
+      clearTimeout(_hoverTimer);
+      if (_hoverCardEl) { _hoverCardEl.remove(); _hoverCardEl = null; }
+    });
+  }
+  function showCustomerHoverCard(anchorEl, customer) {
+    const norm = customer.trim().toLowerCase();
+    const rows = licenses.filter((l) => (l.customer || "").trim().toLowerCase() === norm);
+    if (!rows.length) return;
+    const seats = rows.reduce((s, l) => s + (l.userCount || 0), 0);
+    const owners = new Set();
+    let nextExpiry = null;
+    let overdue = 0;
+    const today = todayPh();
+    for (const l of rows) {
+      if (l.ownerName) owners.add(l.ownerName);
+      if (l.expiryDate) {
+        if (l.expiryDate < today && l.state !== "abandoned" && l.status !== "renewed") overdue++;
+        if (l.expiryDate >= today && (!nextExpiry || l.expiryDate < nextExpiry)) nextExpiry = l.expiryDate;
+      }
+    }
+    const card = document.createElement("div");
+    card.className = "customer-hover-card";
+    card.innerHTML = `
+      <h4>${escapeHtml(customer)}</h4>
+      <dl>
+        <dt>Licenses</dt><dd>${rows.length}</dd>
+        <dt>Seats</dt><dd>${seats.toLocaleString()}</dd>
+        <dt>Owners</dt><dd>${escapeHtml([...owners].join(", ") || "—")}</dd>
+        <dt>Next expiry</dt><dd>${nextExpiry ? escapeHtml(fmtShortDate(nextExpiry)) : "—"}</dd>
+        ${overdue ? `<dt>Overdue</dt><dd style="color: var(--color-danger-fg, #b71c1c);">${overdue}</dd>` : ""}
+      </dl>
+    `;
+    document.body.appendChild(card);
+    // Position the card next to the anchor without going off-screen.
+    const ar = anchorEl.getBoundingClientRect();
+    const cardRect = card.getBoundingClientRect();
+    let left = ar.right + 8;
+    if (left + cardRect.width > window.innerWidth - 12) left = ar.left - cardRect.width - 8;
+    if (left < 8) left = 8;
+    let top = ar.top - 4;
+    if (top + cardRect.height > window.innerHeight - 12) top = window.innerHeight - cardRect.height - 12;
+    card.style.left = `${left}px`;
+    card.style.top = `${top}px`;
+    _hoverCardEl = card;
+  }
+
   function ownerNameByOid(oid) {
     if (!oid) return "(none)";
     // Prefer the in-memory members list (auto-registered), fall back to the
@@ -1019,6 +1076,26 @@
       if (!p) continue;
       ctx.beginPath(); ctx.arc(p.x, p.y, 3, 0, Math.PI * 2); ctx.fill();
     }
+    // v1.7.44 — click a month to filter the table to that month.
+    canvas.onclick = (ev) => {
+      const rect = canvas.getBoundingClientRect();
+      const x = ev.clientX - rect.left;
+      const stepW = plotW / Math.max(1, months.length - 1);
+      let bestIdx = 0;
+      let bestDist = Infinity;
+      for (let i = 0; i < months.length; i++) {
+        const px = PAD_L + (plotW * i) / Math.max(1, months.length - 1);
+        const d = Math.abs(x - px);
+        if (d < bestDist) { bestDist = d; bestIdx = i; }
+      }
+      const key = months[bestIdx].key; // YYYY-MM
+      monthFilter = key;
+      $("monthFilter").value = key;
+      persistFilters();
+      render();
+      toast(`Filtered to ${months[bestIdx].label}`);
+    };
+    canvas.title = "Click a month to filter the table to it";
   }
 
   // v1.7.42 — owner leaderboard. Counts renewed-in-window vs total-touched
@@ -1064,9 +1141,18 @@
       li.className = "leaderboard-row";
       const head = document.createElement("div");
       head.className = "leaderboard-head";
-      const name = document.createElement("span");
-      name.className = "leaderboard-name";
+      const name = document.createElement("button");
+      name.type = "button";
+      name.className = "leaderboard-name clickable";
       name.textContent = r.name;
+      name.title = `Filter to licenses owned by ${r.name}`;
+      name.addEventListener("click", () => {
+        // Replace current owner filter with just this owner.
+        ownerFilter.clear();
+        ownerFilter.add(r.oid);
+        persistFilters();
+        render();
+      });
       const score = document.createElement("strong");
       score.className = "leaderboard-score";
       score.textContent = `${rate}%`;
@@ -1155,10 +1241,11 @@
       btn.type = "button";
       btn.className = "lic-breakdown-chip";
       btn.setAttribute("aria-pressed", ownerFilter.has(e.oid) ? "true" : "false");
-      const sw = document.createElement("span");
-      sw.className = "swatch";
-      sw.style.background = ownerColor(e.oid);
-      btn.appendChild(sw);
+      // v1.7.44 — use the same round-avatar chip as the row owner cell, so
+      // the sidebar, table, and active-filter strip read as the same person.
+      const avatar = buildOwnerAvatar({ ownerOid: e.oid, ownerName: e.name }, { size: 18 });
+      avatar.classList.add("chip-avatar");
+      btn.appendChild(avatar);
       btn.appendChild(document.createTextNode(e.name));
       const cnt = document.createElement("span");
       cnt.className = "chip-count";
@@ -1417,6 +1504,8 @@
     custBtn.className = "customer-link";
     custBtn.textContent = lic.customer || "";
     custBtn.addEventListener("click", (e) => { e.stopPropagation(); openCustomerDialog(lic.customer); });
+    // v1.7.44 — hover preview card with seats / owner / next expiry summary
+    attachCustomerHoverPreview(custBtn, lic.customer);
     tdCustomer.appendChild(custBtn);
     // Y-of-N badge for non-annual cycles
     if (lic.renewalCycle && lic.renewalCycle !== "annual") {

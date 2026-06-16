@@ -21,10 +21,10 @@
   <link rel="preconnect" href="https://func-day-reminders-17023.azurewebsites.net" crossorigin />
   <link rel="dns-prefetch" href="https://func-day-reminders-17023.azurewebsites.net" />
   <link rel="preconnect" href="https://res.cdn.office.net" crossorigin />
-  <link rel="preload" as="script" href="licenses.js?v=1.7.43" />
-  <link rel="preload" as="style" href="licenses.css?v=1.7.43" />
-  <link rel="stylesheet" href="styles.css?v=1.7.43" />
-  <link rel="stylesheet" href="licenses.css?v=1.7.43" />
+  <link rel="preload" as="script" href="licenses.js?v=1.7.44" />
+  <link rel="preload" as="style" href="licenses.css?v=1.7.44" />
+  <link rel="stylesheet" href="styles.css?v=1.7.44" />
+  <link rel="stylesheet" href="licenses.css?v=1.7.44" />
   <script src="https://res.cdn.office.net/teams-js/2.24.0/js/MicrosoftTeams.min.js"
           integrity="sha384-79NK4sbfVpgLoDFqyfj18/S1Uj8jhLBeRGvKO1Cqw5634RznExQ90myY/qV/0gsN"
           crossorigin="anonymous"></script>
@@ -208,6 +208,9 @@
     </main>
 
     <aside class="lic-aside" aria-label="Summary and breakdowns">
+      <details class="aside-group" open>
+        <summary>Numbers</summary>
+        <div class="aside-group-body">
       <section id="summaryChips" class="lic-summary" aria-label="Upcoming">
         <button type="button" class="lic-summary-chip" data-summary="week" aria-pressed="false">
           <span class="lic-summary-count" id="cntWeek">0</span>
@@ -232,7 +235,32 @@
         <span class="lic-stat-sep">·</span>
         <span class="lic-stat"><strong id="statRenewed30">0</strong> renewed last 30 days</span>
       </section>
+        </div>
+      </details>
 
+      <details class="aside-group" open>
+        <summary>Breakdowns</summary>
+        <div class="aside-group-body">
+      <section id="statusStrip" class="lic-breakdown" aria-label="By status" hidden>
+        <span class="lic-breakdown-label">Status</span>
+        <div id="statusChips" class="lic-breakdown-chips"></div>
+      </section>
+
+      <section id="ownerStrip" class="lic-breakdown" aria-label="By owner" hidden>
+        <span class="lic-breakdown-label">Owner</span>
+        <div id="ownerChips" class="lic-breakdown-chips"></div>
+      </section>
+
+      <section id="productStrip" class="lic-breakdown" aria-label="By product line" hidden>
+        <span class="lic-breakdown-label">Product</span>
+        <div id="productChips" class="lic-breakdown-chips"></div>
+      </section>
+        </div>
+      </details>
+
+      <details class="aside-group">
+        <summary>Trends</summary>
+        <div class="aside-group-body">
       <section id="renewalTrendStrip" class="lic-renewal-trend" aria-label="Renewal rate by month (last 12 months)" hidden>
         <div class="renewal-trend-head">
           <span class="renewal-trend-label">Renewal rate by month</span>
@@ -258,30 +286,22 @@
         </div>
       </section>
 
-      <section id="statusStrip" class="lic-breakdown" aria-label="By status" hidden>
-        <span class="lic-breakdown-label">Status</span>
-        <div id="statusChips" class="lic-breakdown-chips"></div>
-      </section>
-
-      <section id="ownerStrip" class="lic-breakdown" aria-label="By owner" hidden>
-        <span class="lic-breakdown-label">Owner</span>
-        <div id="ownerChips" class="lic-breakdown-chips"></div>
-      </section>
-
-      <section id="productStrip" class="lic-breakdown" aria-label="By product line" hidden>
-        <span class="lic-breakdown-label">Product</span>
-        <div id="productChips" class="lic-breakdown-chips"></div>
-      </section>
-
       <section id="leaderboardStrip" class="lic-leaderboard" aria-label="Owner leaderboard (last 90 days)" hidden>
         <h3 class="lic-leaderboard-title">Owner leaderboard · last 90 days</h3>
         <ol id="leaderboardList" class="lic-leaderboard-list"></ol>
       </section>
+        </div>
+      </details>
 
+      <details class="aside-group">
+        <summary>Activity</summary>
+        <div class="aside-group-body">
       <section id="activityStrip" class="lic-activity-strip" aria-label="Recent activity" hidden>
         <h3 class="lic-activity-strip-title">Recent activity</h3>
         <ol id="activityList" class="lic-activity-strip-list"></ol>
       </section>
+        </div>
+      </details>
     </aside>
   </div>
 
@@ -289,6 +309,17 @@
   <dialog id="licDialog" class="lic-dialog">
     <form id="licForm" method="dialog" autocomplete="off">
       <h2 id="licDialogTitle">Add license</h2>
+
+      <!-- v1.7.44 Comments moved to top of dialog — most-changed field, easy
+           to miss when buried below 8 form rows. -->
+      <section id="licComments" class="lic-comments lic-comments-top" hidden>
+        <h3 class="lic-comments-title">Comments</h3>
+        <ol id="licCommentsList" class="lic-comments-list"></ol>
+        <div class="lic-comment-add">
+          <textarea id="licCommentInput" rows="2" maxlength="1000" placeholder="Add a comment, e.g. 'Called CFO, will confirm Friday' (Ctrl+Enter to send)" aria-label="Add a comment"></textarea>
+          <button type="button" id="licCommentSendBtn" class="btn primary">Comment</button>
+        </div>
+      </section>
 
       <label class="lic-field">
         <span class="lic-label">Customer</span>
@@ -370,15 +401,6 @@
         <span class="lic-label">Notes (optional)</span>
         <textarea id="licNotes" maxlength="2000" placeholder="Renewal contact, multi-year context, etc." rows="3"></textarea>
       </label>
-
-      <section id="licComments" class="lic-comments" hidden>
-        <h3 class="lic-comments-title">Comments</h3>
-        <ol id="licCommentsList" class="lic-comments-list"></ol>
-        <div class="lic-comment-add">
-          <textarea id="licCommentInput" rows="2" maxlength="1000" placeholder="Add a comment, e.g. 'Called CFO, will confirm Friday' (Ctrl+Enter to send)" aria-label="Add a comment"></textarea>
-          <button type="button" id="licCommentSendBtn" class="btn primary">Comment</button>
-        </div>
-      </section>
 
       <section id="licActivity" class="lic-activity" hidden>
         <h3 class="lic-activity-title">Activity</h3>
@@ -681,7 +703,7 @@
     </section>
 
     <div class="lic-dialog-actions">
-      <span class="lic-version" id="licVersionLabel" title="Licenses tab build version">v1.7.43</span>
+      <span class="lic-version" id="licVersionLabel" title="Licenses tab build version">v1.7.44</span>
       <button type="button" class="btn primary" id="licGuideCloseBtn">Close</button>
     </div>
   </dialog>
@@ -860,6 +882,6 @@
 
   <div id="toast" class="toast" hidden></div>
 
-  <script src="licenses.js?v=1.7.43" defer></script>
+  <script src="licenses.js?v=1.7.44" defer></script>
 </body>
 </html>

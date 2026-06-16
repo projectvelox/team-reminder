@@ -157,6 +157,151 @@
   // ---------- DOM ----------
   const $ = (id) => document.getElementById(id);
 
+  // v1.7.44 — Next-up hero: surfaces the single next timed reminder + countdown.
+  // Looks at today + tomorrow only so "your next item" is actually next.
+  function renderNextUp() {
+    const hero = $("nextUpHero");
+    if (!hero) return;
+    const today = phToday();
+    const tomorrow = (() => {
+      const d = new Date(today + "T00:00:00Z");
+      d.setUTCDate(d.getUTCDate() + 1);
+      return d.toISOString().slice(0, 10);
+    })();
+    const now = new Date();
+    const open = (reminders || []).filter((r) => !r.done && !pendingDeletes.has(r.id));
+    // Candidates: timed items today (after current PH wall-clock) + timed items tomorrow.
+    const phNowMin = phWallMinutes();
+    const candidates = open
+      .filter((r) => r.time)
+      .filter((r) => {
+        const due = r.dueAt || r.createdDate || today;
+        if (due === today) {
+          const [hh, mm] = r.time.split(":").map(Number);
+          return hh * 60 + mm >= phNowMin - 30; // include "in progress" up to 30m ago
+        }
+        return due === tomorrow;
+      })
+      .sort((a, b) => {
+        const dueA = a.dueAt || a.createdDate || today;
+        const dueB = b.dueAt || b.createdDate || today;
+        if (dueA !== dueB) return dueA.localeCompare(dueB);
+        return (a.time || "zz").localeCompare(b.time || "zz");
+      });
+    if (!candidates.length) { hero.hidden = true; return; }
+    const r = candidates[0];
+    hero.hidden = false;
+    const isToday = (r.dueAt || r.createdDate || today) === today;
+    const time12 = formatTime12(r.time);
+    const [hh, mm] = r.time.split(":").map(Number);
+    const minutesUntil = isToday ? (hh * 60 + mm) - phNowMin : ((hh * 60 + mm) + 24 * 60) - phNowMin;
+    let countdown;
+    if (minutesUntil <= 0) countdown = `now`;
+    else if (minutesUntil < 60) countdown = `in ${minutesUntil} min`;
+    else if (minutesUntil < 24 * 60) countdown = `in ${Math.floor(minutesUntil / 60)}h ${minutesUntil % 60}m`;
+    else countdown = `tomorrow at ${time12}`;
+    $("nextUpTime").textContent = isToday ? time12 : `Tomorrow ${time12}`;
+    $("nextUpTitle").textContent = r.client ? `[${r.client}] ${r.title}` : r.title;
+    $("nextUpMeta").textContent = countdown;
+    $("nextUpCard").onclick = () => {
+      // Scroll the matching row into view + flash it.
+      const row = document.querySelector(`[data-id='${r.id}']`);
+      if (row) {
+        row.scrollIntoView({ behavior: "smooth", block: "center" });
+        row.classList.add("flash-highlight");
+        setTimeout(() => row.classList.remove("flash-highlight"), 1500);
+      }
+    };
+  }
+  function phWallMinutes() {
+    const parts = new Intl.DateTimeFormat("en-US", { timeZone: "Asia/Manila", hour12: false, hour: "2-digit", minute: "2-digit" }).formatToParts(new Date());
+    const get = (t) => +parts.find((p) => p.type === t).value;
+    return (get("hour") % 24) * 60 + get("minute");
+  }
+  // (formatTime12 / phToday already declared earlier in this file)
+
+  // v1.7.44 — wire shortcuts dialog open/close.
+  function wireRemShortcuts() {
+    const btn = $("openGuide");
+    const dlg = $("remShortcutsDialog");
+    if (!btn || !dlg) return;
+    btn.addEventListener("click", () => dlg.showModal());
+    $("remShortcutsCloseBtn").addEventListener("click", () => dlg.close());
+  }
+
+  // v1.7.44 — global keyboard shortcuts, parity with Licenses tab.
+  function wireRemGlobalShortcuts() {
+    document.addEventListener("keydown", (e) => {
+      const t = e.target;
+      const isEditing = t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.tagName === "SELECT" || t.isContentEditable);
+      if (isEditing) return;
+      if (e.altKey || e.ctrlKey || e.metaKey) return;
+      if (e.key === "?" || (e.key === "/" && e.shiftKey)) {
+        e.preventDefault();
+        $("remShortcutsDialog").showModal();
+      } else if (e.key === "/" || e.key === "f") {
+        e.preventDefault();
+        const s = $("searchInput");
+        if (s) s.focus();
+      } else if (e.key === "n") {
+        e.preventDefault();
+        const tt = $("title");
+        if (tt) tt.focus();
+      } else if (e.key === "s") {
+        e.preventDefault();
+        const bt = $("bulkToggle");
+        if (bt) bt.click();
+      } else if (e.key === "t") {
+        e.preventDefault();
+        const tp = $("openTemplates");
+        if (tp) tp.click();
+      } else if (e.key === "v") {
+        e.preventDefault();
+        // Cycle views (Lines / Grid / Day / Week)
+        const order = ["lines", "grid", "calendar", "week"];
+        const cur = document.querySelector("#viewSwitch .view-btn[aria-pressed='true']");
+        const next = order[(order.indexOf(cur ? cur.dataset.view : "lines") + 1) % order.length];
+        const target = document.querySelector(`#viewSwitch .view-btn[data-view='${next}']`);
+        if (target) target.click();
+      } else if (e.key === "g") {
+        e.preventDefault();
+        const gt = $("groupToggle");
+        if (gt) gt.click();
+      }
+    });
+  }
+
+  // v1.7.44 — first-time drag hint. Sticky ribbon teaches drag-to-reschedule
+  // (Week + Day views) once, then never again. Stored in localStorage.
+  function installDragHint() {
+    try {
+      if (localStorage.getItem("rem.dragHintSeen")) return;
+    } catch (_) { return; }
+    // Show only when on a draggable view (Week or Day).
+    const showCheck = () => {
+      const isDraggableView = document.body.dataset.view === "week" || document.body.dataset.view === "calendar";
+      const existing = document.getElementById("dragHint");
+      if (!isDraggableView) { if (existing) existing.remove(); return; }
+      if (existing) return;
+      const hint = document.createElement("div");
+      hint.id = "dragHint";
+      hint.className = "drag-hint";
+      hint.innerHTML = `<span class="drag-hint-icon" aria-hidden="true">⤳</span><span>Tip: drag a reminder to a different day or time to reschedule it.</span><button type="button" class="drag-hint-dismiss" aria-label="Dismiss hint">&times;</button>`;
+      hint.querySelector(".drag-hint-dismiss").addEventListener("click", () => {
+        hint.remove();
+        try { localStorage.setItem("rem.dragHintSeen", "1"); } catch (_) {}
+      });
+      const main = document.querySelector("main");
+      if (main) main.prepend(hint);
+    };
+    showCheck();
+    // Re-check whenever the view changes (we can't easily listen to that, so
+    // hook into the view buttons).
+    document.querySelectorAll("#viewSwitch .view-btn").forEach((b) => {
+      b.addEventListener("click", () => setTimeout(showCheck, 0));
+    });
+  }
+
   // v1.7.40 — auto-add a corner close X to every <dialog>. Idempotent so it can
   // be called after dynamic dialog insertion. Pairs with .dialog-close-x in CSS.
   function installDialogCloseButtons() {
@@ -724,6 +869,7 @@
   function render() {
     const norm = (s) => String(s || "").toLowerCase();
     const searchNorm = norm(searchText.trim());
+    renderNextUp();
 
     // Cascade: !pendingDelete -> tag -> client -> search
     let visible = reminders.filter((r) => !pendingDeletes.has(r.id));
@@ -2600,6 +2746,18 @@
     try {
       await api("POST", "/reminders/bulk", { ids: targets.map((r) => r.id), patch: { done: true } });
       announce(`${targets.length} marked done`);
+      // v1.7.44 — bulk Undo. Revert via a second bulk PATCH if the user clicks
+      // Undo within 6s. Mirrors the Licenses bulk-delete pattern.
+      showBulkUndoToast(`Marked ${targets.length} done`, async () => {
+        try {
+          await api("POST", "/reminders/bulk", { ids: targets.map((r) => r.id), patch: { done: false, closedAt: null } });
+          for (const snap of snapshot) {
+            const rr = reminders.find((x) => x.id === snap.id);
+            if (rr) { rr.done = snap.done; rr.closedAt = snap.closedAt; }
+          }
+          render();
+        } catch (err) { showError("Undo failed", err); }
+      });
     } catch (err) {
       for (const snap of snapshot) {
         const rr = reminders.find((x) => x.id === snap.id);
@@ -2612,17 +2770,53 @@
   async function bulkDelete() {
     const targets = selectedReminders();
     if (targets.length === 0) { setBulkMode(false); return; }
+    if (!confirm(`Delete ${targets.length} reminder${targets.length === 1 ? "" : "s"}? You can Undo for 6 seconds.`)) return;
+    // v1.7.44 — optimistic remove + single Undo toast. Commit after the timer
+    // elapses or undo. Mirrors the Licenses bulk-delete pattern.
+    const snapshot = targets.slice();
+    reminders = reminders.filter((r) => !targets.some((t) => t.id === r.id));
     setBulkMode(false);
-    try {
-      await Promise.all(targets.map((r) =>
-        api("DELETE", `/reminders/${r.id}`).catch((e) => { if (e.status !== 404) throw e; })
-      ));
-      reminders = reminders.filter((r) => !targets.some((t) => t.id === r.id));
+    render();
+    let undone = false;
+    const timer = setTimeout(async () => {
+      if (undone) return;
+      let failed = 0;
+      for (const r of snapshot) {
+        try { await api("DELETE", `/reminders/${r.id}`); }
+        catch (e) { if (e.status !== 404) failed++; }
+      }
+      if (failed) showError(`Delete failed for ${failed} of ${snapshot.length}`);
+    }, 6000);
+    showBulkUndoToast(`Deleted ${snapshot.length} reminder${snapshot.length === 1 ? "" : "s"}`, () => {
+      undone = true;
+      clearTimeout(timer);
+      reminders.push(...snapshot);
       render();
-      announce(`${targets.length} deleted`);
-    } catch (err) {
-      showError("Could not delete all selected", err);
-    }
+    });
+    announce(`${snapshot.length} deleted`);
+  }
+  // v1.7.44 — shared bulk-undo toast helper. Appends to #toastRegion using
+  // the same .toast pattern as showUndoToast() so styling stays consistent.
+  function showBulkUndoToast(msg, onUndo) {
+    if (!toastRegion) return;
+    const toast = document.createElement("div");
+    toast.className = "toast";
+    const label = document.createElement("span");
+    label.textContent = msg;
+    const action = document.createElement("button");
+    action.type = "button";
+    action.className = "toast-action";
+    action.textContent = "Undo";
+    let fired = false;
+    action.addEventListener("click", () => {
+      if (fired) return;
+      fired = true;
+      try { onUndo(); } catch (err) { console.error(err); }
+      toast.remove();
+    });
+    toast.append(label, action);
+    toastRegion.appendChild(toast);
+    setTimeout(() => { if (!fired) toast.remove(); }, 6000);
   }
   async function bulkTogglePriority() {
     const targets = selectedReminders();
@@ -3049,6 +3243,10 @@
       userTemplates = Array.isArray(userTpls) ? userTpls : [];
       render();
       installDialogCloseButtons();
+      // v1.7.44 — shortcuts overlay (parity with Licenses) + Next-up hero.
+      wireRemShortcuts();
+      wireRemGlobalShortcuts();
+      installDragHint();
     } catch (err) {
       console.error("Boot failed", err);
       postTelemetry("tab.boot.failed", {
