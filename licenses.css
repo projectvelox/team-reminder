@@ -717,6 +717,13 @@ body[data-theme="dark"] .lic-table td.actions .btn.primary {
   justify-content: flex-end;
   margin-top: 22px;
   flex-wrap: wrap;
+  align-items: center;
+}
+.lic-version {
+  margin-right: auto;
+  font-size: 11px;
+  opacity: 0.5;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
 }
 .renew-presets {
   display: flex;

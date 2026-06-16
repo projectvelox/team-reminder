@@ -3,16 +3,21 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <!-- Discourage Teams desktop from caching the HTML shell so cache-bust
+       version bumps on CSS/JS actually take effect on the next tab open. -->
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+  <meta http-equiv="Pragma" content="no-cache" />
+  <meta http-equiv="Expires" content="0" />
   <title>Day Reminders &mdash; Licenses</title>
   <!-- Warm up the TCP + TLS handshake to the API and Teams CDN in parallel
        with HTML parse, shaving ~150-300ms off the first /api/licenses call. -->
   <link rel="preconnect" href="https://func-day-reminders-17023.azurewebsites.net" crossorigin />
   <link rel="dns-prefetch" href="https://func-day-reminders-17023.azurewebsites.net" />
   <link rel="preconnect" href="https://res.cdn.office.net" crossorigin />
-  <link rel="preload" as="script" href="licenses.js?v=1.7.25" />
-  <link rel="preload" as="style" href="licenses.css?v=1.7.25" />
-  <link rel="stylesheet" href="styles.css?v=1.7.25" />
-  <link rel="stylesheet" href="licenses.css?v=1.7.25" />
+  <link rel="preload" as="script" href="licenses.js?v=1.7.26" />
+  <link rel="preload" as="style" href="licenses.css?v=1.7.26" />
+  <link rel="stylesheet" href="styles.css?v=1.7.26" />
+  <link rel="stylesheet" href="licenses.css?v=1.7.26" />
   <script src="https://res.cdn.office.net/teams-js/2.24.0/js/MicrosoftTeams.min.js"></script>
 </head>
 <body data-theme="default" data-page="licenses">
@@ -523,6 +528,7 @@
     </section>
 
     <div class="lic-dialog-actions">
+      <span class="lic-version" id="licVersionLabel" title="Licenses tab build version">v1.7.26</span>
       <button type="button" class="btn primary" id="licGuideCloseBtn">Close</button>
     </div>
   </dialog>
@@ -580,6 +586,6 @@
 
   <div id="toast" class="toast" hidden></div>
 
-  <script src="licenses.js?v=1.7.25" defer></script>
+  <script src="licenses.js?v=1.7.26" defer></script>
 </body>
 </html>
