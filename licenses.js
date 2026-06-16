@@ -78,7 +78,7 @@
   let licOwnerPicker = null;
   let bulkReassignPicker = null;
   let userSettings = {
-    licenseLeadDays: 14,
+    licenseLeadDays: [14],
     licenseSkipBriefing: false,
     licenseSkipMonthlyDigest: false,
     licenseRollupDigest: false,
@@ -872,6 +872,124 @@
     }
   }
 
+  // ---------- lead-day picker (v1.7.37) ----------
+  // Backs a chip-style multi-select for the per-license lead-days field and
+  // the per-user default in Settings. Each picker container carries data-*
+  // attributes pointing at its chip strip, presets row, and custom input so
+  // one factory powers both dialogs.
+  const leadPickers = {};
+  function attachLeadPicker(rootId) {
+    const root = $(rootId);
+    if (!root) return null;
+    const chips = $(root.dataset.chipId);
+    const presets = $(root.dataset.presetId);
+    const customInput = $(root.dataset.customId);
+    const customAdd = $(root.dataset.customAddId);
+    const state = { values: [] };
+
+    function asArr(input) {
+      if (input === null || input === undefined) return [];
+      if (typeof input === "number") return [input];
+      if (!Array.isArray(input)) return [];
+      return input
+        .map((n) => parseInt(n, 10))
+        .filter((n) => Number.isFinite(n) && n >= 0 && n <= 365);
+    }
+    function sortValues() {
+      state.values = Array.from(new Set(state.values)).sort((a, b) => b - a).slice(0, 10);
+    }
+    function renderChips() {
+      chips.innerHTML = "";
+      if (!state.values.length) {
+        const hint = document.createElement("span");
+        hint.className = "lead-empty";
+        hint.textContent = "Using Settings default";
+        chips.appendChild(hint);
+      } else {
+        for (const d of state.values) {
+          const chip = document.createElement("span");
+          chip.className = "lead-chip";
+          chip.dataset.days = String(d);
+          const label = document.createElement("span");
+          label.textContent = `${d} d`;
+          const x = document.createElement("button");
+          x.type = "button";
+          x.className = "lead-chip-x";
+          x.setAttribute("aria-label", `Remove ${d}-day reminder`);
+          x.textContent = "×";
+          x.addEventListener("click", () => {
+            state.values = state.values.filter((v) => v !== d);
+            renderChips();
+            renderPresets();
+          });
+          chip.appendChild(label);
+          chip.appendChild(x);
+          chips.appendChild(chip);
+        }
+      }
+    }
+    function renderPresets() {
+      presets.querySelectorAll(".lead-preset").forEach((btn) => {
+        const d = parseInt(btn.dataset.days, 10);
+        btn.classList.toggle("active", state.values.includes(d));
+      });
+    }
+    function add(d) {
+      if (!Number.isFinite(d) || d < 0 || d > 365) return;
+      if (state.values.length >= 10 && !state.values.includes(d)) return;
+      if (state.values.includes(d)) state.values = state.values.filter((v) => v !== d);
+      else state.values.push(d);
+      sortValues();
+      renderChips();
+      renderPresets();
+    }
+    presets.querySelectorAll(".lead-preset").forEach((btn) => {
+      btn.addEventListener("click", () => add(parseInt(btn.dataset.days, 10)));
+    });
+    customAdd.addEventListener("click", () => {
+      customInput.hidden = false;
+      customInput.value = "";
+      customInput.focus();
+    });
+    customInput.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        const n = parseInt(customInput.value, 10);
+        if (Number.isFinite(n) && n >= 0 && n <= 365) {
+          add(n);
+          customInput.value = "";
+          customInput.hidden = true;
+        }
+      } else if (e.key === "Escape") {
+        customInput.value = "";
+        customInput.hidden = true;
+      }
+    });
+    customInput.addEventListener("blur", () => {
+      if (!customInput.value.trim()) customInput.hidden = true;
+    });
+
+    const ctrl = {
+      set(values) {
+        state.values = asArr(values);
+        sortValues();
+        customInput.hidden = true;
+        customInput.value = "";
+        renderChips();
+        renderPresets();
+      },
+      get() {
+        sortValues();
+        return state.values.slice();
+      },
+    };
+    leadPickers[rootId] = ctrl;
+    return ctrl;
+  }
+  function ensureLeadPicker(rootId) {
+    return leadPickers[rootId] || attachLeadPicker(rootId);
+  }
+
   // ---------- dialogs ----------
   function openAddDialog() {
     editingId = null;
@@ -884,9 +1002,7 @@
     $("licProductLine").value = "";
     $("licStatus").value = "notStarted";
     $("licRenewalCycle").value = "annual";
-    $("licLeadDays").value = "";
-    $("licLeadDaysCustom").value = "";
-    $("licLeadDaysCustom").hidden = true;
+    ensureLeadPicker("licLeadDaysPicker").set([]);
     $("licNotes").value = "";
     $("licActivity").hidden = true;
     $("licEmailBtn").hidden = true;
@@ -910,17 +1026,11 @@
     $("licProductLine").value = lic.productLine || "";
     $("licStatus").value = lic.status || "notStarted";
     $("licRenewalCycle").value = lic.renewalCycle || "annual";
-    if (lic.leadDays === null || lic.leadDays === undefined) {
-      $("licLeadDays").value = "";
-      $("licLeadDaysCustom").hidden = true;
-    } else if ([7, 14, 30, 60, 90].includes(lic.leadDays)) {
-      $("licLeadDays").value = String(lic.leadDays);
-      $("licLeadDaysCustom").hidden = true;
-    } else {
-      $("licLeadDays").value = "custom";
-      $("licLeadDaysCustom").hidden = false;
-      $("licLeadDaysCustom").value = lic.leadDays;
-    }
+    // leadDays may be: array (v1.7.37+), scalar (legacy row), or null/undefined.
+    let leadInit = [];
+    if (Array.isArray(lic.leadDays)) leadInit = lic.leadDays;
+    else if (typeof lic.leadDays === "number") leadInit = [lic.leadDays];
+    ensureLeadPicker("licLeadDaysPicker").set(leadInit);
     $("licNotes").value = lic.notes || "";
     renderActivityLog(lic);
     $("licEmailBtn").hidden = false;
@@ -966,14 +1076,8 @@
     const picked = licOwnerPicker ? licOwnerPicker.getValue() : { oid: null, name: null };
     const ownerOid = picked.oid || null;
     const ownerNameFromPicker = picked.name || null;
-    const leadSel = $("licLeadDays").value;
-    let leadDays = null;
-    if (leadSel === "custom") {
-      const c = parseInt($("licLeadDaysCustom").value, 10);
-      if (isFinite(c) && c >= 0 && c <= 365) leadDays = c;
-    } else if (leadSel !== "") {
-      leadDays = parseInt(leadSel, 10);
-    }
+    const leadArr = ensureLeadPicker("licLeadDaysPicker").get();
+    const leadDays = leadArr.length ? leadArr : null;
     return {
       customer: $("licCustomer").value.trim(),
       licenseType: $("licType").value.trim(),
@@ -1817,13 +1921,6 @@
     $("bulkReassignConfirm").addEventListener("click", confirmBulkReassign);
     $("bulkReassignCancel").addEventListener("click", () => $("bulkReassignDialog").close());
 
-    // Custom lead days toggle
-    $("licLeadDays").addEventListener("change", () => {
-      const v = $("licLeadDays").value;
-      $("licLeadDaysCustom").hidden = v !== "custom";
-      if (v === "custom") $("licLeadDaysCustom").focus();
-    });
-
     // Renew dialog
     document.querySelectorAll(".renew-presets [data-years]").forEach((b) => {
       b.addEventListener("click", () => confirmRenew(parseInt(b.dataset.years, 10), null));
@@ -2384,7 +2481,10 @@
   // ---------- license-tab settings ----------
   function openSettingsDialog() {
     $("setThemeOverride").value = themeOverride;
-    $("setLicenseLeadDays").value = String(userSettings.licenseLeadDays || 14);
+    let defaultLeads = userSettings.licenseLeadDays;
+    if (typeof defaultLeads === "number") defaultLeads = [defaultLeads];
+    if (!Array.isArray(defaultLeads) || !defaultLeads.length) defaultLeads = [14];
+    ensureLeadPicker("setLicenseLeadDaysPicker").set(defaultLeads);
     $("setSkipBriefing").checked = !!userSettings.licenseSkipBriefing;
     $("setSkipMonthlyDigest").checked = !!userSettings.licenseSkipMonthlyDigest;
     $("setRollupDigest").checked = !!userSettings.licenseRollupDigest;
@@ -2428,9 +2528,10 @@
       try { localStorage.setItem("lic.themeOverride", newTheme); } catch (_) {}
       applyTheme(teamsTheme);
     }
+    const pickerLeads = ensureLeadPicker("setLicenseLeadDaysPicker").get();
     const next = {
       ...userSettings,
-      licenseLeadDays: parseInt($("setLicenseLeadDays").value, 10) || 14,
+      licenseLeadDays: pickerLeads.length ? pickerLeads : [14],
       licenseSkipBriefing: $("setSkipBriefing").checked,
       licenseSkipMonthlyDigest: $("setSkipMonthlyDigest").checked,
       licenseRollupDigest: $("setRollupDigest").checked,
@@ -2496,7 +2597,7 @@
         l.expiryDate || "",
         l.ownerName || "",
         l.productLine || "",
-        l.leadDays == null ? "" : l.leadDays,
+        Array.isArray(l.leadDays) ? l.leadDays.join(",") : (l.leadDays == null ? "" : l.leadDays),
         l.notes || "",
         l.state || "active",
         l.lastRenewedAt ? l.lastRenewedAt.slice(0, 10) : "",

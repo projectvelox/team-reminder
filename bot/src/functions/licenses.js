@@ -153,9 +153,19 @@ function validatePayload(body, existing) {
   if (body.leadDays === null) {
     out.leadDays = null;
   } else if (body.leadDays !== undefined) {
-    const n = Number(body.leadDays);
-    if (!isFinite(n) || n < 0 || n > 365) return { error: 'leadDays must be 0-365' };
-    out.leadDays = Math.floor(n);
+    // v1.7.37: accept array of 0-365 ints. Scalar legacy clients are coerced
+    // to [n] so older Outlook/compose paths keep working without a redeploy.
+    let arr = body.leadDays;
+    if (typeof arr === 'number') arr = [arr];
+    if (!Array.isArray(arr)) return { error: 'leadDays must be an array of 0-365 ints' };
+    const cleaned = arr
+      .map((x) => Number(x))
+      .filter((n) => Number.isFinite(n) && n >= 0 && n <= 365)
+      .map((n) => Math.floor(n));
+    if (cleaned.length > 10) return { error: 'leadDays max 10 thresholds' };
+    out.leadDays = cleaned.length
+      ? Array.from(new Set(cleaned)).sort((a, b) => b - a)
+      : null;
   }
 
   if (body.notes === null || body.notes === '') {
@@ -221,6 +231,7 @@ app.http('licensesCollection', {
       lastRenewedAt: null,
       lastFollowUpAt: null,
       lastEscalatedDays: null,
+      lastFiredLeadDays: [],
       statusChangedAt: now,
       statusChangedByOid: user.oid,
       statusChangedByName: user.name || null,
@@ -278,6 +289,7 @@ app.http('licensesItem', {
     // Clear escalation + follow-up tracking when expiry moves forward.
     if (existing.expiryDate !== merged.expiryDate) {
       merged.lastEscalatedDays = null;
+      merged.lastFiredLeadDays = [];
     }
     // Status transition: stamp + log + reset follow-up timer.
     if (existing.status !== merged.status) {
@@ -355,6 +367,7 @@ app.http('licensesRenew', {
       lastEditedByOid: user.oid,
       lastEditedByName: user.name || null,
       lastEscalatedDays: null,
+      lastFiredLeadDays: [],
     };
     appendEvent(merged, 'renewed', user, `expiry advanced to ${newExpiry}`);
     await store.upsertLicense(merged);

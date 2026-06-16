@@ -10,7 +10,7 @@
 const { app } = require('@azure/functions');
 const { MessageFactory } = require('botbuilder');
 const { adapter } = require('../lib/bot');
-const { reminderCard, eodCard, licenseFollowUpCard, licenseBriefingCard } = require('../lib/cards');
+const { reminderCard, eodCard, licenseFollowUpCard, licenseBriefingCard, licenseLeadCard } = require('../lib/cards');
 const { getUserBasic, sendMail } = require('../lib/graph');
 const { aggregateAllBuckets, bucketsForOwner, buildDigestHtml } = require('../lib/digest');
 const store = require('../lib/store');
@@ -168,6 +168,14 @@ async function processUser(appId, user, ph, context) {
     await processLicenseFollowUps(appId, user, context);
   }
 
+  // 1d) Per-license lead-day expiry cards (v1.7.37). Weekday 9:00-9:10 AM PH
+  // window so we don't collide with the 8 AM briefing and don't double-fire
+  // across multiple ticks. Each threshold is deduped via lastFiredLeadDays.
+  const isWeekendDayB = ph.weekday === 'Sat' || ph.weekday === 'Sun';
+  if (!isWeekendDayB && ph.minutesOfDay >= 9 * 60 && ph.minutesOfDay < 9 * 60 + 10) {
+    await processLicenseLeadFires(appId, user, ph, context);
+  }
+
   // 1c) Daily morning license briefing. Weekday 8 AM PH (480 minutesOfDay,
   // tolerate the window 8:00-8:10). Once per PH day per user. Honors the
   // per-user licenseSkipBriefing opt-out in Settings.
@@ -223,6 +231,61 @@ async function processLicenseFollowUps(appId, user, context) {
       context.log(`[scheduler] license follow-up sent for ${lic.id} (${lic.customer}, ${lic.licenseType}) days=${daysSinceStatus}`);
     } catch (err) {
       context.error(`[scheduler] license follow-up failed for ${lic.id}: ${err?.message || err}`);
+    }
+  }
+}
+
+// Fire per-license lead-day reminder cards (v1.7.37). For each license owned
+// by `user`:
+//   1. Resolve effective lead-day thresholds = license.leadDays ||
+//      user.settings.licenseLeadDays || [14].
+//   2. daysUntilExpiry = (license.expiryDate - today) in PH days. May be
+//      negative (overdue).
+//   3. Find the smallest threshold D such that daysUntilExpiry <= D and D
+//      has not been fired this renewal cycle (lastFiredLeadDays).
+//   4. If found, send the card and stamp D into lastFiredLeadDays.
+//
+// Sorting ascending lets a fresh license with leadDays = [1, 7, 15, 30, 60]
+// and 30 days to expiry fire 30d first, then 15d when it lands at 15d out,
+// etc. — without re-firing 60d retroactively or doubling up on a single day.
+async function processLicenseLeadFires(appId, user, ph, context) {
+  let licenses;
+  try { licenses = await store.listLicenses(); }
+  catch (err) { context.error(`[scheduler] listLicenses (leadFires) failed: ${err?.message || err}`); return; }
+  const today = ph.date;
+  const todayDate = new Date(today + 'T00:00:00Z');
+  const defaultLeads = Array.isArray(user.settings?.licenseLeadDays) && user.settings.licenseLeadDays.length
+    ? user.settings.licenseLeadDays
+    : [14];
+  for (const lic of licenses) {
+    if (lic.ownerOid !== user.oid) continue;
+    if (lic.state === 'abandoned') continue;
+    if (lic.status === 'renewed') continue;
+    if (!lic.expiryDate) continue;
+    if (lic.leadSnoozedUntil && lic.leadSnoozedUntil >= today) continue;
+    const leads = Array.isArray(lic.leadDays) && lic.leadDays.length ? lic.leadDays : defaultLeads;
+    const sortedAsc = leads.slice().sort((a, b) => a - b);
+    const expDate = new Date(lic.expiryDate + 'T00:00:00Z');
+    const daysUntilExpiry = Math.floor((expDate - todayDate) / 86400000);
+    const fired = Array.isArray(lic.lastFiredLeadDays) ? lic.lastFiredLeadDays.slice() : [];
+    let chosen = null;
+    let skipLicense = false;
+    for (const D of sortedAsc) {
+      if (daysUntilExpiry > D) continue;
+      // smallest applicable threshold for this license
+      if (fired.includes(D)) { skipLicense = true; break; }
+      chosen = D;
+      break;
+    }
+    if (skipLicense || chosen === null) continue;
+    try {
+      await sendProactive(appId, user, MessageFactory.attachment(licenseLeadCard(lic, daysUntilExpiry)));
+      fired.push(chosen);
+      lic.lastFiredLeadDays = fired;
+      await store.upsertLicense(lic);
+      context.log(`[scheduler] lead-day card sent for ${lic.id} (${lic.customer}, ${lic.licenseType}) threshold=${chosen}d daysUntil=${daysUntilExpiry}`);
+    } catch (err) {
+      context.error(`[scheduler] lead-day card failed for ${lic.id}: ${err?.message || err}`);
     }
   }
 }

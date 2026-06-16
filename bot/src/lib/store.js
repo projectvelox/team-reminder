@@ -38,8 +38,8 @@ const DEFAULT_SETTINGS = {
   quietStart: null, // HH:MM, null/empty = quiet hours disabled
   quietEnd: null,
   autoImportFlagged: false, // when true, flagged Outlook emails auto-create reminders. v1.5: setting persisted but subscription flow not yet active.
-  // License-tab settings (v1.7.22)
-  licenseLeadDays: 14,           // per-user default lead days, used when license.leadDays is null
+  // License-tab settings (v1.7.22; v1.7.37 widens licenseLeadDays to an array)
+  licenseLeadDays: [14],         // per-user default lead-day thresholds, used when license.leadDays is null/empty
   licenseSkipBriefing: false,    // opt out of the morning briefing card
   licenseSkipMonthlyDigest: false, // opt out of the monthly email digest
   licenseRollupDigest: false,    // opt in to include an all-accounts section in the digest (sales lead use case)
@@ -47,12 +47,25 @@ const DEFAULT_SETTINGS = {
 
 // ---------- user ----------
 
+// Normalize licenseLeadDays after read so legacy rows that stored a scalar
+// (pre-v1.7.37) come out as an array. Mutates and returns the settings object.
+function migrateLeadDaysSetting(s) {
+  if (typeof s.licenseLeadDays === 'number') {
+    s.licenseLeadDays = [s.licenseLeadDays];
+  } else if (!Array.isArray(s.licenseLeadDays)) {
+    s.licenseLeadDays = [14];
+  }
+  return s;
+}
+
 async function getUser(oid) {
   await ensureTable();
   try {
     const entity = await getClient().getEntity(oid, '_user');
+    const settings = entity.settings ? JSON.parse(entity.settings) : { ...DEFAULT_SETTINGS };
+    migrateLeadDaysSetting(settings);
     return {
-      settings: entity.settings ? JSON.parse(entity.settings) : { ...DEFAULT_SETTINGS },
+      settings,
       conversationRef: entity.conversationRef ? JSON.parse(entity.conversationRef) : null,
       lastEodDate: entity.lastEodDate || null,
       lastRolloverDate: entity.lastRolloverDate || null,
@@ -295,6 +308,47 @@ const LICENSE_PARTITION = '_licenses';
 const LICENSE_STATUSES = ['notStarted', 'noticeSent', 'awaitingCustomer', 'customerConfirmed', 'renewed'];
 const RENEWAL_CYCLES = ['annual', 'biennial', 'triennial'];
 
+// Parse a leadDays cell from Tables. Returns number[] | null.
+// Backward compat: pre-v1.7.37 rows stored a scalar number; convert to [n].
+function parseLeadDays(v) {
+  if (v === null || v === undefined || v === '') return null;
+  if (typeof v === 'number') return Number.isFinite(v) ? [v] : null;
+  if (typeof v === 'string') {
+    try {
+      const parsed = JSON.parse(v);
+      if (Array.isArray(parsed)) {
+        const cleaned = parsed.map(Number).filter((n) => Number.isFinite(n) && n >= 0 && n <= 365);
+        return cleaned.length ? cleaned : null;
+      }
+      if (typeof parsed === 'number' && Number.isFinite(parsed)) return [parsed];
+    } catch { /* fall through */ }
+  }
+  return null;
+}
+
+// Always store as a JSON string so we don't depend on Azure Tables' EDM
+// inference of an untyped column. Null becomes null (cleared cell).
+function serializeLeadDays(v) {
+  if (v === null || v === undefined) return null;
+  if (typeof v === 'number' && Number.isFinite(v)) return JSON.stringify([Math.floor(v)]);
+  if (Array.isArray(v)) {
+    const cleaned = v.map(Number).filter((n) => Number.isFinite(n) && n >= 0 && n <= 365).map(Math.floor);
+    if (!cleaned.length) return null;
+    return JSON.stringify(Array.from(new Set(cleaned)).sort((a, b) => b - a));
+  }
+  return null;
+}
+
+function parseLeadFireLog(v) {
+  if (!v) return [];
+  if (typeof v !== 'string') return [];
+  try {
+    const parsed = JSON.parse(v);
+    if (!Array.isArray(parsed)) return [];
+    return parsed.map(Number).filter((n) => Number.isFinite(n));
+  } catch { return []; }
+}
+
 function entityToLicense(e) {
   let events = [];
   if (e.events) {
@@ -310,7 +364,8 @@ function entityToLicense(e) {
     ownerOid: e.ownerOid || null,
     ownerName: e.ownerName || null,
     productLine: e.productLine || null,
-    leadDays: typeof e.leadDays === 'number' ? e.leadDays : null,
+    leadDays: parseLeadDays(e.leadDays),
+    lastFiredLeadDays: parseLeadFireLog(e.lastFiredLeadDays),
     notes: e.notes || null,
     state: e.state === 'abandoned' ? 'abandoned' : 'active',
     status: LICENSE_STATUSES.includes(e.status) ? e.status : 'notStarted',
@@ -327,6 +382,7 @@ function entityToLicense(e) {
     lastRenewedAt: e.lastRenewedAt || null,
     lastFollowUpAt: e.lastFollowUpAt || null,
     lastEscalatedDays: typeof e.lastEscalatedDays === 'number' ? e.lastEscalatedDays : null,
+    leadSnoozedUntil: e.leadSnoozedUntil || null,
     events,
   };
 }
@@ -364,7 +420,8 @@ async function upsertLicense(license) {
     ownerOid: license.ownerOid || null,
     ownerName: license.ownerName || null,
     productLine: license.productLine || null,
-    leadDays: typeof license.leadDays === 'number' ? license.leadDays : null,
+    leadDays: serializeLeadDays(license.leadDays),
+    lastFiredLeadDays: JSON.stringify(Array.isArray(license.lastFiredLeadDays) ? license.lastFiredLeadDays : []),
     notes: license.notes || null,
     state: license.state === 'abandoned' ? 'abandoned' : 'active',
     status: LICENSE_STATUSES.includes(license.status) ? license.status : 'notStarted',
@@ -381,6 +438,7 @@ async function upsertLicense(license) {
     lastRenewedAt: license.lastRenewedAt || null,
     lastFollowUpAt: license.lastFollowUpAt || null,
     lastEscalatedDays: typeof license.lastEscalatedDays === 'number' ? license.lastEscalatedDays : null,
+    leadSnoozedUntil: license.leadSnoozedUntil || null,
     events: JSON.stringify(Array.isArray(license.events) ? license.events.slice(-50) : []),
   }, 'Replace');
 }

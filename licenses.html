@@ -14,10 +14,10 @@
   <link rel="preconnect" href="https://func-day-reminders-17023.azurewebsites.net" crossorigin />
   <link rel="dns-prefetch" href="https://func-day-reminders-17023.azurewebsites.net" />
   <link rel="preconnect" href="https://res.cdn.office.net" crossorigin />
-  <link rel="preload" as="script" href="licenses.js?v=1.7.36" />
-  <link rel="preload" as="style" href="licenses.css?v=1.7.36" />
-  <link rel="stylesheet" href="styles.css?v=1.7.36" />
-  <link rel="stylesheet" href="licenses.css?v=1.7.36" />
+  <link rel="preload" as="script" href="licenses.js?v=1.7.37" />
+  <link rel="preload" as="style" href="licenses.css?v=1.7.37" />
+  <link rel="stylesheet" href="styles.css?v=1.7.37" />
+  <link rel="stylesheet" href="licenses.css?v=1.7.37" />
   <script src="https://res.cdn.office.net/teams-js/2.24.0/js/MicrosoftTeams.min.js"></script>
 </head>
 <body data-theme="default" data-page="licenses">
@@ -223,19 +223,26 @@
         </label>
       </div>
 
-      <label class="lic-field">
-        <span class="lic-label">Notify me how many days before expiry?</span>
-        <select id="licLeadDays">
-          <option value="">Use default (14 days)</option>
-          <option value="7">7 days</option>
-          <option value="14">14 days</option>
-          <option value="30">30 days</option>
-          <option value="60">60 days</option>
-          <option value="90">90 days</option>
-          <option value="custom">Custom…</option>
-        </select>
-        <input id="licLeadDaysCustom" type="number" min="0" max="365" placeholder="Days" hidden />
-      </label>
+      <div class="lic-field">
+        <span class="lic-label">Notify me before expiry</span>
+        <p class="lic-hint" style="margin: 0 0 6px;">Pick one or more lead times. Tap a preset to toggle it. Leave empty to use your Settings default.</p>
+        <div class="lead-picker" id="licLeadDaysPicker"
+             data-chip-id="licLeadDaysChips"
+             data-preset-id="licLeadDaysPresets"
+             data-custom-id="licLeadDaysCustom"
+             data-custom-add-id="licLeadDaysCustomAdd">
+          <div class="lead-chips" id="licLeadDaysChips" aria-live="polite"></div>
+          <div class="lead-presets" id="licLeadDaysPresets">
+            <button type="button" class="lead-preset" data-days="60">60 d</button>
+            <button type="button" class="lead-preset" data-days="30">30 d</button>
+            <button type="button" class="lead-preset" data-days="15">15 d</button>
+            <button type="button" class="lead-preset" data-days="7">7 d</button>
+            <button type="button" class="lead-preset" data-days="1">1 d</button>
+            <button type="button" class="lead-custom-add" id="licLeadDaysCustomAdd">+ Custom…</button>
+          </div>
+          <input id="licLeadDaysCustom" class="lead-custom-input" type="number" min="0" max="365" placeholder="Days, then Enter" hidden />
+        </div>
+      </div>
 
       <label class="lic-field">
         <span class="lic-label">Notes (optional)</span>
@@ -528,7 +535,7 @@
     </section>
 
     <div class="lic-dialog-actions">
-      <span class="lic-version" id="licVersionLabel" title="Licenses tab build version">v1.7.36</span>
+      <span class="lic-version" id="licVersionLabel" title="Licenses tab build version">v1.7.37</span>
       <button type="button" class="btn primary" id="licGuideCloseBtn">Close</button>
     </div>
   </dialog>
@@ -551,15 +558,24 @@
       </div>
 
       <div class="lic-field">
-        <span class="lic-label">Default lead time</span>
-        <p class="lic-hint" style="margin: 0 0 6px;">How many days before each license expires should the bot remind you? Per-row overrides on individual licenses take precedence.</p>
-        <select id="setLicenseLeadDays">
-          <option value="7">7 days</option>
-          <option value="14">14 days (default)</option>
-          <option value="30">30 days</option>
-          <option value="60">60 days</option>
-          <option value="90">90 days</option>
-        </select>
+        <span class="lic-label">Default lead times</span>
+        <p class="lic-hint" style="margin: 0 0 6px;">Pick one or more days before expiry when the bot should ping you. Per-row overrides on individual licenses take precedence.</p>
+        <div class="lead-picker" id="setLicenseLeadDaysPicker"
+             data-chip-id="setLicenseLeadDaysChips"
+             data-preset-id="setLicenseLeadDaysPresets"
+             data-custom-id="setLicenseLeadDaysCustom"
+             data-custom-add-id="setLicenseLeadDaysCustomAdd">
+          <div class="lead-chips" id="setLicenseLeadDaysChips" aria-live="polite"></div>
+          <div class="lead-presets" id="setLicenseLeadDaysPresets">
+            <button type="button" class="lead-preset" data-days="60">60 d</button>
+            <button type="button" class="lead-preset" data-days="30">30 d</button>
+            <button type="button" class="lead-preset" data-days="15">15 d</button>
+            <button type="button" class="lead-preset" data-days="7">7 d</button>
+            <button type="button" class="lead-preset" data-days="1">1 d</button>
+            <button type="button" class="lead-custom-add" id="setLicenseLeadDaysCustomAdd">+ Custom…</button>
+          </div>
+          <input id="setLicenseLeadDaysCustom" class="lead-custom-input" type="number" min="0" max="365" placeholder="Days, then Enter" hidden />
+        </div>
       </div>
 
       <label class="lic-field" style="flex-direction: row; align-items: center; gap: 10px;">
@@ -594,6 +610,6 @@
 
   <div id="toast" class="toast" hidden></div>
 
-  <script src="licenses.js?v=1.7.36" defer></script>
+  <script src="licenses.js?v=1.7.37" defer></script>
 </body>
 </html>

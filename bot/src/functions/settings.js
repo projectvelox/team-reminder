@@ -43,8 +43,8 @@ app.http('settings', {
       quietStart: validHHMM(incoming.quietStart) ? incoming.quietStart : null,
       quietEnd: validHHMM(incoming.quietEnd) ? incoming.quietEnd : null,
       autoImportFlagged: !!incoming.autoImportFlagged,
-      // License-tab settings (v1.7.22)
-      licenseLeadDays: clampInt(incoming.licenseLeadDays, 0, 365, store.DEFAULT_SETTINGS.licenseLeadDays),
+      // License-tab settings (v1.7.22; v1.7.37 widens to array)
+      licenseLeadDays: cleanLeadDaysArray(incoming.licenseLeadDays, store.DEFAULT_SETTINGS.licenseLeadDays),
       licenseSkipBriefing: !!incoming.licenseSkipBriefing,
       licenseSkipMonthlyDigest: !!incoming.licenseSkipMonthlyDigest,
       licenseRollupDigest: !!incoming.licenseRollupDigest,
@@ -63,4 +63,18 @@ function clampInt(v, min, max, fallback) {
   const n = parseInt(v, 10);
   if (isNaN(n)) return fallback;
   return Math.max(min, Math.min(max, n));
+}
+
+// Accept array of 0-365 ints (or a scalar from legacy clients). Dedupes,
+// sorts descending, caps at 10 entries. Falls back to the system default if
+// the cleaned array is empty.
+function cleanLeadDaysArray(v, fallback) {
+  let arr = v;
+  if (typeof arr === 'number') arr = [arr];
+  if (!Array.isArray(arr)) return Array.isArray(fallback) ? fallback.slice() : [14];
+  const cleaned = arr
+    .map((x) => parseInt(x, 10))
+    .filter((n) => Number.isFinite(n) && n >= 0 && n <= 365);
+  if (!cleaned.length) return Array.isArray(fallback) ? fallback.slice() : [14];
+  return Array.from(new Set(cleaned)).sort((a, b) => b - a).slice(0, 10);
 }

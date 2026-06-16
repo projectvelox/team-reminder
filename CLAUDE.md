@@ -73,6 +73,20 @@ Secrets, GUIDs, and connection strings live in the Claude memory file `project_d
 
 ## What ships today (v1.7.x)
 
+### v1.7.37 — multi-threshold lead-day reminders
+
+The single per-license "Notify me N days before expiry" dropdown is gone. Both the per-license override and the per-user default in Settings are now **arrays of lead-day thresholds** picked from a chip-style multi-select (presets `60 / 30 / 15 / 7 / 1` + `+ Custom…`).
+
+- **Storage shape change**: `license.leadDays` and `settings.licenseLeadDays` are now `number[] | null`. Pre-v1.7.37 scalar rows are migrated on read (`[n]`). Both fields are stored as JSON strings in Azure Tables.
+- **New per-license fields**: `lastFiredLeadDays: number[]` (which thresholds have already fired this renewal cycle, prevents re-firing) and `leadSnoozedUntil: YYYY-MM-DD | null` (set by the card's *Snooze 7 days* button to pause all renewal pings on a single license).
+- **Cycle reset**: `lastFiredLeadDays` is cleared on expiry change (manual edit) and on `/api/licenses/{id}/renew`, so the new cycle's thresholds start fresh.
+- **New scheduler branch `processLicenseLeadFires`**: weekday 9:00–9:10 AM PH window. For each license owned by the user, finds the smallest threshold `D` where `daysUntilExpiry <= D` and `D` is not in `lastFiredLeadDays`, sends `licenseLeadCard`, then stamps `D`. Respects `state=abandoned`, `status=renewed`, and per-license `leadSnoozedUntil`. Falls back to the user's Settings default if the license's own `leadDays` is null/empty; final fallback `[14]`.
+- **New `licenseLeadCard`**: shows actual `daysUntilExpiry` ("expires in 30 days", "expires tomorrow", "expires today", "expired Nd ago"), owner + product line, with actions **Mark renewed (+1y)** / **Snooze 7 days** / **Won't renew** / **Open in tab**. "Won't renew" sets `state='abandoned'` and logs an event.
+- **Bot card handlers**: new `licenseLeadSnooze` (sets `leadSnoozedUntil`) and `licenseWontRenew` (state=abandoned) in `bot.js`.
+- **CSV export**: `Lead Days` column now writes the array as comma-joined values (e.g. `60,30,15,7,1`).
+
+Cache-bust to `v=1.7.37` on `licenses.html`/`licenses.js`/`licenses.css`. Backend redeploy required (scheduler + card + validation changes).
+
 ### v1.7.0 — Licenses tab (this release)
 
 Second static tab for tracking client license renewals as a tenant-shared dataset, distinct from per-user reminders.

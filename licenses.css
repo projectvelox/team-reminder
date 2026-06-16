@@ -1324,3 +1324,111 @@ body:is([data-theme="dark"], [data-theme="contrast"]) .import-table select {
   outline: 2px solid var(--accent, #38AEEB);
   outline-offset: 2px;
 }
+
+/* ---------- lead-day picker (v1.7.37) ---------- */
+.lead-picker {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.lead-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  min-height: 26px;
+  padding: 4px 0;
+}
+.lead-empty {
+  font-size: 12px;
+  color: var(--muted, #767680);
+  font-style: italic;
+}
+.lead-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: var(--accent-bg, rgba(56, 174, 235, 0.12));
+  border: 1px solid var(--accent, #38AEEB);
+  border-radius: 14px;
+  padding: 2px 4px 2px 10px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--accent, #0078d4);
+  line-height: 1.4;
+}
+.lead-chip-x {
+  background: transparent;
+  border: 0;
+  color: inherit;
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0 4px;
+  border-radius: 8px;
+  opacity: 0.75;
+}
+.lead-chip-x:hover { opacity: 1; background: rgba(0, 0, 0, 0.08); }
+.lead-presets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.lead-preset,
+.lead-custom-add {
+  background: var(--card-bg, #fff);
+  border: 1px solid var(--border, #d1d1d1);
+  border-radius: 14px;
+  padding: 4px 12px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text, #1c1c1e);
+  cursor: pointer;
+  line-height: 1.4;
+}
+.lead-preset:hover,
+.lead-custom-add:hover {
+  border-color: var(--accent, #38AEEB);
+  color: var(--accent, #0078d4);
+}
+.lead-preset.active {
+  background: var(--accent, #38AEEB);
+  border-color: var(--accent, #38AEEB);
+  color: #fff;
+}
+.lead-custom-input {
+  width: 140px;
+  padding: 6px 10px;
+  border: 1px solid var(--border, #d1d1d1);
+  border-radius: 6px;
+  font-size: 13px;
+  background: var(--card-bg, #fff);
+  color: var(--text, #1c1c1e);
+}
+.lead-preset:focus-visible,
+.lead-custom-add:focus-visible,
+.lead-chip-x:focus-visible,
+.lead-custom-input:focus-visible {
+  outline: 2px solid var(--accent, #38AEEB);
+  outline-offset: 2px;
+}
+body:is([data-theme="dark"], [data-theme="contrast"]) .lead-chip {
+  color: #9ed7f5;
+  background: rgba(56, 174, 235, 0.18);
+}
+body:is([data-theme="dark"], [data-theme="contrast"]) .lead-chip-x:hover {
+  background: rgba(255, 255, 255, 0.12);
+}
+body:is([data-theme="dark"], [data-theme="contrast"]) .lead-preset,
+body:is([data-theme="dark"], [data-theme="contrast"]) .lead-custom-add {
+  background: #2b2b30;
+  border-color: #3d3d42;
+  color: #f0f0f2;
+}
+body:is([data-theme="dark"], [data-theme="contrast"]) .lead-preset.active {
+  color: #1a1a1a;
+}
+body:is([data-theme="dark"], [data-theme="contrast"]) .lead-custom-input {
+  background: #2b2b30;
+  border-color: #3d3d42;
+  color: #f0f0f2;
+}

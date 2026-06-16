@@ -162,4 +162,44 @@ function licenseBriefingCard(stats, ownerName) {
   };
 }
 
-module.exports = { reminderCard, eodCard, menuCard, licenseFollowUpCard, licenseBriefingCard };
+// Per-license expiry reminder fired at each configured lead-day threshold
+// (60/30/15/7/1 etc.). Sent to the owner; surfaces actions to close the loop
+// without leaving Teams. daysUntilExpiry can be negative (overdue).
+function licenseLeadCard(license, daysUntilExpiry) {
+  const tabDeepLink = `https://teams.microsoft.com/l/entity/5a03bfa3-63c4-417c-b668-b02234ebc11b/dayReminders.licenses`;
+  let when;
+  if (daysUntilExpiry > 1) when = `expires in ${daysUntilExpiry} days`;
+  else if (daysUntilExpiry === 1) when = 'expires tomorrow';
+  else if (daysUntilExpiry === 0) when = 'expires today';
+  else when = `expired ${Math.abs(daysUntilExpiry)} day${daysUntilExpiry === -1 ? '' : 's'} ago`;
+  const ownerLine = license.ownerName ? `Owner: ${license.ownerName}` : null;
+  const details = [
+    license.userCount ? `${license.userCount} user${license.userCount === 1 ? '' : 's'}` : null,
+    license.productLine || null,
+    license.expiryDate ? `Expires ${license.expiryDate}` : null,
+  ].filter(Boolean).join(' · ');
+  return {
+    contentType: 'application/vnd.microsoft.card.adaptive',
+    content: {
+      $schema: 'http://adaptivecards.io/schemas/adaptive-card.json',
+      type: 'AdaptiveCard',
+      version: '1.4',
+      body: [
+        { type: 'TextBlock', text: 'License renewal', weight: 'Bolder', size: 'Small', color: 'Accent' },
+        { type: 'TextBlock', text: `${license.customer}, ${license.licenseType}`, weight: 'Bolder', size: 'Medium', wrap: true },
+        { type: 'TextBlock', text: when, isSubtle: true, spacing: 'Small' },
+        ...(details ? [{ type: 'TextBlock', text: details, isSubtle: true, wrap: true, spacing: 'None' }] : []),
+        ...(ownerLine ? [{ type: 'TextBlock', text: ownerLine, isSubtle: true, spacing: 'None' }] : []),
+        ...(license.notes ? [{ type: 'TextBlock', text: license.notes, wrap: true, spacing: 'Small' }] : []),
+      ],
+      actions: [
+        { type: 'Action.Submit', title: 'Mark renewed (+1y)', data: { action: 'licenseRenew', licenseId: license.id, years: 1 } },
+        { type: 'Action.Submit', title: 'Snooze 7 days', data: { action: 'licenseLeadSnooze', licenseId: license.id, days: 7 } },
+        { type: 'Action.Submit', title: "Won't renew", data: { action: 'licenseWontRenew', licenseId: license.id } },
+        { type: 'Action.OpenUrl', title: 'Open in tab', url: tabDeepLink },
+      ],
+    },
+  };
+}
+
+module.exports = { reminderCard, eodCard, menuCard, licenseFollowUpCard, licenseBriefingCard, licenseLeadCard };

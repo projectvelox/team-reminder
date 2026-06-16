@@ -377,6 +377,34 @@ class ReminderBot extends TeamsActivityHandler {
       lic.lastFollowUpAt = new Date().toISOString();
       await store.upsertLicense(lic);
       await context.sendActivity(`OK, I will check in again on this in 7 days.`);
+    } else if (data.action === 'licenseLeadSnooze' && data.licenseId) {
+      // From the lead-day card: don't refire any lead threshold for N days.
+      // Implemented by stamping leadSnoozedUntil; the scheduler honors it.
+      const lic = await store.getLicense(data.licenseId);
+      if (!lic) return;
+      const days = typeof data.days === 'number' && data.days > 0 ? Math.min(data.days, 90) : 7;
+      const PH_OFFSET = 8 * 60 * 60 * 1000;
+      const ph = new Date(Date.now() + PH_OFFSET);
+      ph.setUTCDate(ph.getUTCDate() + days);
+      lic.leadSnoozedUntil = `${ph.getUTCFullYear()}-${String(ph.getUTCMonth() + 1).padStart(2, '0')}-${String(ph.getUTCDate()).padStart(2, '0')}`;
+      lic.lastEditedAt = new Date().toISOString();
+      lic.lastEditedByOid = oid;
+      lic.lastEditedByName = context.activity.from?.name || null;
+      await store.upsertLicense(lic);
+      await context.sendActivity(`OK, I will pause renewal pings on ${lic.customer}, ${lic.licenseType} until ${lic.leadSnoozedUntil}.`);
+    } else if (data.action === 'licenseWontRenew' && data.licenseId) {
+      const lic = await store.getLicense(data.licenseId);
+      if (!lic) { await context.sendActivity("That license isn't in the tracker anymore."); return; }
+      const now = new Date().toISOString();
+      lic.state = 'abandoned';
+      lic.lastEditedAt = now;
+      lic.lastEditedByOid = oid;
+      lic.lastEditedByName = context.activity.from?.name || null;
+      lic.events = Array.isArray(lic.events) ? lic.events : [];
+      lic.events.push({ at: now, byOid: oid, byName: context.activity.from?.name || null, type: 'abandoned', detail: 'marked won\'t renew (via card)' });
+      if (lic.events.length > 50) lic.events = lic.events.slice(-50);
+      await store.upsertLicense(lic);
+      await context.sendActivity(`Got it. ${lic.customer}, ${lic.licenseType} is now flagged as won't renew. Open the Licenses tab to undo or reassign.`);
     } else if (data.action === 'licenseBriefingSnooze') {
       const days = typeof data.days === 'number' && data.days > 0 ? Math.min(data.days, 14) : 1;
       const PH_OFFSET = 8 * 60 * 60 * 1000;
