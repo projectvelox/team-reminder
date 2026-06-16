@@ -88,6 +88,17 @@
     const saved = localStorage.getItem("lic.themeOverride");
     if (saved && ["auto", "default", "dark", "contrast"].includes(saved)) themeOverride = saved;
   } catch (_) {}
+  // Collapse state for grouped table view. Keys are "axis:value" e.g.
+  // "ownerName:Joshua Oducado", so switching group axes preserves collapse state
+  // for each axis independently.
+  const collapsedGroups = new Set();
+  try {
+    const saved = localStorage.getItem("lic.collapsedGroups");
+    if (saved) JSON.parse(saved).forEach((k) => collapsedGroups.add(k));
+  } catch (_) {}
+  function saveCollapsedGroups() {
+    try { localStorage.setItem("lic.collapsedGroups", JSON.stringify([...collapsedGroups])); } catch (_) {}
+  }
   // Precomputed once per render so every row in the same cluster shows the
   // same Bundle: N badge. Recomputed by computeBundles().
   let licenseBundles = new Map(); // licenseId -> { id, members[], size }
@@ -674,19 +685,28 @@
     return tr;
   }
 
-  function buildGroupHeaderRow(label, group) {
+  function buildGroupHeaderRow(label, group, collapsed, onToggle) {
     const tr = document.createElement("tr");
-    tr.className = "lic-group-header";
+    tr.className = "lic-group-header" + (collapsed ? " collapsed" : "");
+    tr.setAttribute("role", "button");
+    tr.setAttribute("aria-expanded", String(!collapsed));
+    tr.title = collapsed ? "Click to expand this group" : "Click to collapse this group";
     const td = document.createElement("td");
     td.colSpan = bulkMode ? 9 : 8;
+    const chevron = document.createElement("span");
+    chevron.className = "group-chevron";
+    chevron.setAttribute("aria-hidden", "true");
+    chevron.textContent = collapsed ? "▸" : "▾";
+    td.appendChild(chevron);
+    td.appendChild(document.createTextNode(" " + (label || "(none)")));
     const seats = group.reduce((s, l) => s + (typeof l.userCount === "number" ? l.userCount : 0), 0);
-    td.textContent = label || "(none)";
     const meta = document.createElement("span");
     meta.className = "group-count";
     const noun = group.length === 1 ? "license" : "licenses";
     meta.textContent = `${group.length} ${noun} · ${seats.toLocaleString()} seats`;
     td.appendChild(meta);
     tr.appendChild(td);
+    tr.addEventListener("click", onToggle);
     return tr;
   }
 
@@ -738,8 +758,18 @@
       const orderedKeys = [...groups.keys()].sort((a, b) => a.localeCompare(b));
       for (const key of orderedKeys) {
         const group = groups.get(key);
-        tbody.appendChild(buildGroupHeaderRow(key, group));
-        for (const lic of group) tbody.appendChild(buildLicenseRow(lic, today));
+        const sectionKey = `${groupBy}:${key}`;
+        const collapsed = collapsedGroups.has(sectionKey);
+        const headerRow = buildGroupHeaderRow(key, group, collapsed, () => {
+          if (collapsedGroups.has(sectionKey)) collapsedGroups.delete(sectionKey);
+          else collapsedGroups.add(sectionKey);
+          saveCollapsedGroups();
+          renderTable();
+        });
+        tbody.appendChild(headerRow);
+        if (!collapsed) {
+          for (const lic of group) tbody.appendChild(buildLicenseRow(lic, today));
+        }
       }
     }
 
@@ -1718,6 +1748,10 @@
     $("licSettingsBtn").addEventListener("click", openSettingsDialog);
     $("setSaveBtn").addEventListener("click", saveLicSettings);
     $("setCancelBtn").addEventListener("click", () => $("licSettingsDialog").close());
+
+    // Quick guide
+    $("licGuideBtn").addEventListener("click", () => $("licGuideDialog").showModal());
+    $("licGuideCloseBtn").addEventListener("click", () => $("licGuideDialog").close());
     $("importFile").addEventListener("change", (e) => {
       const f = e.target.files && e.target.files[0];
       if (f) handleImportFile(f);

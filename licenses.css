@@ -382,7 +382,8 @@ body[data-theme="dark"] .lic-breakdown-chip .chip-count {
   background: rgba(255, 255, 255, 0.12);
 }
 
-/* Group section header inside the table */
+/* Group section header inside the table — clickable to collapse/expand. */
+.lic-group-header { cursor: pointer; }
 .lic-group-header td {
   background: var(--row-hover, rgba(0, 0, 0, 0.04));
   border-top: 2px solid var(--border, #d1d1d1);
@@ -390,6 +391,18 @@ body[data-theme="dark"] .lic-breakdown-chip .chip-count {
   font-weight: 600;
   font-size: 13px;
   padding: 8px 12px;
+  user-select: none;
+}
+.lic-group-header:hover td {
+  background: var(--accent-bg, rgba(56, 174, 235, 0.12));
+}
+.lic-group-header .group-chevron {
+  display: inline-block;
+  width: 14px;
+  text-align: center;
+  opacity: 0.75;
+  margin-right: 2px;
+  font-size: 10px;
 }
 .lic-group-header td .group-count {
   margin-left: 8px;
@@ -1118,6 +1131,49 @@ body[data-theme="dark"] .lic-table td.actions .btn.email-bundle {
 .customer-registry-info .registry-row { display: flex; gap: 8px; margin: 3px 0; }
 .customer-registry-info .registry-label { font-weight: 600; opacity: 0.75; min-width: 80px; }
 body[data-theme="dark"] .customer-registry-info { background: rgba(255, 255, 255, 0.05); }
+
+/* Quick guide dialog */
+.guide-dialog {
+  max-width: 720px;
+  width: 92vw;
+  max-height: 85vh;
+}
+.guide-dialog .guide-section {
+  margin: 18px 0;
+  padding-top: 16px;
+  border-top: 1px solid var(--border, #e4e4e4);
+}
+.guide-dialog .guide-section:first-of-type { border-top: none; padding-top: 0; }
+.guide-dialog .guide-section h3 {
+  margin: 0 0 10px;
+  font-size: 14px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--accent, #0078d4);
+}
+.guide-dialog dl { margin: 0; }
+.guide-dialog dt {
+  font-weight: 700;
+  font-size: 13px;
+  margin: 10px 0 2px;
+}
+.guide-dialog dt:first-child { margin-top: 0; }
+.guide-dialog dd {
+  margin: 0 0 4px;
+  font-size: 13px;
+  line-height: 1.5;
+  opacity: 0.85;
+}
+.guide-dialog kbd {
+  background: var(--row-hover, rgba(0, 0, 0, 0.08));
+  border: 1px solid var(--border, #d1d1d1);
+  border-radius: 4px;
+  padding: 1px 6px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11px;
+}
+body[data-theme="dark"] .guide-dialog .guide-section { border-color: #3d3d42; }
+body[data-theme="dark"] .guide-dialog .guide-section h3 { color: #66c0ff; }
 
 /* Email templates editor: two-column layout */
 .templates-layout {

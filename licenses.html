@@ -9,10 +9,10 @@
   <link rel="preconnect" href="https://func-day-reminders-17023.azurewebsites.net" crossorigin />
   <link rel="dns-prefetch" href="https://func-day-reminders-17023.azurewebsites.net" />
   <link rel="preconnect" href="https://res.cdn.office.net" crossorigin />
-  <link rel="preload" as="script" href="licenses.js?v=1.7.24" />
-  <link rel="preload" as="style" href="licenses.css?v=1.7.24" />
-  <link rel="stylesheet" href="styles.css?v=1.7.24" />
-  <link rel="stylesheet" href="licenses.css?v=1.7.24" />
+  <link rel="preload" as="script" href="licenses.js?v=1.7.25" />
+  <link rel="preload" as="style" href="licenses.css?v=1.7.25" />
+  <link rel="stylesheet" href="styles.css?v=1.7.25" />
+  <link rel="stylesheet" href="licenses.css?v=1.7.25" />
   <script src="https://res.cdn.office.net/teams-js/2.24.0/js/MicrosoftTeams.min.js"></script>
 </head>
 <body data-theme="default" data-page="licenses">
@@ -45,6 +45,7 @@
       <button id="bulkSelectBtn" class="btn ghost" aria-pressed="false" title="Select multiple licenses to reassign owner">Select</button>
       <button id="refreshBtn" class="btn ghost" title="Reload licenses, customers, members, and templates from the server">&#x21bb; Refresh</button>
       <button id="licSettingsBtn" class="btn ghost" title="Settings for the Licenses tab">&#9881; Settings</button>
+      <button id="licGuideBtn" class="btn ghost" title="Show the Licenses tab quick guide" aria-label="Show guide">?</button>
       <button id="addLicenseBtn" class="btn primary">+ Add license</button>
     </div>
   </header>
@@ -438,6 +439,94 @@
   <!-- Per-row kebab menu (Delete, etc.) -->
   <div id="rowMenu" class="row-menu" role="menu" hidden></div>
 
+  <!-- Quick guide dialog -->
+  <dialog id="licGuideDialog" class="lic-dialog guide-dialog">
+    <h2>Licenses tab, quick guide</h2>
+    <p class="lic-hint">Everything you can do on this tab, in one place. Press <kbd>Esc</kbd> or click Close to dismiss.</p>
+
+    <section class="guide-section">
+      <h3>Views</h3>
+      <dl>
+        <dt>Table / Calendar</dt>
+        <dd>Toggle in the top bar. Table is the default; Calendar shows a monthly grid of every license by its expiry date.</dd>
+        <dt>Group: None / Customer / Owner / Product</dt>
+        <dd>Groups the table into sections you can <strong>collapse or expand</strong> by clicking the section header. Useful when one customer or owner has lots of licenses.</dd>
+      </dl>
+    </section>
+
+    <section class="guide-section">
+      <h3>Filtering</h3>
+      <dl>
+        <dt>Quick chips</dt>
+        <dd>All / Mine / This month / Overdue / Needs attention. "Needs attention" surfaces rows stuck in a status, close to expiry, or past expiry without renewal.</dd>
+        <dt>Sidebar breakdowns</dt>
+        <dd>OWNER / PRODUCT / STATUS chips are multi-select. Click multiple values to filter on any of them. A "N selected · Clear" appears so you can reset a whole axis in one click.</dd>
+        <dt>Search</dt>
+        <dd>The search box in the top bar matches customer, license type, notes, product line, and owner name.</dd>
+      </dl>
+    </section>
+
+    <section class="guide-section">
+      <h3>Actions on each row</h3>
+      <dl>
+        <dt>Edit</dt>
+        <dd>Opens the edit drawer where you can change every field plus see the activity log of who changed what.</dd>
+        <dt>Email / Email N</dt>
+        <dd>Opens Outlook with a pre-filled renewal notice (one per row, or one <strong>combined</strong> message when the row is part of a bundle of N licenses for the same customer).</dd>
+        <dt>Renew</dt>
+        <dd>Marks the license renewed with a 1, 2, or 3 year extension (or custom date). Triennial licenses default to +3 years.</dd>
+        <dt>&middot;&middot;&middot; More</dt>
+        <dd>Delete this license. Comes with a 5-second Undo toast.</dd>
+        <dt>Customer name (clickable)</dt>
+        <dd>Click to open the Customer 360 drawer: all licenses for that customer, total seats, contact emails, and customer notes.</dd>
+      </dl>
+    </section>
+
+    <section class="guide-section">
+      <h3>Workflow</h3>
+      <dl>
+        <dt>Status pipeline</dt>
+        <dd>Each license walks through Not started &rarr; Notice sent &rarr; Awaiting customer &rarr; Customer confirmed &rarr; Renewed. The Email button auto-promotes Not started rows to Notice sent.</dd>
+        <dt>Bundle indicator</dt>
+        <dd>When a customer has 2+ licenses expiring within 14 days of each other, the Email button on every row in that bundle reads "Email N". One click drafts one combined message and moves all those rows to Notice sent in a single round-trip.</dd>
+        <dt>Daily morning briefing</dt>
+        <dd>Each weekday at 8 AM PH, the bot sends you a Teams card summarising your queue. Skip it from Settings.</dd>
+        <dt>Monthly email digest</dt>
+        <dd>First day of each month, you receive an email listing your renewals (overdue, this month, next month). Opt out from Settings.</dd>
+      </dl>
+    </section>
+
+    <section class="guide-section">
+      <h3>Bulk operations</h3>
+      <dl>
+        <dt>Select</dt>
+        <dd>Top-bar button toggles a checkbox column. Pick multiple rows, then reassign owner in one round-trip.</dd>
+        <dt>CSV menu</dt>
+        <dd>Import a CSV (with owner auto-match and update-or-skip mode), export the current filtered view, or download a template with example rows.</dd>
+        <dt>Templates</dt>
+        <dd>Edit per-product-line renewal email templates (M365, BC, BREP, etc.). Variables: <code>{customer}</code>, <code>{customerFirstWord}</code>, <code>{licenseType}</code>, <code>{users}</code>, <code>{expiryDate}</code>, <code>{ownerName}</code>.</dd>
+      </dl>
+    </section>
+
+    <section class="guide-section">
+      <h3>Settings</h3>
+      <dl>
+        <dt>Theme</dt>
+        <dd>Auto follows Teams; you can force Light / Dark / High contrast just for this tab.</dd>
+        <dt>Default lead time</dt>
+        <dd>How many days before expiry the bot reminds you (per-row override available in each license).</dd>
+        <dt>All-accounts roll-up digest</dt>
+        <dd>Sales-lead view: monthly digest also includes a section of every owner's renewals, not just yours.</dd>
+        <dt>Refresh</dt>
+        <dd>The Refresh button in the top bar reloads everything from the server without a full tab reload.</dd>
+      </dl>
+    </section>
+
+    <div class="lic-dialog-actions">
+      <button type="button" class="btn primary" id="licGuideCloseBtn">Close</button>
+    </div>
+  </dialog>
+
   <!-- License-tab Settings dialog -->
   <dialog id="licSettingsDialog" class="lic-dialog">
     <form method="dialog">
@@ -491,6 +580,6 @@
 
   <div id="toast" class="toast" hidden></div>
 
-  <script src="licenses.js?v=1.7.24" defer></script>
+  <script src="licenses.js?v=1.7.25" defer></script>
 </body>
 </html>
