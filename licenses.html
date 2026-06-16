@@ -9,10 +9,10 @@
   <link rel="preconnect" href="https://func-day-reminders-17023.azurewebsites.net" crossorigin />
   <link rel="dns-prefetch" href="https://func-day-reminders-17023.azurewebsites.net" />
   <link rel="preconnect" href="https://res.cdn.office.net" crossorigin />
-  <link rel="preload" as="script" href="licenses.js?v=1.7.7" />
-  <link rel="preload" as="style" href="licenses.css?v=1.7.7" />
-  <link rel="stylesheet" href="styles.css?v=1.7.7" />
-  <link rel="stylesheet" href="licenses.css?v=1.7.7" />
+  <link rel="preload" as="script" href="licenses.js?v=1.7.8" />
+  <link rel="preload" as="style" href="licenses.css?v=1.7.8" />
+  <link rel="stylesheet" href="styles.css?v=1.7.8" />
+  <link rel="stylesheet" href="licenses.css?v=1.7.8" />
   <script src="https://res.cdn.office.net/teams-js/2.24.0/js/MicrosoftTeams.min.js"></script>
 </head>
 <body data-theme="default" data-page="licenses">
@@ -33,7 +33,13 @@
         <button type="button" data-group="ownerName" class="view-btn" aria-pressed="false" title="Group rows by owner">Owner</button>
         <button type="button" data-group="productLine" class="view-btn" aria-pressed="false" title="Group rows by product line">Product</button>
       </div>
-      <button id="importCsvBtn" class="btn ghost" title="Import licenses from a CSV file">Import CSV</button>
+      <div class="split-btn-group">
+        <button id="importCsvBtn" class="btn ghost" title="Import licenses from a CSV file">Import CSV</button>
+        <button id="importCsvMenuToggle" class="btn ghost split-chevron" type="button" aria-haspopup="true" aria-expanded="false" aria-label="Import options" title="More import options">&#9662;</button>
+        <div id="importCsvMenu" class="split-menu" role="menu" hidden>
+          <button type="button" id="downloadTemplateBtn" role="menuitem">Download CSV template&hellip;</button>
+        </div>
+      </div>
       <button id="exportCsvBtn" class="btn ghost" title="Export the current filtered view to a CSV file">Export CSV</button>
       <button id="addLicenseBtn" class="btn primary">+ Add license</button>
     </div>
@@ -288,6 +294,9 @@
     <p class="lic-hint">Pick a CSV file. We'll match columns by name, auto-assign owners by display name, and let you fix any rows that need attention before importing.</p>
 
     <div id="importStep1">
+      <p class="lic-hint" style="margin: 0 0 12px;">
+        First time? <button type="button" id="downloadTemplateBtnInDialog" class="link-btn">Download a CSV template</button> with the expected columns and a couple of sample rows. Fill it in, then upload it below.
+      </p>
       <input id="importFile" type="file" accept=".csv,text/csv" aria-label="CSV file to import" />
       <p class="lic-hint" style="margin-top: 12px;">
         Expected columns (any order): <strong>Customer</strong>, <strong>License type</strong>, <strong>Number of users</strong>, <strong>Expiry date</strong>, <strong>Accountable / Owner</strong>, optional <strong>Notes</strong> and <strong>Product line</strong>. Date formats: <code>17-Jul-26</code>, <code>2026-07-17</code>, <code>7/17/2026</code>.
@@ -330,6 +339,6 @@
 
   <div id="toast" class="toast" hidden></div>
 
-  <script src="licenses.js?v=1.7.7" defer></script>
+  <script src="licenses.js?v=1.7.8" defer></script>
 </body>
 </html>

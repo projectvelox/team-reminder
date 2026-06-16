@@ -1039,9 +1039,32 @@
     // CSV export
     $("exportCsvBtn").addEventListener("click", exportCsv);
 
-    // CSV import
+    // CSV import + split-button menu
     $("importCsvBtn").addEventListener("click", openImportDialog);
     $("licEmptyImport").addEventListener("click", openImportDialog);
+    const menuToggle = $("importCsvMenuToggle");
+    const menu = $("importCsvMenu");
+    menuToggle.addEventListener("click", (e) => {
+      e.stopPropagation();
+      const isHidden = menu.hidden;
+      menu.hidden = !isHidden;
+      menuToggle.setAttribute("aria-expanded", String(isHidden));
+    });
+    document.addEventListener("click", (e) => {
+      if (!menu.contains(e.target) && e.target !== menuToggle) {
+        menu.hidden = true;
+        menuToggle.setAttribute("aria-expanded", "false");
+      }
+    });
+    document.addEventListener("keydown", (e) => {
+      if (e.key === "Escape") { menu.hidden = true; menuToggle.setAttribute("aria-expanded", "false"); }
+    });
+    $("downloadTemplateBtn").addEventListener("click", () => {
+      downloadCsvTemplate();
+      menu.hidden = true;
+      menuToggle.setAttribute("aria-expanded", "false");
+    });
+    $("downloadTemplateBtnInDialog").addEventListener("click", downloadCsvTemplate);
     $("importFile").addEventListener("change", (e) => {
       const f = e.target.files && e.target.files[0];
       if (f) handleImportFile(f);
@@ -1231,6 +1254,30 @@
     if (dup) return { status: "duplicate", reason: "already in licenses" };
     if (!row.ownerOid) return { status: "needsOwner", reason: "owner not matched" };
     return { status: "ready" };
+  }
+
+  // Generate and download a CSV template the user can fill in. Headers match
+  // what the importer recognizes; sample rows show the expected date / owner-name
+  // formats. Intentionally does not include Status or Renewal Cycle because the
+  // importer doesn't currently read those (set per-row in the table after import).
+  function downloadCsvTemplate() {
+    const headers = ["Customer", "License Type", "Number of Users", "Expiry Date", "Accountable", "Product Line", "Notes"];
+    const samples = [
+      ["Beyond Innovations, Inc", "Microsoft 365 Business Standard", 24, "2026-07-17", "Joshua Oducado", "M365", "Renewal contact: oky@example.com"],
+      ["Sidel Industrial Packaging Corporation", "Dynamics 365 Business Central Premium", 4, "2026-07-24", "Dona", "BC", "Email notice sent 2026-06-10"],
+      ["Lopez Holdings Corporation", "PhilTax Module", 5, "2026-07-17", "Dona", "PhilTax", "3rd year of Triennial Plan"],
+    ];
+    const csv = [headers, ...samples].map((row) => row.map(csvEscape).join(",")).join("\n") + "\n";
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "day-reminders-license-import-template.csv";
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(() => URL.revokeObjectURL(url), 100);
+    toast("Template downloaded. Fill it in then use Import CSV.");
   }
 
   function openImportDialog() {

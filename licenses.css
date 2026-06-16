@@ -656,6 +656,71 @@ body[data-theme="dark"] .lic-group-header td {
 }
 .lic-day-list li:last-child { border-bottom: none; }
 
+/* Split-button group: main button + chevron menu trigger */
+.split-btn-group {
+  position: relative;
+  display: inline-flex;
+  align-items: stretch;
+}
+.split-btn-group > .btn { margin: 0; }
+.split-btn-group #importCsvBtn {
+  border-top-right-radius: 0;
+  border-bottom-right-radius: 0;
+  margin-right: -1px;
+}
+.split-btn-group .split-chevron {
+  border-top-left-radius: 0;
+  border-bottom-left-radius: 0;
+  padding: 4px 8px;
+  font-size: 11px;
+}
+.split-menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  min-width: 220px;
+  background: var(--card-bg, #fff);
+  border: 1px solid var(--border, #d1d1d1);
+  border-radius: 8px;
+  padding: 4px;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.15);
+  z-index: 100;
+}
+.split-menu [role="menuitem"] {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 8px 12px;
+  background: none;
+  border: none;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+  border-radius: 4px;
+}
+.split-menu [role="menuitem"]:hover,
+.split-menu [role="menuitem"]:focus-visible {
+  background: var(--row-hover, rgba(0, 120, 212, 0.08));
+  outline: none;
+}
+body[data-theme="dark"] .split-menu {
+  --card-bg: #2b2b30;
+  --border: #3d3d42;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.4);
+}
+
+/* Inline link-style button inside text. */
+.link-btn {
+  background: none;
+  border: none;
+  padding: 0;
+  font: inherit;
+  color: var(--accent, #0078d4);
+  cursor: pointer;
+  text-decoration: underline;
+}
+.link-btn:hover { text-decoration: none; }
+
 /* CSV import dialog */
 .import-dialog {
   max-width: 1000px;
