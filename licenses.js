@@ -2062,6 +2062,7 @@
     for (const c of comments) {
       const li = document.createElement("li");
       li.className = "lic-comment";
+      li.dataset.commentId = c.id || "";
       const head = document.createElement("div");
       head.className = "lic-comment-head";
       const who = document.createElement("span");
@@ -2070,7 +2071,35 @@
       const when = document.createElement("span");
       when.className = "lic-comment-when";
       when.textContent = c.at ? new Date(c.at).toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }) : "";
+      if (c.editedAt) {
+        const edited = document.createElement("span");
+        edited.className = "lic-comment-edited";
+        edited.textContent = " (edited)";
+        edited.title = `Last edited ${new Date(c.editedAt).toLocaleString()}`;
+        when.appendChild(edited);
+      }
       head.appendChild(who); head.appendChild(when);
+      // v1.7.45 — edit + delete affordances for the original author only.
+      if (c.byOid === me.oid && c.id) {
+        const tools = document.createElement("span");
+        tools.className = "lic-comment-tools";
+        const editBtn = document.createElement("button");
+        editBtn.type = "button";
+        editBtn.className = "lic-comment-tool";
+        editBtn.title = "Edit comment";
+        editBtn.setAttribute("aria-label", "Edit comment");
+        editBtn.textContent = "Edit";
+        editBtn.addEventListener("click", () => beginEditComment(li, c));
+        const delBtn = document.createElement("button");
+        delBtn.type = "button";
+        delBtn.className = "lic-comment-tool danger";
+        delBtn.title = "Delete comment";
+        delBtn.setAttribute("aria-label", "Delete comment");
+        delBtn.textContent = "Delete";
+        delBtn.addEventListener("click", () => deleteOwnComment(c));
+        tools.appendChild(editBtn); tools.appendChild(delBtn);
+        head.appendChild(tools);
+      }
       const body = document.createElement("div");
       body.className = "lic-comment-body";
       body.textContent = c.text || "";
@@ -2079,6 +2108,55 @@
     }
     // Auto-scroll to newest comment
     list.scrollTop = list.scrollHeight;
+  }
+
+  // v1.7.45 — inline-edit a comment row: replace body with a textarea + Save/Cancel.
+  function beginEditComment(li, c) {
+    if (!li || !c || !c.id) return;
+    const body = li.querySelector(".lic-comment-body");
+    if (!body) return;
+    body.hidden = true;
+    const editor = document.createElement("div");
+    editor.className = "lic-comment-edit";
+    const ta = document.createElement("textarea");
+    ta.rows = 2; ta.maxLength = 1000;
+    ta.value = c.text || "";
+    editor.appendChild(ta);
+    const actions = document.createElement("div");
+    actions.className = "lic-comment-edit-actions";
+    const save = document.createElement("button");
+    save.type = "button"; save.className = "btn primary small"; save.textContent = "Save";
+    const cancel = document.createElement("button");
+    cancel.type = "button"; cancel.className = "btn ghost small"; cancel.textContent = "Cancel";
+    actions.appendChild(save); actions.appendChild(cancel);
+    editor.appendChild(actions);
+    li.appendChild(editor);
+    ta.focus(); ta.setSelectionRange(ta.value.length, ta.value.length);
+    cancel.addEventListener("click", () => { editor.remove(); body.hidden = false; });
+    ta.addEventListener("keydown", (e) => {
+      if (e.key === "Escape") { editor.remove(); body.hidden = false; }
+      if ((e.ctrlKey || e.metaKey) && e.key === "Enter") save.click();
+    });
+    save.addEventListener("click", async () => {
+      const text = ta.value.trim();
+      if (!text) return;
+      save.disabled = true; save.textContent = "Saving…";
+      try {
+        const { license } = await api("PATCH", `/licenses/${editingId}/comments/${c.id}`, { text });
+        licenses = licenses.map((l) => l.id === license.id ? license : l);
+        renderComments(license);
+      } catch (err) { showError("Save failed", err); save.disabled = false; save.textContent = "Save"; }
+    });
+  }
+
+  async function deleteOwnComment(c) {
+    if (!editingId || !c || !c.id) return;
+    if (!confirm("Delete this comment? This can't be undone.")) return;
+    try {
+      const { license } = await api("DELETE", `/licenses/${editingId}/comments/${c.id}`);
+      licenses = licenses.map((l) => l.id === license.id ? license : l);
+      renderComments(license);
+    } catch (err) { showError("Delete failed", err); }
   }
   async function sendComment() {
     if (!editingId) return;
@@ -2238,7 +2316,7 @@
     t.hidden = false;
     const timer = setTimeout(() => {
       // commit the delete
-      api("DELETE", `/licenses/${lic.id}`).catch((err) => {
+      api("DELETE", `/licenses/${lic.id}`).then(() => refreshTrashBadge()).catch((err) => {
         // If server delete fails, restore.
         showError("Delete failed (restored locally)", err);
         licenses.push(lic);
@@ -3234,6 +3312,25 @@
     // v1.7.43 Recovery + Privacy
     $("setOpenRecoveryBtn").addEventListener("click", openRecoveryDialog);
     $("recoveryCloseBtn").addEventListener("click", () => $("recoveryDialog").close());
+    // v1.7.45 trash-can shortcut in topbar
+    $("trashBtn").addEventListener("click", openRecoveryDialog);
+    // refresh badge periodically (after data loads, after deletes)
+    refreshTrashBadge();
+
+    // v1.7.45 Settings tabs
+    document.querySelectorAll(".settings-tab").forEach((tab) => {
+      tab.addEventListener("click", () => {
+        const name = tab.dataset.tab;
+        document.querySelectorAll(".settings-tab").forEach((t) => {
+          const active = t.dataset.tab === name;
+          t.classList.toggle("active", active);
+          t.setAttribute("aria-selected", String(active));
+        });
+        document.querySelectorAll(".settings-panel").forEach((p) => {
+          p.hidden = p.dataset.panel !== name;
+        });
+      });
+    });
     $("setExportMyDataBtn").addEventListener("click", exportMyData);
     $("setDeleteMyDataBtn").addEventListener("click", deleteMyData);
     $("privacyDetailsLink").addEventListener("click", (e) => { e.preventDefault(); $("privacyDialog").showModal(); });
@@ -3933,6 +4030,7 @@
             render();
             li.remove();
             toast(`Restored: ${license.customer}, ${license.licenseType}`);
+            refreshTrashBadge();
             if (!list.querySelector(".recovery-row")) openRecoveryDialog();
           } catch (err) {
             restoreBtn.disabled = false;
@@ -4223,6 +4321,51 @@
     $("shortcutsCloseBtn").addEventListener("click", () => $("shortcutsDialog").close());
   }
 
+  // ---------- v1.7.45 table arrow-key navigation ----------
+  // Up/Down moves a visual focus ring; Enter opens the edit dialog. Only
+  // active when no dialog is open and the user isn't inside an input. Lives
+  // alongside (not inside) the global shortcuts wiring so the two don't
+  // step on each other.
+  let tableNavRow = -1;
+  function wireTableKeyboardNav() {
+    document.addEventListener("keydown", (e) => {
+      // Bail when something else owns the keystroke.
+      if (e.altKey || e.ctrlKey || e.metaKey) return;
+      const t = e.target;
+      if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.tagName === "SELECT" || t.isContentEditable)) return;
+      if (document.querySelectorAll("dialog[open]").length > 0) return;
+      if (currentView !== "table") return;
+      const rows = Array.from(document.querySelectorAll("#licTbody tr[data-id]"));
+      if (!rows.length) return;
+      if (e.key === "ArrowDown" || e.key === "j") {
+        e.preventDefault();
+        tableNavRow = Math.min(rows.length - 1, Math.max(0, tableNavRow + 1));
+        focusTableRow(rows[tableNavRow]);
+      } else if (e.key === "ArrowUp" || e.key === "k") {
+        e.preventDefault();
+        tableNavRow = Math.max(0, tableNavRow - 1);
+        focusTableRow(rows[tableNavRow]);
+      } else if (e.key === "Enter" && tableNavRow >= 0) {
+        e.preventDefault();
+        const id = rows[tableNavRow]?.dataset?.id;
+        const lic = id && licenses.find((l) => l.id === id);
+        if (lic) openEditDialog(lic);
+      } else if (e.key === "Home") {
+        e.preventDefault();
+        tableNavRow = 0; focusTableRow(rows[0]);
+      } else if (e.key === "End") {
+        e.preventDefault();
+        tableNavRow = rows.length - 1; focusTableRow(rows[tableNavRow]);
+      }
+    });
+  }
+  function focusTableRow(row) {
+    if (!row) return;
+    document.querySelectorAll("#licTbody tr.kbd-focus").forEach((r) => r.classList.remove("kbd-focus"));
+    row.classList.add("kbd-focus");
+    row.scrollIntoView({ block: "nearest", behavior: "smooth" });
+  }
+
   // ---------- v1.7.39 global keyboard shortcuts ----------
   let pendingG = false;
   function wireGlobalShortcuts() {
@@ -4266,6 +4409,20 @@
         pendingG = false; switchView("calendar");
       }
     });
+  }
+
+  // v1.7.45 — trash-can topbar badge. Quietly polls the deleted-list endpoint
+  // on boot + after deletes/restores so users see a count without opening
+  // Settings. Fire-and-forget; missing endpoint just hides the badge.
+  async function refreshTrashBadge() {
+    const badge = $("trashBadge");
+    if (!badge) return;
+    try {
+      const { licenses: items } = await api("GET", "/licenses/deleted");
+      const n = (items || []).length;
+      if (n > 0) { badge.textContent = String(n); badge.hidden = false; }
+      else badge.hidden = true;
+    } catch (_) { badge.hidden = true; }
   }
 
   // ---------- v1.7.39 live poll + relative-time freshness stamp ----------
@@ -4466,6 +4623,8 @@
       // v1.7.39 — wire Ctrl+K palette and global shortcuts.
       wireCmdk();
       wireGlobalShortcuts();
+      // v1.7.45 — table arrow-key nav.
+      wireTableKeyboardNav();
       // v1.7.40 — add an X close button to every dialog.
       installDialogCloseButtons();
       // v1.7.42 — hydrate from URL hash if present (shareable link), then

@@ -73,6 +73,23 @@ Secrets, GUIDs, and connection strings live in the Claude memory file `project_d
 
 ## What ships today (v1.7.x)
 
+### v1.7.45 — senior-review polish + Reminders bug fix
+
+**Bug fix (Reminders tab)** — `renderNextUp()` in v1.7.44 called `phToday()`, which doesn't exist (the helper is `todayPh()`). The boot path threw `ReferenceError: phToday is not defined` and the tab couldn't connect. Renamed the call. **Reminders is back online.**
+
+**Senior-level UX/UI bundle (Licenses tab)**
+
+Closes the gaps from the v1.7.44 senior audit. Mix of backend + frontend.
+
+- **Comment edit + delete** — new `PATCH/DELETE /api/licenses/{id}/comments/{commentId}`. Author-only (403 if you try to edit someone else's). UI: hover any comment you wrote → Edit / Delete buttons fade in. Edit replaces body with an inline textarea + Save/Cancel (Ctrl+Enter saves, Esc cancels). Deleted comments are gone for everyone. Edited comments get a "(edited)" stamp with a hover-title showing the last-edited timestamp.
+- **Topbar IA refresh** — secondary actions (Refresh / Settings / Guide) compressed into a single icon-button utility cluster with a subtle background. Primary CTA (`+ Add license`) gets a soft drop-shadow to stand out. The eye now lands where it should.
+- **Trash-can icon in topbar** with badge for items in recovery. No more hunting through Settings to find soft-deleted rows. Badge refreshes after deletes/restores.
+- **Settings → tabs** (General / Notifications / Data & privacy). 8+ sections of single-scroll became 3 focused panels.
+- **Renewal metrics co-located** — the *Trends* accordion group is renamed *Renewals (last 90d)* and houses the trend chart, the rate widget, and the leaderboard together. Stops users from scanning three separate sections for related info.
+- **Table keyboard nav** — Up/Down or j/k moves a visible focus ring through table rows; Enter opens the edit dialog; Home/End jump to first/last. Suppressed inside inputs and when any dialog is open.
+
+Cache-bust `v=1.7.45` on Licenses. **Backend redeploy required** (new comment edit/delete endpoint).
+
 ### v1.7.44 — UX/UI polish bundle (both tabs)
 
 Closes the gaps from the v1.7.42 UX audit. Tab-only release. No backend.

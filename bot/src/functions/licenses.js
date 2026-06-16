@@ -482,6 +482,55 @@ app.http('licensesComments', {
   },
 });
 
+// v1.7.45 — PATCH/DELETE /api/licenses/{id}/comments/{commentId}
+// Edit or remove one comment. Only the original author can edit/delete their
+// own comment (no admin override; this is a tenant-shared dataset and the
+// audit trail matters).
+app.http('licensesCommentItem', {
+  methods: ['PATCH', 'DELETE', 'OPTIONS'],
+  authLevel: 'anonymous',
+  route: 'licenses/{id}/comments/{commentId}',
+  handler: async (request, context) => {
+    if (request.method === 'OPTIONS') return { status: 204, headers: corsHeaders() };
+    let user;
+    try { user = await authed(request); } catch (err) { return json(err.status || 401, { error: err.message }); }
+    await registerCaller(user);
+
+    const { id, commentId } = request.params;
+    if (!id || !commentId) return json(400, { error: 'id and commentId are required' });
+    const existing = await store.getLicense(id);
+    if (!existing) return json(404, { error: 'license not found' });
+    const comments = Array.isArray(existing.comments) ? existing.comments.slice() : [];
+    const idx = comments.findIndex((c) => c && c.id === commentId);
+    if (idx < 0) return json(404, { error: 'comment not found' });
+    const target = comments[idx];
+    if (target.byOid !== user.oid) {
+      return json(403, { error: 'only the original author can edit or delete this comment' });
+    }
+
+    const now = new Date().toISOString();
+    if (request.method === 'DELETE') {
+      comments.splice(idx, 1);
+    } else {
+      const body = await request.json().catch(() => ({}));
+      const text = String(body.text || '').trim();
+      if (!text) return json(400, { error: 'text is required' });
+      if (text.length > 1000) return json(400, { error: 'text max 1000 chars' });
+      comments[idx] = { ...target, text, editedAt: now };
+    }
+
+    const merged = {
+      ...existing,
+      comments,
+      lastEditedAt: now,
+      lastEditedByOid: user.oid,
+      lastEditedByName: user.name || null,
+    };
+    await store.upsertLicense(merged);
+    return json(200, { license: merged });
+  },
+});
+
 // POST /api/licenses/bulk — apply the same patch to many licenses (e.g. bulk reassign Owner).
 // Body: { ids: ["id1", ...], patch: { ownerOid, ownerName } }
 app.http('licensesBulk', {

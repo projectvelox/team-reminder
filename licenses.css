@@ -2170,6 +2170,114 @@ body:is([data-theme="dark"], [data-theme="contrast"]) .lic-renewal-trend {
   .renewal-trend-canvas { height: 100px; }
 }
 
+/* ---------- v1.7.45 topbar IA refresh ---------- */
+.topbar-spacer { flex: 1 1 auto; min-width: 8px; }
+.topbar-utility {
+  display: inline-flex; gap: 2px;
+  padding: 2px;
+  border-radius: var(--radius-lg, 8px);
+  background: var(--accent-bg, rgba(56, 174, 235, 0.06));
+}
+.btn.icon-only {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 34px; height: 34px;
+  padding: 0; border-radius: var(--radius-md, 6px);
+  position: relative;
+}
+.btn.icon-only .topbar-icon {
+  font-size: 16px; line-height: 1;
+}
+.topbar-badge {
+  position: absolute; top: 2px; right: 2px;
+  background: var(--color-danger-fg, #b71c1c);
+  color: #fff;
+  font-size: 9px; font-weight: 700;
+  min-width: 14px; height: 14px;
+  border-radius: var(--radius-pill, 999px);
+  padding: 0 4px;
+  display: inline-flex; align-items: center; justify-content: center;
+  line-height: 1;
+}
+.btn.primary.primary-cta {
+  box-shadow: 0 2px 6px rgba(56, 174, 235, 0.32);
+}
+body:is([data-theme="dark"], [data-theme="contrast"]) .topbar-utility {
+  background: rgba(56, 174, 235, 0.10);
+}
+
+/* ---------- v1.7.45 Settings tabs ---------- */
+.lic-settings-dialog .settings-tabs {
+  display: flex; gap: 4px;
+  border-bottom: 1px solid var(--border, #e4e4e4);
+  margin-bottom: var(--space-4, 16px);
+}
+.settings-tab {
+  background: transparent; border: 0;
+  font: inherit;
+  padding: var(--space-2, 8px) var(--space-3, 14px);
+  border-radius: var(--radius-md, 6px) var(--radius-md, 6px) 0 0;
+  cursor: pointer;
+  color: var(--muted, #6a6a6a);
+  font-weight: 600;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+}
+.settings-tab:hover { color: var(--text, #1c1c1e); }
+.settings-tab.active {
+  color: var(--accent, #0078d4);
+  border-bottom-color: var(--accent, #0078d4);
+}
+.settings-panel {
+  display: flex; flex-direction: column; gap: var(--space-3, 12px);
+}
+
+/* ---------- v1.7.45 comment tools (edit + delete) ---------- */
+.lic-comment-tools {
+  display: inline-flex; gap: 4px;
+  margin-left: var(--space-2, 8px);
+  opacity: 0; transition: opacity var(--motion-fast, 120ms) var(--ease-out, ease-out);
+}
+.lic-comment:hover .lic-comment-tools,
+.lic-comment:focus-within .lic-comment-tools { opacity: 1; }
+.lic-comment-tool {
+  background: transparent; border: 0;
+  font: inherit; font-size: var(--text-xs, 11px); font-weight: 600;
+  color: var(--muted, #6a6a6a);
+  cursor: pointer;
+  padding: 1px 6px;
+  border-radius: var(--radius-sm, 4px);
+}
+.lic-comment-tool:hover { background: var(--accent-bg, rgba(56,174,235,0.10)); color: var(--accent, #0078d4); }
+.lic-comment-tool.danger:hover { color: var(--color-danger-fg, #b71c1c); background: var(--color-danger-bg, #fdecec); }
+.lic-comment-edited {
+  font-size: var(--text-xs, 11px); color: var(--muted, #6a6a6a);
+  font-style: italic;
+}
+.lic-comment-edit {
+  display: flex; flex-direction: column; gap: var(--space-2, 8px);
+  margin-top: var(--space-2, 8px);
+}
+.lic-comment-edit textarea {
+  font: inherit;
+  padding: var(--space-2, 8px) var(--space-2, 10px);
+  border: 1px solid var(--border, #d1d1d1);
+  border-radius: var(--radius-md, 6px);
+  background: var(--card-bg, #fff);
+  color: var(--text, #1c1c1e);
+  resize: vertical;
+}
+.lic-comment-edit-actions { display: flex; gap: var(--space-2, 8px); justify-content: flex-end; }
+body:is([data-theme="dark"], [data-theme="contrast"]) .lic-comment-edit textarea {
+  background: #2b2b30; border-color: #3d3d42; color: #f0f0f2;
+}
+
+/* ---------- v1.7.45 table keyboard focus ---------- */
+.lic-table tr.kbd-focus {
+  outline: 2px solid var(--accent, #38AEEB);
+  outline-offset: -2px;
+  background: var(--accent-bg, rgba(56,174,235,0.10));
+}
+
 /* ---------- v1.7.44 sticky table header ---------- */
 .lic-table thead { position: sticky; top: 0; z-index: 4; }
 .lic-table thead th {

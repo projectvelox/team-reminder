@@ -21,10 +21,10 @@
   <link rel="preconnect" href="https://func-day-reminders-17023.azurewebsites.net" crossorigin />
   <link rel="dns-prefetch" href="https://func-day-reminders-17023.azurewebsites.net" />
   <link rel="preconnect" href="https://res.cdn.office.net" crossorigin />
-  <link rel="preload" as="script" href="licenses.js?v=1.7.44" />
-  <link rel="preload" as="style" href="licenses.css?v=1.7.44" />
-  <link rel="stylesheet" href="styles.css?v=1.7.44" />
-  <link rel="stylesheet" href="licenses.css?v=1.7.44" />
+  <link rel="preload" as="script" href="licenses.js?v=1.7.45" />
+  <link rel="preload" as="style" href="licenses.css?v=1.7.45" />
+  <link rel="stylesheet" href="styles.css?v=1.7.45" />
+  <link rel="stylesheet" href="licenses.css?v=1.7.45" />
   <script src="https://res.cdn.office.net/teams-js/2.24.0/js/MicrosoftTeams.min.js"
           integrity="sha384-79NK4sbfVpgLoDFqyfj18/S1Uj8jhLBeRGvKO1Cqw5634RznExQ90myY/qV/0gsN"
           crossorigin="anonymous"></script>
@@ -56,12 +56,27 @@
         </div>
       </div>
       <button id="emailTemplatesBtn" class="btn ghost" title="Edit per-product-line renewal email templates">Templates</button>
-      <button id="bulkSelectBtn" class="btn ghost" aria-pressed="false" title="Select multiple licenses to reassign owner">Select</button>
+      <button id="bulkSelectBtn" class="btn ghost" aria-pressed="false" title="Select multiple licenses (S)">Select</button>
+      <span class="topbar-spacer" aria-hidden="true"></span>
       <span id="syncIndicator" class="sync-indicator" title="Background poll refreshes every 60s">Updated never</span>
-      <button id="refreshBtn" class="btn ghost" title="Reload licenses, customers, members, and templates from the server">&#x21bb; Refresh</button>
-      <button id="licSettingsBtn" class="btn ghost" title="Settings for the Licenses tab">&#9881; Settings</button>
-      <button id="licGuideBtn" class="btn ghost" title="Show the Licenses tab quick guide" aria-label="Show guide">?</button>
-      <button id="addLicenseBtn" class="btn primary">+ Add license</button>
+      <!-- v1.7.45 — icon-only utility cluster: secondary actions compress into
+           glyph buttons so the eye lands on the primary "Add license" button. -->
+      <div class="topbar-utility" role="group" aria-label="Utilities">
+        <button id="trashBtn" class="btn ghost icon-only" type="button" title="Recently deleted (recover within 30 days)" aria-label="Recently deleted">
+          <span class="topbar-icon">&#x1F5D1;</span>
+          <span class="topbar-badge" id="trashBadge" hidden>0</span>
+        </button>
+        <button id="refreshBtn" class="btn ghost icon-only" type="button" title="Reload all data (R)" aria-label="Refresh">
+          <span class="topbar-icon">&#x21bb;</span>
+        </button>
+        <button id="licSettingsBtn" class="btn ghost icon-only" type="button" title="Settings" aria-label="Settings">
+          <span class="topbar-icon">&#9881;</span>
+        </button>
+        <button id="licGuideBtn" class="btn ghost icon-only" type="button" title="Quick guide (?)" aria-label="Show guide">
+          <span class="topbar-icon">?</span>
+        </button>
+      </div>
+      <button id="addLicenseBtn" class="btn primary primary-cta">+ Add license</button>
     </div>
   </header>
 
@@ -259,7 +274,7 @@
       </details>
 
       <details class="aside-group">
-        <summary>Trends</summary>
+        <summary>Renewals (last 90d)</summary>
         <div class="aside-group-body">
       <section id="renewalTrendStrip" class="lic-renewal-trend" aria-label="Renewal rate by month (last 12 months)" hidden>
         <div class="renewal-trend-head">
@@ -703,78 +718,90 @@
     </section>
 
     <div class="lic-dialog-actions">
-      <span class="lic-version" id="licVersionLabel" title="Licenses tab build version">v1.7.44</span>
+      <span class="lic-version" id="licVersionLabel" title="Licenses tab build version">v1.7.45</span>
       <button type="button" class="btn primary" id="licGuideCloseBtn">Close</button>
     </div>
   </dialog>
 
   <!-- License-tab Settings dialog -->
-  <dialog id="licSettingsDialog" class="lic-dialog">
+  <dialog id="licSettingsDialog" class="lic-dialog lic-settings-dialog">
     <form method="dialog">
       <h2>License settings</h2>
-      <p class="lic-hint">These preferences only affect the Licenses tab and the related emails.</p>
-
-      <div class="lic-field">
-        <span class="lic-label">Theme</span>
-        <p class="lic-hint" style="margin: 0 0 6px;">Override the colors. Auto follows Teams (recommended).</p>
-        <select id="setThemeOverride">
-          <option value="auto">Auto (follow Teams)</option>
-          <option value="default">Light</option>
-          <option value="dark">Dark</option>
-          <option value="contrast">High contrast</option>
-        </select>
+      <!-- v1.7.45 — tabbed Settings replaces a long single-scroll form. Each
+           panel groups one concern. Buttons drive aria-selected; the panels
+           toggle via [hidden]. -->
+      <div class="settings-tabs" role="tablist" aria-label="Settings sections">
+        <button type="button" role="tab" class="settings-tab active" data-tab="general" aria-selected="true">General</button>
+        <button type="button" role="tab" class="settings-tab" data-tab="notifications" aria-selected="false">Notifications</button>
+        <button type="button" role="tab" class="settings-tab" data-tab="data" aria-selected="false">Data &amp; privacy</button>
       </div>
 
-      <div class="lic-field">
-        <span class="lic-label">Default lead times</span>
-        <p class="lic-hint" style="margin: 0 0 6px;">Pick one or more days before expiry when the bot should ping you. Per-row overrides on individual licenses take precedence.</p>
-        <div class="lead-picker" id="setLicenseLeadDaysPicker"
-             data-chip-id="setLicenseLeadDaysChips"
-             data-preset-id="setLicenseLeadDaysPresets"
-             data-custom-id="setLicenseLeadDaysCustom"
-             data-custom-add-id="setLicenseLeadDaysCustomAdd">
-          <div class="lead-chips" id="setLicenseLeadDaysChips" aria-live="polite"></div>
-          <div class="lead-presets" id="setLicenseLeadDaysPresets">
-            <button type="button" class="lead-preset" data-days="60">60 d</button>
-            <button type="button" class="lead-preset" data-days="30">30 d</button>
-            <button type="button" class="lead-preset" data-days="15">15 d</button>
-            <button type="button" class="lead-preset" data-days="7">7 d</button>
-            <button type="button" class="lead-preset" data-days="1">1 d</button>
-            <button type="button" class="lead-custom-add" id="setLicenseLeadDaysCustomAdd">+ Custom…</button>
-          </div>
-          <input id="setLicenseLeadDaysCustom" class="lead-custom-input" type="number" min="0" max="365" placeholder="Days, then Enter" hidden />
+      <div class="settings-panel" data-panel="general" role="tabpanel">
+        <div class="lic-field">
+          <span class="lic-label">Theme</span>
+          <p class="lic-hint" style="margin: 0 0 6px;">Override the colors. Auto follows Teams (recommended).</p>
+          <select id="setThemeOverride">
+            <option value="auto">Auto (follow Teams)</option>
+            <option value="default">Light</option>
+            <option value="dark">Dark</option>
+            <option value="contrast">High contrast</option>
+          </select>
         </div>
       </div>
 
-      <label class="lic-field" style="flex-direction: row; align-items: center; gap: 10px;">
-        <input id="setSkipBriefing" type="checkbox" />
-        <span>Skip the daily morning briefing card on weekdays</span>
-      </label>
+      <div class="settings-panel" data-panel="notifications" role="tabpanel" hidden>
+        <div class="lic-field">
+          <span class="lic-label">Default lead times</span>
+          <p class="lic-hint" style="margin: 0 0 6px;">Pick one or more days before expiry when the bot should ping you. Per-row overrides on individual licenses take precedence.</p>
+          <div class="lead-picker" id="setLicenseLeadDaysPicker"
+               data-chip-id="setLicenseLeadDaysChips"
+               data-preset-id="setLicenseLeadDaysPresets"
+               data-custom-id="setLicenseLeadDaysCustom"
+               data-custom-add-id="setLicenseLeadDaysCustomAdd">
+            <div class="lead-chips" id="setLicenseLeadDaysChips" aria-live="polite"></div>
+            <div class="lead-presets" id="setLicenseLeadDaysPresets">
+              <button type="button" class="lead-preset" data-days="60">60 d</button>
+              <button type="button" class="lead-preset" data-days="30">30 d</button>
+              <button type="button" class="lead-preset" data-days="15">15 d</button>
+              <button type="button" class="lead-preset" data-days="7">7 d</button>
+              <button type="button" class="lead-preset" data-days="1">1 d</button>
+              <button type="button" class="lead-custom-add" id="setLicenseLeadDaysCustomAdd">+ Custom…</button>
+            </div>
+            <input id="setLicenseLeadDaysCustom" class="lead-custom-input" type="number" min="0" max="365" placeholder="Days, then Enter" hidden />
+          </div>
+        </div>
 
-      <label class="lic-field" style="flex-direction: row; align-items: center; gap: 10px;">
-        <input id="setSkipMonthlyDigest" type="checkbox" />
-        <span>Skip the monthly email digest</span>
-      </label>
+        <label class="lic-field" style="flex-direction: row; align-items: center; gap: 10px;">
+          <input id="setSkipBriefing" type="checkbox" />
+          <span>Skip the daily morning briefing card on weekdays</span>
+        </label>
 
-      <label class="lic-field" style="flex-direction: row; align-items: center; gap: 10px;">
-        <input id="setRollupDigest" type="checkbox" />
-        <span>Include an all-accounts roll-up in my monthly digest (sales-lead view)</span>
-      </label>
+        <label class="lic-field" style="flex-direction: row; align-items: center; gap: 10px;">
+          <input id="setSkipMonthlyDigest" type="checkbox" />
+          <span>Skip the monthly email digest</span>
+        </label>
 
-      <p class="lic-hint" style="margin-top: 12px;">
-        Want to see what the monthly digest looks like?
-        <button type="button" id="setSendTestDigestBtn" class="link-btn">Send my digest</button>
-        (matches your settings &mdash; what you'd actually get on the 1st), or
-        <button type="button" id="setSendTestDigestAllBtn" class="link-btn">send the all-accounts version</button>
-        (sales-lead view: your licenses plus every other owner's).
-      </p>
+        <label class="lic-field" style="flex-direction: row; align-items: center; gap: 10px;">
+          <input id="setRollupDigest" type="checkbox" />
+          <span>Include an all-accounts roll-up in my monthly digest (sales-lead view)</span>
+        </label>
 
-      <!-- v1.7.43 Recovery (recently-deleted licenses, 30-day retention) -->
-      <section class="lic-field" style="margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--border, #ececec);">
-        <span class="lic-label">Recently deleted</span>
-        <p class="lic-hint" style="margin: 0 0 6px;">Soft-deleted licenses sit here for 30 days, then are permanently purged. Restore any row to bring it back.</p>
-        <button type="button" id="setOpenRecoveryBtn" class="btn ghost">Open recovery&hellip;</button>
-      </section>
+        <p class="lic-hint" style="margin-top: 12px;">
+          Want to see what the monthly digest looks like?
+          <button type="button" id="setSendTestDigestBtn" class="link-btn">Send my digest</button>
+          (matches your settings &mdash; what you'd actually get on the 1st), or
+          <button type="button" id="setSendTestDigestAllBtn" class="link-btn">send the all-accounts version</button>
+          (sales-lead view: your licenses plus every other owner's).
+        </p>
+      </div>
+
+      <div class="settings-panel" data-panel="data" role="tabpanel" hidden>
+        <!-- v1.7.43 Recovery (recently-deleted licenses, 30-day retention) -->
+        <section class="lic-field">
+          <span class="lic-label">Recently deleted</span>
+          <p class="lic-hint" style="margin: 0 0 6px;">Soft-deleted licenses sit here for 30 days, then are permanently purged. Restore any row to bring it back.</p>
+          <button type="button" id="setOpenRecoveryBtn" class="btn ghost">Open recovery&hellip;</button>
+        </section>
 
       <!-- v1.7.43 Privacy & data controls (GDPR DSR) -->
       <section class="lic-field" style="margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--border, #ececec);">
@@ -787,6 +814,7 @@
           <button type="button" id="setDeleteMyDataBtn" class="btn ghost danger" title="Wipe your reminders, settings, templates, and unassign your owner from license rows">Delete my account data&hellip;</button>
         </div>
       </section>
+      </div><!-- /panel data -->
 
       <div class="lic-dialog-actions">
         <button type="button" class="btn ghost" id="setCancelBtn">Cancel</button>
@@ -882,6 +910,6 @@
 
   <div id="toast" class="toast" hidden></div>
 
-  <script src="licenses.js?v=1.7.44" defer></script>
+  <script src="licenses.js?v=1.7.45" defer></script>
 </body>
 </html>

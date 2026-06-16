@@ -162,7 +162,7 @@
   function renderNextUp() {
     const hero = $("nextUpHero");
     if (!hero) return;
-    const today = phToday();
+    const today = todayPh();
     const tomorrow = (() => {
       const d = new Date(today + "T00:00:00Z");
       d.setUTCDate(d.getUTCDate() + 1);
