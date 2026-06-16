@@ -1539,7 +1539,12 @@
     if (d !== null) {
       const badge = document.createElement("span");
       badge.className = "lic-day-badge";
-      if (d < 0) { badge.classList.add("overdue"); badge.textContent = `${-d}d overdue`; }
+      // v1.7.48 — colorize the badge by expiry bucket so days-left reads as
+      // a status chip (consistent with the calendar pill stripe + expiry
+      // pill colors) rather than mute grey text.
+      const dayBucket = expiryBucket(d);
+      if (dayBucket) badge.classList.add(`exp-${dayBucket}`);
+      if (d < 0) badge.textContent = `${-d}d overdue`;
       else if (d === 0) badge.textContent = "today";
       else badge.textContent = `${d}d left`;
       tdExpiry.appendChild(badge);
@@ -1908,9 +1913,13 @@
         hint.textContent = "Using Settings default";
         chips.appendChild(hint);
       } else {
+        // v1.7.48 — mark non-preset chips so they render with a dashed border,
+        // distinguishing custom values (e.g. "14 d") from preset ones (e.g.
+        // "15 d") at a glance.
+        const PRESETS = new Set([60, 30, 15, 7, 1]);
         for (const d of state.values) {
           const chip = document.createElement("span");
-          chip.className = "lead-chip";
+          chip.className = "lead-chip" + (PRESETS.has(d) ? "" : " is-custom");
           chip.dataset.days = String(d);
           const label = document.createElement("span");
           label.textContent = `${d} d`;
@@ -4447,8 +4456,10 @@
   function updateSyncIndicator() {
     const el = $("syncIndicator");
     if (!el) return;
-    el.textContent = `Updated ${fmtRelative(lastSyncedAt)}`;
-    el.title = lastSyncedAt ? new Date(lastSyncedAt).toLocaleString() : "Not synced yet";
+    // v1.7.48 — "Syncing…" until the first successful fetch (was "Updated never",
+    // which read as a developer string).
+    el.textContent = lastSyncedAt ? `Updated ${fmtRelative(lastSyncedAt)}` : "Syncing…";
+    el.title = lastSyncedAt ? new Date(lastSyncedAt).toLocaleString() : "Initial sync in progress";
   }
   // Light background poll: refresh licenses every 60s when the tab is visible
   // so changes by another tenant user (Dona renews, Rey reassigns) appear

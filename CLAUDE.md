@@ -73,6 +73,33 @@ Secrets, GUIDs, and connection strings live in the Claude memory file `project_d
 
 ## What ships today (v1.7.x)
 
+### v1.7.48 — senior design-review fix bundle (Licenses + Reminders)
+
+13 fixes from the v1.7.47 senior design review. Tab-only release, no backend.
+
+**Critical — broken behavior**
+- **Sticky table header (correct fix).** v1.7.46 put `position: sticky` on `thead`, but Chrome doesn't support sticky on table-row-group. Moved to `th` directly. Now actually sticks during page scroll.
+- **Calendar pill expiry stripe (corrected).** v1.7.38 used `border-left`, which was getting clobbered by the base `.lic-cal-pill { border: none }` reset in the cascade. Switched to `box-shadow: inset 4px 0 0 <bucket-color>` — impossible to override unintentionally and doesn't shift content.
+- **Sidebar overlapping table columns.** `.lic-table-wrap` had no overflow guard, letting the table outgrow its grid column and visually overlap the sidebar. Added `table-layout: fixed` + `max-width: 100%` so per-column widths are honored and content stays in its column.
+
+**Visual hierarchy + microcopy**
+- **Stat numbers now dominate labels.** Old: 15px bold number + 14px label (only 1px hierarchy). New: 24px / 700 number stacked above 11px uppercase muted label. Numbers read first, labels confirm.
+- **Days-left badge is now a colored chip** matching the 4-bucket expiry palette (red/orange/yellow/green). Was plain grey text, lost its signal.
+- **"Updated never" → "Syncing…"** for the pre-first-sync state. "Updated never" was a developer string.
+- **Sync indicator min-width** so the label switching from "Syncing…" → "Updated 10s ago" → "Updated 1m ago" doesn't nudge adjacent buttons.
+- **"Tap a preset" → "Click a preset"** in the lead-times hint. Desktop-first product, no reason for mobile-speak.
+
+**Modal + form polish**
+- **Customer drawer backdrop** bumped 0.4 → 0.55 opacity so the drawer-style dialog visibly dims the page underneath (was nearly invisible).
+- **Settings dialog top padding** added `--space-5` above the title so the h2 isn't pinned against the dialog top edge. Close-X repositioned to match.
+- **Custom lead-day chips** get a **dashed** border so "14 d" is visually distinct from the "15 d" preset chip. Preset chips stay solid.
+- **Owner avatar initials** forced to `#fff !important` with a stronger drop shadow so they stay legible regardless of the deterministic hash-color background.
+
+**Cross-tab consistency**
+- **Reminders ⚙ Settings + ? buttons** moved into an icon-only utility cluster matching the Licenses topbar. Same relative position on both tabs — no more re-hunting for ⚙ when switching tabs.
+
+Cache-bust `v=1.7.48` on Licenses, `v=1.5.6` on Reminders. No backend changes.
+
 ### v1.7.46 — smoke-test bug-fix round
 
 Three real regressions caught in the v1.7.45 smoke test. All fixed.

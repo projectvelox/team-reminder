@@ -83,13 +83,19 @@ body[data-view="calendar"] .lic-shell { grid-template-columns: 1fr; }
   .lic-aside > section { flex: 1 1 220px; }
 }
 
-/* Table wraps the main pane. v1.7.46: dropped `overflow-x: auto` at desktop
-   because it implicitly forces `overflow-y: auto`, which establishes a scroll
-   container that breaks `position: sticky` on the thead. Mobile-width media
-   query (>900px) still adds the horizontal scroll, so narrow viewports are
-   covered without sacrificing sticky headers at desktop. */
+/* Table wrap. v1.7.48: kept clean of overflow declarations so `position:
+   sticky` on the thead `th` can bind to the page-level scroll context.
+   Content is constrained via `table-layout: fixed` + per-column widths
+   below, so the table never outgrows the grid column and pushes content
+   under the sidebar. */
 .lic-table-wrap {
   width: 100%;
+  max-width: 100%;
+}
+.lic-table {
+  width: 100%;
+  max-width: 100%;
+  table-layout: fixed;
 }
 
 /* Aside-specific overrides: stack summary chips vertically, compact stats. */
@@ -321,8 +327,20 @@ body:is([data-theme="dark"], [data-theme="contrast"]) .lic-activity { border-col
   font-size: 13px;
   opacity: 0.9;
 }
-.lic-stat strong { font-size: 15px; font-weight: 700; }
-.lic-stat-sep { opacity: 0.4; }
+/* v1.7.48 — stat number now reads as the dominant element (XXL/heavy) with
+   the unit label sitting below it as small muted text. Was nearly equal in
+   weight to the label, lost the hierarchy. */
+.lic-stat { display: inline-flex; flex-direction: column; align-items: flex-start; gap: 0; }
+.lic-stat strong {
+  font-size: var(--text-xxl, 24px);
+  font-weight: 700;
+  line-height: 1.1;
+  font-variant-numeric: tabular-nums;
+}
+.lic-stat:not(.lic-stat-sep) { font-size: var(--text-xs, 11px); color: var(--muted, #6a6a6a); text-transform: uppercase; letter-spacing: 0.04em; font-weight: 600; }
+.lic-stat-sep { display: none; opacity: 0.4; }
+.lic-aside .lic-stats { display: flex; flex-direction: column; gap: var(--space-3, 12px); }
+.lic-stats { display: flex; flex-wrap: wrap; gap: var(--space-5, 24px); }
 
 /* Breakdown chip strips (by owner / by product line) */
 .lic-breakdown {
@@ -589,22 +607,26 @@ body:is([data-theme="dark"], [data-theme="contrast"]) .lic-table td.actions .btn
 }
 
 /* Days-left badge. Keeps inline with the date when there's room; wraps to a new line only in narrow cells. */
+/* v1.7.48: day badge now picks up the 4-bucket expiry color so it reads as
+   a real status chip instead of mute grey text. Matches the .expiry-pill
+   palette for consistency. */
 .lic-day-badge {
   display: inline-block;
   margin-left: 6px;
-  padding: 1px 7px;
+  padding: 1px 8px;
   border-radius: 999px;
-  background: var(--badge-bg, rgba(0, 0, 0, 0.06));
   font-size: 10px;
-  font-weight: 600;
-  opacity: 0.85;
+  font-weight: 700;
   vertical-align: middle;
+  background: var(--color-neutral-fg, rgba(0,0,0,0.06));
+  color: #fff;
 }
-.lic-day-badge.overdue {
-  background: rgba(197, 15, 31, 0.15);
-  color: #c50f1f;
-  opacity: 1;
-}
+.lic-day-badge.exp-expired   { background: #d32f2f; color: #fff; }
+.lic-day-badge.exp-soon      { background: #f57c00; color: #fff; }
+.lic-day-badge.exp-thisMonth { background: #fbc02d; color: #5a4500; }
+.lic-day-badge.exp-active    { background: #43a047; color: #fff; }
+/* Legacy .overdue class kept for old code paths; matches exp-expired. */
+.lic-day-badge.overdue       { background: #d32f2f; color: #fff; }
 
 /* Empty state */
 .lic-empty {
@@ -724,8 +746,16 @@ body:is([data-theme="dark"], [data-theme="contrast"]) .lic-table td.actions .btn
 .lic-dialog.small {
   max-width: 380px;
 }
-.lic-dialog::backdrop { background: rgba(0, 0, 0, 0.4); }
-.lic-dialog h2 { margin: 0 0 12px; }
+/* v1.7.48: bumped from 0.4 → 0.55 so customer drawer + other dialogs all
+   visibly dim the page underneath. */
+.lic-dialog::backdrop { background: rgba(0, 0, 0, 0.55); }
+#customerDialog::backdrop { background: rgba(0, 0, 0, 0.55); }
+.lic-dialog h2 { margin: 0 0 var(--space-4, 16px); }
+/* v1.7.48 — symmetric padding so the h2 isn't cramped against the top edge.
+   The base dialog already has padding set; this adds breathing room above
+   the title without changing the surrounding inset. */
+.lic-dialog { padding-top: var(--space-5, 24px); }
+.lic-dialog .dialog-close-x { top: 14px; right: 16px; }
 .lic-field {
   display: flex;
   flex-direction: column;
@@ -1359,6 +1389,10 @@ body:is([data-theme="dark"], [data-theme="contrast"]) .import-table select {
   color: var(--accent, #0078d4);
   line-height: 1.4;
 }
+/* v1.7.48 — custom (non-preset) chips get a dashed border so users can tell
+   them apart from preset chips at a glance. "14 d" was confusingly identical
+   to the "15 d" preset chip. */
+.lead-chip.is-custom { border-style: dashed; }
 .lead-chip-x {
   background: transparent;
   border: 0;
@@ -1618,13 +1652,17 @@ body:is([data-theme="dark"], [data-theme="contrast"]) .lead-custom-input {
 .expiry-dot.exp-active { background: #e7f6ec; color: #1b5e20; border-color: rgba(27, 94, 32, 0.25); }
 .expiry-dot.exp-active { background: #43a047; border-color: transparent; }
 
-/* Calendar pill: 3px left-edge stripe in the same 4-bucket palette so the
-   month grid surfaces health-at-a-glance without overriding the owner color. */
-.lic-cal-pill { border-left: 3px solid transparent; }
-.lic-cal-pill.exp-expired { border-left-color: #d32f2f; }
-.lic-cal-pill.exp-soon { border-left-color: #f57c00; }
-.lic-cal-pill.exp-thisMonth { border-left-color: #fbc02d; }
-.lic-cal-pill.exp-active { border-left-color: #43a047; }
+/* Calendar pill: 4px left-edge stripe in the same 4-bucket palette so the
+   month grid surfaces health-at-a-glance without overriding the owner color.
+   v1.7.48: switched from `border-left` to `box-shadow: inset` so the stripe
+   can't be clobbered by the base rule's `border: none` reset earlier in the
+   cascade. Inset shadow also doesn't shift the pill content like a border
+   would. */
+.lic-cal-pill.exp-expired   { box-shadow: inset 4px 0 0 #d32f2f; }
+.lic-cal-pill.exp-soon      { box-shadow: inset 4px 0 0 #f57c00; }
+.lic-cal-pill.exp-thisMonth { box-shadow: inset 4px 0 0 #fbc02d; }
+.lic-cal-pill.exp-active    { box-shadow: inset 4px 0 0 #43a047; }
+.lic-cal-pill { padding-left: 10px; } /* room for the inset stripe */
 
 /* Dark / contrast palette: keep stripes vivid but soften pill backgrounds so
    they stay legible on dark surfaces. */
@@ -1714,6 +1752,11 @@ body:is([data-theme="dark"], [data-theme="contrast"]) .filter-pills-sep {
   font-size: 11px; color: var(--muted, #6a6a6a);
   align-self: center; margin: 0 6px;
   white-space: nowrap;
+  /* v1.7.48 — min-width so "Syncing…" / "Updated 10s ago" / "Updated 1m ago"
+     don't nudge adjacent icon buttons left/right as the label changes width. */
+  min-width: 110px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
 }
 
 /* Quick-add inline form */
@@ -1775,13 +1818,17 @@ body:is([data-theme="dark"], [data-theme="contrast"]) .filter-pills-sep {
   display: inline-flex; align-items: center; justify-content: center;
   border-radius: 50%;
   overflow: hidden;
-  color: #fff;
+  /* v1.7.48 — force white initials with a slightly stronger drop shadow so
+     they stay legible even when the deterministic hash picks a pale avatar
+     background. !important locks it through theme overrides. */
+  color: #fff !important;
   font-weight: 700;
   letter-spacing: 0.02em;
   position: relative;
   flex: 0 0 auto;
-  text-shadow: 0 1px 1px rgba(0, 0, 0, 0.3);
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.45);
 }
+.owner-avatar-initials { color: #fff !important; }
 .owner-avatar img {
   position: absolute; inset: 0; width: 100%; height: 100%;
   object-fit: cover;
@@ -2294,10 +2341,14 @@ body:is([data-theme="dark"], [data-theme="contrast"]) .lic-comment-edit textarea
   background: var(--accent-bg, rgba(56,174,235,0.10));
 }
 
-/* ---------- v1.7.44 sticky table header ---------- */
-.lic-table thead { position: sticky; top: 0; z-index: 4; }
+/* ---------- v1.7.44 sticky table header (v1.7.48 corrected) ----------
+   Cross-browser: `position: sticky` must go on the cells (th), not the
+   row or `thead`. Chrome doesn't support sticky on table-row-group. */
 .lic-table thead th {
-  background: var(--card-bg, #fff);
+  position: sticky;
+  top: 0;
+  z-index: 4;
+  background: var(--surface, #fff);
   box-shadow: 0 1px 0 var(--border, #e4e4e4);
 }
 body:is([data-theme="dark"], [data-theme="contrast"]) .lic-table thead th {

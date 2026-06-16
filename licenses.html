@@ -21,10 +21,10 @@
   <link rel="preconnect" href="https://func-day-reminders-17023.azurewebsites.net" crossorigin />
   <link rel="dns-prefetch" href="https://func-day-reminders-17023.azurewebsites.net" />
   <link rel="preconnect" href="https://res.cdn.office.net" crossorigin />
-  <link rel="preload" as="script" href="licenses.js?v=1.7.47" />
-  <link rel="preload" as="style" href="licenses.css?v=1.7.47" />
-  <link rel="stylesheet" href="styles.css?v=1.7.47" />
-  <link rel="stylesheet" href="licenses.css?v=1.7.47" />
+  <link rel="preload" as="script" href="licenses.js?v=1.7.48" />
+  <link rel="preload" as="style" href="licenses.css?v=1.7.48" />
+  <link rel="stylesheet" href="styles.css?v=1.7.48" />
+  <link rel="stylesheet" href="licenses.css?v=1.7.48" />
   <script src="https://res.cdn.office.net/teams-js/2.24.0/js/MicrosoftTeams.min.js"
           integrity="sha384-79NK4sbfVpgLoDFqyfj18/S1Uj8jhLBeRGvKO1Cqw5634RznExQ90myY/qV/0gsN"
           crossorigin="anonymous"></script>
@@ -58,7 +58,7 @@
       <button id="emailTemplatesBtn" class="btn ghost" title="Edit per-product-line renewal email templates">Templates</button>
       <button id="bulkSelectBtn" class="btn ghost" aria-pressed="false" title="Select multiple licenses (S)">Select</button>
       <span class="topbar-spacer" aria-hidden="true"></span>
-      <span id="syncIndicator" class="sync-indicator" title="Background poll refreshes every 60s">Updated never</span>
+      <span id="syncIndicator" class="sync-indicator" title="Background poll refreshes every 60s">Syncing&hellip;</span>
       <!-- v1.7.45 — icon-only utility cluster: secondary actions compress into
            glyph buttons so the eye lands on the primary "Add license" button. -->
       <div class="topbar-utility" role="group" aria-label="Utilities">
@@ -393,7 +393,7 @@
 
       <div class="lic-field">
         <span class="lic-label">Notify me before expiry</span>
-        <p class="lic-hint" style="margin: 0 0 6px;">Pick one or more lead times. Tap a preset to toggle it. Leave empty to use your Settings default.</p>
+        <p class="lic-hint" style="margin: 0 0 6px;">Pick one or more lead times. Click a preset to toggle it. Leave empty to use your Settings default.</p>
         <div class="lead-picker" id="licLeadDaysPicker"
              data-chip-id="licLeadDaysChips"
              data-preset-id="licLeadDaysPresets"
@@ -718,7 +718,7 @@
     </section>
 
     <div class="lic-dialog-actions">
-      <span class="lic-version" id="licVersionLabel" title="Licenses tab build version">v1.7.47</span>
+      <span class="lic-version" id="licVersionLabel" title="Licenses tab build version">v1.7.48</span>
       <button type="button" class="btn primary" id="licGuideCloseBtn">Close</button>
     </div>
   </dialog>
@@ -916,6 +916,6 @@
 
   <div id="toast" class="toast" hidden></div>
 
-  <script src="licenses.js?v=1.7.47" defer></script>
+  <script src="licenses.js?v=1.7.48" defer></script>
 </body>
 </html>

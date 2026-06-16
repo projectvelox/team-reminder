@@ -6,7 +6,7 @@
   <!-- v1.7.41 — Content Security Policy + SRI on the Teams SDK. See licenses.html for rationale. -->
   <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' https://res.cdn.office.net; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://func-day-reminders-17023.azurewebsites.net; connect-src 'self' https://func-day-reminders-17023.azurewebsites.net; frame-ancestors https://teams.microsoft.com https://*.teams.microsoft.com https://*.cloud.microsoft https://*.skype.com https://*.microsoft.com; form-action 'self'; base-uri 'self';" />
   <title>Day Reminders</title>
-  <link rel="stylesheet" href="styles.css?v=1.5.5" />
+  <link rel="stylesheet" href="styles.css?v=1.5.6" />
   <script src="https://res.cdn.office.net/teams-js/2.24.0/js/MicrosoftTeams.min.js"
           integrity="sha384-79NK4sbfVpgLoDFqyfj18/S1Uj8jhLBeRGvKO1Cqw5634RznExQ90myY/qV/0gsN"
           crossorigin="anonymous"></script>
@@ -27,8 +27,17 @@
         <button type="button" data-view="week" class="view-btn" title="Mon–Sun week view, items plotted on their due date" aria-pressed="false">Week</button>
       </div>
       <button id="groupToggle" class="btn ghost" title="Group reminders by tag (shortcut: g)" aria-pressed="false">Group by tag</button>
-      <button id="openSettings" class="btn ghost" title="Settings">&#9881; Settings</button>
-      <button id="openGuide" class="btn ghost" title="Toggle quick guide (shortcut: ?)" aria-label="Toggle quick guide">?</button>
+      <span class="topbar-spacer" aria-hidden="true"></span>
+      <!-- v1.7.48 — utility cluster matches the Licenses tab so ⚙ and ?
+           sit in the same relative position on both surfaces. -->
+      <div class="topbar-utility" role="group" aria-label="Utilities">
+        <button id="openSettings" class="btn ghost icon-only" type="button" title="Settings" aria-label="Settings">
+          <span class="topbar-icon">&#9881;</span>
+        </button>
+        <button id="openGuide" class="btn ghost icon-only" type="button" title="Keyboard shortcuts (?)" aria-label="Keyboard shortcuts">
+          <span class="topbar-icon">?</span>
+        </button>
+      </div>
     </div>
   </header>
 
@@ -464,6 +473,6 @@
     <a class="link" href="https://github.com/projectvelox/team-reminder/issues" target="_blank" rel="noopener">Report an issue</a>
   </footer>
 
-  <script src="app.js?v=1.5.5"></script>
+  <script src="app.js?v=1.5.6"></script>
 </body>
 </html>
