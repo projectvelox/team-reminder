@@ -9,10 +9,10 @@
   <link rel="preconnect" href="https://func-day-reminders-17023.azurewebsites.net" crossorigin />
   <link rel="dns-prefetch" href="https://func-day-reminders-17023.azurewebsites.net" />
   <link rel="preconnect" href="https://res.cdn.office.net" crossorigin />
-  <link rel="preload" as="script" href="licenses.js?v=1.7.13" />
-  <link rel="preload" as="style" href="licenses.css?v=1.7.13" />
-  <link rel="stylesheet" href="styles.css?v=1.7.13" />
-  <link rel="stylesheet" href="licenses.css?v=1.7.13" />
+  <link rel="preload" as="script" href="licenses.js?v=1.7.14" />
+  <link rel="preload" as="style" href="licenses.css?v=1.7.14" />
+  <link rel="stylesheet" href="styles.css?v=1.7.14" />
+  <link rel="stylesheet" href="licenses.css?v=1.7.14" />
   <script src="https://res.cdn.office.net/teams-js/2.24.0/js/MicrosoftTeams.min.js"></script>
 </head>
 <body data-theme="default" data-page="licenses">
@@ -183,12 +183,10 @@
         </label>
       </div>
 
-      <label class="lic-field">
+      <div class="lic-field">
         <span class="lic-label">Owner</span>
-        <select id="licOwner" required>
-          <option value="">Pick a teammate</option>
-        </select>
-      </label>
+        <div id="licOwner" class="ppicker-container"></div>
+      </div>
 
       <label class="lic-field">
         <span class="lic-label">Product line (optional)</span>
@@ -351,12 +349,10 @@
     <form method="dialog">
       <h2>Reassign owner</h2>
       <p class="lic-hint">Selected: <strong id="bulkReassignCount">0</strong> licenses.</p>
-      <label class="lic-field">
+      <div class="lic-field">
         <span class="lic-label">New owner</span>
-        <select id="bulkReassignOwner">
-          <option value="">Pick a teammate</option>
-        </select>
-      </label>
+        <div id="bulkReassignOwner" class="ppicker-container"></div>
+      </div>
       <div class="lic-dialog-actions">
         <button type="button" class="btn primary" id="bulkReassignConfirm">Reassign</button>
         <button type="button" class="btn ghost" id="bulkReassignCancel">Cancel</button>
@@ -442,6 +438,6 @@
 
   <div id="toast" class="toast" hidden></div>
 
-  <script src="licenses.js?v=1.7.13" defer></script>
+  <script src="licenses.js?v=1.7.14" defer></script>
 </body>
 </html>

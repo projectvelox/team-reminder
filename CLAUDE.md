@@ -21,6 +21,8 @@ func-day-reminders-17023.azurewebsites.net  ──►  Azure Function App (Node 
   /api/members        ── auto-registering Owner picker source (v1.7)
   /api/customers      ── CRUD (tenant-shared customer registry, v1.7.9)
   /api/email-templates── per-product-line renewal email templates (v1.7.9)
+  /api/users/search   ── Graph-backed people search (v1.7.14, User.Read.All app)
+  /api/users/{oid}/photo── Graph photo proxy with in-process 60s cache (v1.7.14)
   scheduler           ── Timer trigger every minute (in Asia/Manila wall-clock)
                                               │
                                               ▼
@@ -59,6 +61,7 @@ Secrets, GUIDs, and connection strings live in the Claude memory file `project_d
 | `bot/src/functions/members.js` | Auto-registering Owner picker source (v1.7) |
 | `bot/src/functions/customers.js` | CRUD for /api/customers (v1.7.9) — annotation layer (contact emails, address, cross-license notes) |
 | `bot/src/functions/emailTemplates.js` | GET/PUT/DELETE for /api/email-templates (v1.7.9) — per-product-line renewal email templates |
+| `bot/src/functions/userSearch.js` | GET /api/users/search and /api/users/{oid}/photo (v1.7.14) — Graph-backed people picker source |
 | `bot/src/functions/settings.js` | GET/PUT /api/settings |
 | `bot/src/functions/scheduler.js` | Timer trigger — lead-time + EOD check-in |
 | `bot/src/functions/ping.js` | Unauthenticated `GET /api/ping` returning `"ok"` — keep-warm target for the Logic App |

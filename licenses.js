@@ -73,6 +73,8 @@
   let editingId = null; // id of license being edited in licDialog; null = new
   let renewTargetId = null;
   let importRows = []; // staged rows during CSV import
+  let licOwnerPicker = null;
+  let bulkReassignPicker = null;
 
   // localStorage keys (tab-only UI state)
   const LS_VIEW = "lic.view";
@@ -426,17 +428,16 @@
     fill("productLineList", productLines);
   }
 
-  function refreshOwnerSelect() {
-    const sel = $("licOwner");
-    const current = sel.value;
-    sel.innerHTML = '<option value="">Pick a teammate</option>';
-    members.forEach((m) => {
-      const opt = document.createElement("option");
-      opt.value = m.oid;
-      opt.textContent = m.displayName || m.upn || m.oid.slice(0, 8);
-      sel.appendChild(opt);
-    });
-    if (current) sel.value = current;
+  function ensureLicOwnerPicker(initialOid, initialName) {
+    if (!licOwnerPicker) {
+      licOwnerPicker = createPeoplePicker($("licOwner"), {
+        initialOid,
+        initialName,
+        placeholder: "Search teammates by name…",
+      });
+    } else {
+      licOwnerPicker.setValue(initialOid, initialName);
+    }
   }
 
   // ---------- render ----------
@@ -767,8 +768,7 @@
     $("licType").value = "";
     $("licUsers").value = "1";
     $("licExpiry").value = todayPh();
-    refreshOwnerSelect();
-    $("licOwner").value = me.oid || "";
+    ensureLicOwnerPicker(me.oid || null, me.name || "");
     $("licProductLine").value = "";
     $("licStatus").value = "notStarted";
     $("licRenewalCycle").value = "annual";
@@ -794,8 +794,7 @@
     $("licType").value = lic.licenseType || "";
     $("licUsers").value = lic.userCount || 0;
     $("licExpiry").value = lic.expiryDate || todayPh();
-    refreshOwnerSelect();
-    $("licOwner").value = lic.ownerOid || "";
+    ensureLicOwnerPicker(lic.ownerOid || null, lic.ownerName || "");
     $("licProductLine").value = lic.productLine || "";
     $("licStatus").value = lic.status || "notStarted";
     $("licRenewalCycle").value = lic.renewalCycle || "annual";
@@ -852,8 +851,9 @@
   }
 
   function readLicenseForm() {
-    const ownerOid = $("licOwner").value || null;
-    const owner = members.find((m) => m.oid === ownerOid);
+    const picked = licOwnerPicker ? licOwnerPicker.getValue() : { oid: null, name: null };
+    const ownerOid = picked.oid || null;
+    const ownerNameFromPicker = picked.name || null;
     const leadSel = $("licLeadDays").value;
     let leadDays = null;
     if (leadSel === "custom") {
@@ -868,7 +868,7 @@
       userCount: parseInt($("licUsers").value, 10) || 0,
       expiryDate: $("licExpiry").value,
       ownerOid,
-      ownerName: owner ? (owner.displayName || owner.upn || "") : null,
+      ownerName: ownerNameFromPicker,
       productLine: $("licProductLine").value.trim() || null,
       status: $("licStatus").value || "notStarted",
       renewalCycle: $("licRenewalCycle").value || "annual",
@@ -1105,6 +1105,235 @@
     }
   }
 
+  // ---------- people picker (v1.7.14) ----------
+  // Searchable Entra-backed picker. Replaces the <select> dropdown.
+  // Uses /api/users/search (User.Read.All app permission, consented tenant-wide).
+  //
+  // Each instance is a small object bound to a DOM container, with getValue /
+  // setValue / focus methods. The picker handles its own DOM and event wiring.
+
+  // Session-lifetime photo cache. Stores either a blob URL or `null` if the user
+  // has no photo (204 from /api/users/.../photo).
+  const photoCache = new Map(); // oid -> Promise<string|null>
+  function loadPhoto(oid) {
+    if (!oid) return Promise.resolve(null);
+    if (photoCache.has(oid)) return photoCache.get(oid);
+    const p = (async () => {
+      try {
+        const res = await fetch(`${API_BASE}/users/${encodeURIComponent(oid)}/photo`, {
+          headers: { Authorization: `Bearer ${authToken}` },
+        });
+        if (res.status === 204 || !res.ok) return null;
+        const blob = await res.blob();
+        return URL.createObjectURL(blob);
+      } catch (_) { return null; }
+    })();
+    photoCache.set(oid, p);
+    return p;
+  }
+
+  function avatarInitials(displayName) {
+    if (!displayName) return "?";
+    const parts = String(displayName).trim().split(/\s+/);
+    const first = (parts[0] || "")[0] || "";
+    const last = parts.length > 1 ? (parts[parts.length - 1][0] || "") : "";
+    return (first + last).toUpperCase() || "?";
+  }
+
+  // Render an avatar element. Photo loads async; falls back to initials.
+  function renderAvatar(oid, displayName) {
+    const wrap = document.createElement("div");
+    wrap.className = "ppicker-avatar";
+    wrap.style.background = ownerColor(oid);
+    wrap.textContent = avatarInitials(displayName);
+    loadPhoto(oid).then((url) => {
+      if (!url || !wrap.isConnected) return;
+      wrap.textContent = "";
+      wrap.style.background = "none";
+      const img = document.createElement("img");
+      img.src = url;
+      img.alt = displayName || "";
+      wrap.appendChild(img);
+    });
+    return wrap;
+  }
+
+  function createPeoplePicker(container, options) {
+    options = options || {};
+    let selectedOid = options.initialOid || null;
+    let selectedName = options.initialName || "";
+    let results = [];
+    let searching = false;
+    let highlighted = -1;
+    let debounceTimer = null;
+    let lastQuery = "";
+
+    container.classList.add("ppicker");
+
+    function render() {
+      container.innerHTML = "";
+      if (selectedOid) {
+        const chip = document.createElement("div");
+        chip.className = "ppicker-chip";
+        chip.appendChild(renderAvatar(selectedOid, selectedName));
+        const nameSpan = document.createElement("span");
+        nameSpan.className = "ppicker-name";
+        nameSpan.textContent = selectedName || "(unnamed)";
+        chip.appendChild(nameSpan);
+        const clearBtn = document.createElement("button");
+        clearBtn.type = "button";
+        clearBtn.className = "ppicker-clear";
+        clearBtn.setAttribute("aria-label", "Clear selection");
+        clearBtn.textContent = "×";
+        clearBtn.addEventListener("click", () => { clearSelection(); });
+        chip.appendChild(clearBtn);
+        container.appendChild(chip);
+        return;
+      }
+      const input = document.createElement("input");
+      input.type = "text";
+      input.className = "ppicker-input";
+      input.placeholder = options.placeholder || "Search teammates by name…";
+      input.autocomplete = "off";
+      input.addEventListener("input", () => onInput(input.value));
+      input.addEventListener("keydown", (e) => onKeyDown(e));
+      input.addEventListener("focus", () => { if (results.length) renderResults(); });
+      container.appendChild(input);
+      const dropdown = document.createElement("div");
+      dropdown.className = "ppicker-results";
+      dropdown.hidden = true;
+      container.appendChild(dropdown);
+    }
+
+    function clearSelection() {
+      selectedOid = null;
+      selectedName = "";
+      results = [];
+      highlighted = -1;
+      render();
+      const input = container.querySelector(".ppicker-input");
+      if (input) input.focus();
+      if (options.onChange) options.onChange({ oid: null, name: "" });
+    }
+
+    function pick(user) {
+      selectedOid = user.oid;
+      selectedName = user.displayName || user.mail || "";
+      results = [];
+      highlighted = -1;
+      render();
+      if (options.onChange) options.onChange({ oid: selectedOid, name: selectedName });
+    }
+
+    function onInput(value) {
+      const q = value.trim();
+      lastQuery = q;
+      if (debounceTimer) clearTimeout(debounceTimer);
+      if (q.length < 2) {
+        results = [];
+        renderResults();
+        return;
+      }
+      debounceTimer = setTimeout(() => doSearch(q), 220);
+    }
+
+    async function doSearch(q) {
+      searching = true;
+      renderResults();
+      try {
+        const { users } = await api("GET", `/users/search?q=${encodeURIComponent(q)}`);
+        if (q !== lastQuery) return; // stale response
+        results = users || [];
+        highlighted = results.length ? 0 : -1;
+      } catch (err) {
+        console.warn("user search failed", err);
+        results = [];
+      } finally {
+        searching = false;
+        renderResults();
+      }
+    }
+
+    function renderResults() {
+      const dropdown = container.querySelector(".ppicker-results");
+      if (!dropdown) return;
+      dropdown.innerHTML = "";
+      if (searching) {
+        const loading = document.createElement("div");
+        loading.className = "ppicker-loading";
+        loading.textContent = "Searching…";
+        dropdown.appendChild(loading);
+        dropdown.hidden = false;
+        return;
+      }
+      if (!results.length) {
+        if (lastQuery.length >= 2) {
+          const none = document.createElement("div");
+          none.className = "ppicker-loading";
+          none.textContent = "No matches.";
+          dropdown.appendChild(none);
+          dropdown.hidden = false;
+        } else {
+          dropdown.hidden = true;
+        }
+        return;
+      }
+      results.forEach((u, i) => {
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.className = "ppicker-result" + (i === highlighted ? " highlighted" : "");
+        btn.appendChild(renderAvatar(u.oid, u.displayName));
+        const txt = document.createElement("div");
+        txt.className = "ppicker-result-text";
+        const nm = document.createElement("div");
+        nm.className = "ppicker-result-name";
+        nm.textContent = u.displayName;
+        txt.appendChild(nm);
+        if (u.jobTitle || u.mail) {
+          const sub = document.createElement("div");
+          sub.className = "ppicker-result-sub";
+          sub.textContent = u.jobTitle || u.mail || "";
+          txt.appendChild(sub);
+        }
+        btn.appendChild(txt);
+        btn.addEventListener("mousedown", (e) => { e.preventDefault(); pick(u); });
+        btn.addEventListener("mouseenter", () => { highlighted = i; renderResults(); });
+        dropdown.appendChild(btn);
+      });
+      dropdown.hidden = false;
+    }
+
+    function onKeyDown(e) {
+      if (e.key === "ArrowDown") {
+        e.preventDefault();
+        if (results.length) { highlighted = Math.min(highlighted + 1, results.length - 1); renderResults(); }
+      } else if (e.key === "ArrowUp") {
+        e.preventDefault();
+        if (results.length) { highlighted = Math.max(highlighted - 1, 0); renderResults(); }
+      } else if (e.key === "Enter") {
+        if (highlighted >= 0 && results[highlighted]) { e.preventDefault(); pick(results[highlighted]); }
+      } else if (e.key === "Escape") {
+        results = [];
+        highlighted = -1;
+        renderResults();
+      }
+    }
+
+    render();
+    return {
+      getValue: () => ({ oid: selectedOid, name: selectedName }),
+      setValue: (oid, name) => {
+        selectedOid = oid || null;
+        selectedName = name || "";
+        render();
+      },
+      focus: () => {
+        const input = container.querySelector(".ppicker-input");
+        if (input) input.focus();
+      },
+    };
+  }
+
   // ---------- bulk select + reassign ----------
   function setBulkMode(on) {
     bulkMode = on;
@@ -1123,32 +1352,31 @@
     const n = bulkSelected.size;
     if (!n) return;
     $("bulkReassignCount").textContent = n;
-    const sel = $("bulkReassignOwner");
-    sel.innerHTML = '<option value="">Pick a teammate</option>';
-    members.forEach((m) => {
-      const opt = document.createElement("option");
-      opt.value = m.oid;
-      opt.textContent = m.displayName || m.upn || m.oid.slice(0, 8);
-      sel.appendChild(opt);
-    });
+    if (!bulkReassignPicker) {
+      bulkReassignPicker = createPeoplePicker($("bulkReassignOwner"), {
+        placeholder: "Search teammates by name…",
+      });
+    } else {
+      bulkReassignPicker.setValue(null, "");
+    }
     $("bulkReassignDialog").showModal();
   }
   async function confirmBulkReassign() {
-    const oid = $("bulkReassignOwner").value;
+    const picked = bulkReassignPicker ? bulkReassignPicker.getValue() : { oid: null, name: null };
+    const oid = picked.oid;
     if (!oid) { toast("Pick an owner first"); return; }
-    const owner = members.find((m) => m.oid === oid);
     const ids = [...bulkSelected];
     try {
       const { updated } = await api("POST", "/licenses/bulk", {
         ids,
-        patch: { ownerOid: oid, ownerName: owner ? (owner.displayName || owner.upn || "") : "" },
+        patch: { ownerOid: oid, ownerName: picked.name || "" },
       });
       const m = new Map(updated.map((l) => [l.id, l]));
       licenses = licenses.map((l) => m.get(l.id) || l);
       $("bulkReassignDialog").close();
       bulkSelected.clear();
       setBulkMode(false);
-      toast(`Reassigned ${updated.length} licenses to ${owner ? owner.displayName : "new owner"}.`);
+      toast(`Reassigned ${updated.length} licenses to ${picked.name || "new owner"}.`);
     } catch (err) {
       showError("Reassign failed", err);
     }
@@ -1866,33 +2094,27 @@
 
       const tdOwner = document.createElement("td");
       if (row.status === "needsOwner" || (!row.ownerOid && row.status !== "invalid")) {
-        const sel = document.createElement("select");
-        sel.innerHTML = '<option value="">Pick owner…</option>';
-        members.forEach((m) => {
-          const opt = document.createElement("option");
-          opt.value = m.oid;
-          opt.textContent = m.displayName || m.upn || m.oid.slice(0, 8);
-          sel.appendChild(opt);
+        const pickerWrap = document.createElement("div");
+        createPeoplePicker(pickerWrap, {
+          initialOid: row.ownerOid || null,
+          initialName: row.ownerName || "",
+          placeholder: row.ownerRawName ? `Search (CSV: "${row.ownerRawName}")` : "Search teammates…",
+          onChange: ({ oid, name }) => {
+            row.ownerOid = oid || null;
+            row.ownerName = name || null;
+            const cls = classifyRow(row);
+            row.status = cls.status;
+            row.reason = cls.reason || null;
+            renderImportPreview();
+            updateImportStats();
+          },
         });
-        sel.addEventListener("change", () => {
-          const oid = sel.value;
-          const owner = members.find((m) => m.oid === oid);
-          row.ownerOid = oid || null;
-          row.ownerName = owner ? owner.displayName : null;
-          const cls = classifyRow(row);
-          row.status = cls.status;
-          row.reason = cls.reason || null;
-          renderImportPreview();
-          updateImportStats();
-        });
+        tdOwner.appendChild(pickerWrap);
         if (row.ownerRawName) {
           const hint = document.createElement("div");
           hint.className = "owner-hint";
           hint.textContent = `from CSV: "${row.ownerRawName}"`;
-          tdOwner.appendChild(sel);
           tdOwner.appendChild(hint);
-        } else {
-          tdOwner.appendChild(sel);
         }
       } else if (row.ownerOid) {
         const pill = document.createElement("span");

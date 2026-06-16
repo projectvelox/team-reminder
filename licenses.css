@@ -862,6 +862,128 @@ body[data-theme="dark"] .import-table tr.status-update .status-cell { color: #66
   cursor: pointer;
 }
 
+/* People picker (v1.7.14) — replaces the <select> for Owner pickers. */
+.ppicker { position: relative; min-width: 200px; }
+.ppicker-input {
+  width: 100%;
+  padding: 8px 12px;
+  border: 1px solid var(--border, #d1d1d1);
+  border-radius: 8px;
+  background: var(--card-bg, #fff);
+  color: inherit;
+  font: inherit;
+  font-size: 13px;
+}
+.ppicker-input:focus { outline: 2px solid var(--accent, #38AEEB); border-color: var(--accent, #38AEEB); }
+.ppicker-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 8px 4px 4px;
+  border: 1px solid var(--border, #d1d1d1);
+  border-radius: 999px;
+  background: var(--card-bg, #fff);
+  font-size: 13px;
+  max-width: 100%;
+}
+.ppicker-name {
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 200px;
+}
+.ppicker-clear {
+  background: none;
+  border: none;
+  padding: 0 6px;
+  font-size: 16px;
+  color: inherit;
+  opacity: 0.6;
+  cursor: pointer;
+  border-radius: 4px;
+}
+.ppicker-clear:hover { opacity: 1; background: var(--row-hover, rgba(0, 0, 0, 0.06)); }
+.ppicker-avatar {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+.ppicker-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.ppicker-results {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  min-width: 280px;
+  max-height: 320px;
+  overflow-y: auto;
+  background: var(--card-bg, #fff);
+  border: 1px solid var(--border, #d1d1d1);
+  border-radius: 10px;
+  padding: 4px;
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.18);
+  z-index: 50;
+}
+.ppicker-result {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 8px 10px;
+  background: none;
+  border: none;
+  text-align: left;
+  cursor: pointer;
+  color: inherit;
+  font: inherit;
+  border-radius: 6px;
+}
+.ppicker-result.highlighted,
+.ppicker-result:hover { background: var(--row-hover, rgba(0, 120, 212, 0.08)); }
+.ppicker-result-text { min-width: 0; flex: 1; }
+.ppicker-result-name {
+  font-weight: 600;
+  font-size: 13px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.ppicker-result-sub {
+  font-size: 11px;
+  opacity: 0.7;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.ppicker-loading {
+  padding: 10px 12px;
+  font-size: 12px;
+  opacity: 0.75;
+}
+body[data-theme="dark"] .ppicker-input,
+body[data-theme="dark"] .ppicker-chip,
+body[data-theme="dark"] .ppicker-results {
+  --card-bg: #2b2b30;
+  --border: #3d3d42;
+}
+body[data-theme="dark"] .ppicker-results { box-shadow: 0 8px 28px rgba(0, 0, 0, 0.5); }
+/* Picker inside an import preview row needs to size to its cell. */
+.import-table .ppicker { min-width: 180px; }
+
 /* Toast (with optional inline Undo button for soft delete) */
 .toast {
   position: fixed;

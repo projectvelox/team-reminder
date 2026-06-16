@@ -105,4 +105,63 @@ async function sendReminderActivity(oid, reminder) {
   return true;
 }
 
-module.exports = { sendReminderActivity };
+// Search tenant users by display name. Returns up to 25 matches, filters out
+// guests and rows with no mailbox (typically service accounts). Used by the
+// Licenses tab people picker (v1.7.13).
+async function searchUsers(query) {
+  const q = String(query || '').trim();
+  if (q.length < 2) return [];
+  // $search requires ConsistencyLevel: eventual header. The "displayName:..." prefix
+  // tells Graph to match against displayName specifically; mail/UPN matches happen
+  // too because $search is fuzzy across multiple fields when no field is specified.
+  const token = await getAppToken();
+  const url = `${GRAPH_BASE}/users?$search=${encodeURIComponent(`"displayName:${q}" OR "mail:${q}"`)}&$select=id,displayName,jobTitle,mail,userType,userPrincipalName&$top=25`;
+  const res = await fetch(url, {
+    headers: {
+      Authorization: `Bearer ${token}`,
+      ConsistencyLevel: 'eventual',
+    },
+  });
+  if (!res.ok) {
+    const txt = await res.text().catch(() => '');
+    const err = new Error(`Graph users search ${res.status}: ${txt.slice(0, 300)}`);
+    err.status = res.status;
+    throw err;
+  }
+  const data = await res.json();
+  return (data.value || [])
+    .filter((u) => u.userType !== 'Guest' && u.mail) // exclude guests + service accounts
+    .map((u) => ({
+      oid: u.id,
+      displayName: u.displayName || u.userPrincipalName || '',
+      jobTitle: u.jobTitle || null,
+      mail: u.mail || null,
+    }));
+}
+
+// Fetch a user's profile photo. Returns { contentType, buffer } or null if no photo.
+// 60-second in-process cache keyed by oid keeps repeat lookups cheap.
+const photoCache = new Map(); // oid -> { entry, expiresAt }
+const PHOTO_CACHE_TTL_MS = 60_000;
+async function getUserPhoto(oid) {
+  const cached = photoCache.get(oid);
+  if (cached && Date.now() < cached.expiresAt) return cached.entry;
+  const token = await getAppToken();
+  const url = `${GRAPH_BASE}/users/${oid}/photo/$value`;
+  const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+  if (res.status === 404 || res.status === 401) {
+    photoCache.set(oid, { entry: null, expiresAt: Date.now() + PHOTO_CACHE_TTL_MS });
+    return null;
+  }
+  if (!res.ok) {
+    const err = new Error(`Graph photo ${res.status}`);
+    err.status = res.status;
+    throw err;
+  }
+  const buffer = Buffer.from(await res.arrayBuffer());
+  const entry = { contentType: res.headers.get('content-type') || 'image/jpeg', buffer };
+  photoCache.set(oid, { entry, expiresAt: Date.now() + PHOTO_CACHE_TTL_MS });
+  return entry;
+}
+
+module.exports = { sendReminderActivity, searchUsers, getUserPhoto };
