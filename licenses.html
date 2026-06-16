@@ -14,10 +14,10 @@
   <link rel="preconnect" href="https://func-day-reminders-17023.azurewebsites.net" crossorigin />
   <link rel="dns-prefetch" href="https://func-day-reminders-17023.azurewebsites.net" />
   <link rel="preconnect" href="https://res.cdn.office.net" crossorigin />
-  <link rel="preload" as="script" href="licenses.js?v=1.7.32" />
-  <link rel="preload" as="style" href="licenses.css?v=1.7.32" />
-  <link rel="stylesheet" href="styles.css?v=1.7.32" />
-  <link rel="stylesheet" href="licenses.css?v=1.7.32" />
+  <link rel="preload" as="script" href="licenses.js?v=1.7.33" />
+  <link rel="preload" as="style" href="licenses.css?v=1.7.33" />
+  <link rel="stylesheet" href="styles.css?v=1.7.33" />
+  <link rel="stylesheet" href="licenses.css?v=1.7.33" />
   <script src="https://res.cdn.office.net/teams-js/2.24.0/js/MicrosoftTeams.min.js"></script>
 </head>
 <body data-theme="default" data-page="licenses">
@@ -477,7 +477,7 @@
         <dt>Edit</dt>
         <dd>Opens the edit drawer where you can change every field plus see the activity log of who changed what.</dd>
         <dt>Email / Email N</dt>
-        <dd>Opens Outlook with a pre-filled renewal notice (one per row, or one <strong>combined</strong> message when the row is part of a bundle of N licenses for the same customer).</dd>
+        <dd>Opens Outlook with a pre-filled renewal notice <em>draft</em> (one per row, or one <strong>combined</strong> message when the row is part of a bundle of N licenses for the same customer). Status is <strong>not</strong> changed automatically &mdash; move the row to Notice sent yourself once the email leaves your outbox.</dd>
         <dt>Renew</dt>
         <dd>Marks the license renewed with a 1, 2, or 3 year extension (or custom date). Triennial licenses default to +3 years.</dd>
         <dt>&middot;&middot;&middot; More</dt>
@@ -491,9 +491,9 @@
       <h3>Workflow</h3>
       <dl>
         <dt>Status pipeline</dt>
-        <dd>Each license walks through Not started &rarr; Notice sent &rarr; Awaiting customer &rarr; Customer confirmed &rarr; Renewed. The Email button auto-promotes Not started rows to Notice sent.</dd>
+        <dd>Each license walks through Not started &rarr; Notice sent &rarr; Awaiting customer &rarr; Customer confirmed &rarr; Renewed. Status changes are always explicit (Edit drawer or the bot's follow-up card) &mdash; drafting an email does not promote the row.</dd>
         <dt>Bundle indicator</dt>
-        <dd>When a customer has 2+ licenses expiring within 14 days of each other, the Email button on every row in that bundle reads "Email N". One click drafts one combined message and moves all those rows to Notice sent in a single round-trip.</dd>
+        <dd>When a customer has 2+ licenses expiring within 14 days of each other, the Email button on every row in that bundle reads "Email N". One click drafts one combined message covering all N licenses; you then mark them as Notice sent once you actually send.</dd>
         <dt>Daily morning briefing</dt>
         <dd>Each weekday at 8 AM PH, the bot sends you a Teams card summarising your queue. Skip it from Settings.</dd>
         <dt>Monthly email digest</dt>
@@ -528,7 +528,7 @@
     </section>
 
     <div class="lic-dialog-actions">
-      <span class="lic-version" id="licVersionLabel" title="Licenses tab build version">v1.7.32</span>
+      <span class="lic-version" id="licVersionLabel" title="Licenses tab build version">v1.7.33</span>
       <button type="button" class="btn primary" id="licGuideCloseBtn">Close</button>
     </div>
   </dialog>
@@ -586,6 +586,6 @@
 
   <div id="toast" class="toast" hidden></div>
 
-  <script src="licenses.js?v=1.7.32" defer></script>
+  <script src="licenses.js?v=1.7.33" defer></script>
 </body>
 </html>

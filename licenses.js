@@ -315,14 +315,15 @@
   }
 
   function renderOwnerChips() {
-    const map = new Map(); // ownerOid -> { name, count, nextExpiry }
+    const map = new Map(); // ownerOid -> { name, count, customers: Set, nextExpiry }
     const today = todayPh();
     for (const l of licenses) {
       if (l.state === "abandoned") continue;
       if (!l.ownerOid) continue;
       const key = l.ownerOid;
-      const cur = map.get(key) || { oid: l.ownerOid, name: l.ownerName || "(no name)", count: 0, nextExpiry: null };
+      const cur = map.get(key) || { oid: l.ownerOid, name: l.ownerName || "(no name)", count: 0, customers: new Set(), nextExpiry: null };
       cur.count++;
+      if (l.customer) cur.customers.add(l.customer.trim().toLowerCase());
       // next expiry = soonest upcoming or zero-days expiry (>=today)
       if (l.expiryDate && (!cur.nextExpiry || l.expiryDate < cur.nextExpiry)) {
         if (l.expiryDate >= today) cur.nextExpiry = l.expiryDate;
@@ -351,11 +352,18 @@
       cnt.className = "chip-count";
       cnt.textContent = e.count;
       btn.appendChild(cnt);
+      // Subtitle: unique customer count + next expiry, so the chip distinguishes
+      // workload (records, in the count pill) from concentration (customers).
+      const subParts = [];
+      if (e.customers.size > 0) subParts.push(`${e.customers.size} cust`);
       if (e.nextExpiry) {
+        const d = daysBetween(today, e.nextExpiry);
+        if (d !== null) subParts.push(d < 0 ? `overdue ${-d}d` : d === 0 ? "today" : `next ${fmtShortDate(e.nextExpiry)}`);
+      }
+      if (subParts.length) {
         const nx = document.createElement("span");
         nx.className = "chip-next";
-        const d = daysBetween(today, e.nextExpiry);
-        nx.textContent = d === null ? "" : (d < 0 ? `overdue ${-d}d` : d === 0 ? "today" : `next ${fmtShortDate(e.nextExpiry)}`);
+        nx.textContent = subParts.join(" · ");
         btn.appendChild(nx);
       }
       btn.addEventListener("click", () => {
@@ -700,10 +708,17 @@
     td.appendChild(chevron);
     td.appendChild(document.createTextNode(" " + (label || "(none)")));
     const seats = group.reduce((s, l) => s + (typeof l.userCount === "number" ? l.userCount : 0), 0);
+    const uniqueCustomers = new Set();
+    for (const l of group) if (l.customer) uniqueCustomers.add(l.customer.trim().toLowerCase());
     const meta = document.createElement("span");
     meta.className = "group-count";
     const noun = group.length === 1 ? "license" : "licenses";
-    meta.textContent = `${group.length} ${noun} · ${seats.toLocaleString()} seats`;
+    const parts = [`${group.length} ${noun}`];
+    // Show customer count only when it's actually informative (i.e. when grouped
+    // by owner / product line, not when grouped by customer where it's always 1).
+    if (uniqueCustomers.size > 1) parts.push(`${uniqueCustomers.size} customers`);
+    parts.push(`${seats.toLocaleString()} seats`);
+    meta.textContent = parts.join(" · ");
     td.appendChild(meta);
     tr.appendChild(td);
     tr.addEventListener("click", onToggle);
@@ -1217,23 +1232,13 @@
     const url = `mailto:${encodeURIComponent(recipient)}?${params.join("&")}`;
     window.open(url, "_blank");
 
-    if (isBundle) toast(`Drafted email for ${bundle.length}-license bundle.`);
-
-    // Mark notStarted licenses in the bundle as noticeSent (click implies you sent the notice).
-    const toMark = bundle.filter((b) => b.status === "notStarted");
-    if (toMark.length === 1) {
-      api("PATCH", `/licenses/${toMark[0].id}`, { status: "noticeSent" })
-        .then(({ license }) => { licenses = licenses.map((l) => l.id === license.id ? license : l); render(); })
-        .catch((err) => showError("Status update failed", err));
-    } else if (toMark.length > 1) {
-      api("POST", "/licenses/bulk", { ids: toMark.map((b) => b.id), patch: { status: "noticeSent" } })
-        .then(({ updated }) => {
-          const m = new Map(updated.map((l) => [l.id, l]));
-          licenses = licenses.map((l) => m.get(l.id) || l);
-          render();
-        })
-        .catch((err) => showError("Bulk status update failed", err));
-    }
+    // Per Ella's feedback 2026-06-17: do NOT auto-promote the license status to
+    // Notice sent. mailto: opens an Outlook DRAFT, not a sent email -- the user
+    // might never actually send it. The status should reflect what's been sent,
+    // not what's been drafted. User must change the status manually in the edit
+    // dialog once they've confirmed the email left their outbox.
+    if (isBundle) toast(`Drafted ${bundle.length}-license bundle email in Outlook.`);
+    else toast(`Drafted email in Outlook.`);
   }
 
   // ---------- people picker (v1.7.14) ----------
