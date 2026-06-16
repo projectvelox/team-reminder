@@ -587,7 +587,8 @@
     const renewBtn = document.createElement("button");
     renewBtn.type = "button";
     renewBtn.className = "btn primary small";
-    renewBtn.textContent = "Renewed";
+    renewBtn.textContent = "Renew";
+    renewBtn.title = "Mark this license renewed";
     renewBtn.addEventListener("click", (e) => { e.stopPropagation(); openRenewDialog(lic.id); });
     tdActions.appendChild(renewBtn);
     tr.appendChild(tdActions);
