@@ -1387,9 +1387,48 @@ button:focus-visible, .link:focus-visible, .tag-chip:focus-visible, select:focus
 /* Day view header — new container for the Day ⇄ Week switcher above the hour grid. */
 .calendar-header {
   display: flex;
-  justify-content: flex-end;
+  justify-content: space-between;
+  align-items: center;
   margin-bottom: 8px;
+  gap: 10px;
+  flex-wrap: wrap;
 }
+/* Date header above the hour grid so the user knows which day they're seeing. */
+.calendar-date-label {
+  font-size: 14px;
+  color: var(--muted, #6a6a6a);
+}
+.calendar-date-label strong {
+  color: var(--text, #1c1c1e);
+  font-weight: 700;
+  margin-right: 2px;
+}
+
+/* Roll-over badge: small amber pill that says "rolled +Nd" so a reminder that
+   drifted into today from a past date doesn't look like it was scheduled today. */
+.rolled-badge {
+  display: inline-block;
+  margin-left: 4px;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: rgba(210, 146, 0, 0.18);
+  color: #7a5400;
+  border: 1px solid rgba(210, 146, 0, 0.4);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  vertical-align: middle;
+}
+body[data-theme="dark"] .rolled-badge { color: #f0c040; }
+
+/* Drag-and-drop visual feedback. */
+.week-item, .cal-item { cursor: grab; }
+.week-item.dragging, .cal-item.dragging { opacity: 0.4; cursor: grabbing; }
+.week-day.drop-target { outline: 2px dashed var(--accent, #38AEEB); outline-offset: -2px; }
+.week-day.drop-target .week-day-body { background: color-mix(in srgb, var(--accent, #38AEEB) 8%, transparent); }
+.cal-slot.drop-target { background: color-mix(in srgb, var(--accent, #38AEEB) 12%, transparent); }
+.cal-anytime.drop-target { outline: 2px dashed var(--accent, #38AEEB); outline-offset: -2px; }
+.cal-anytime-stack { display: grid; gap: 4px; }
 
 @media (max-width: 900px) {
   .week-grid {

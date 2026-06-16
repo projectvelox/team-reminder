@@ -960,6 +960,125 @@
   }
 
   // ---------- calendar view (Day) ----------
+  // ---------- drag-and-drop reschedule ----------
+  // Make a reminder card draggable. On drop on a day column or hour slot, we
+  // PATCH dueAt / time and re-render. The PATCH happens optimistically: the
+  // server call runs after we've already updated local state, so the visual
+  // feedback is instant. On failure we revert and surface the error.
+  const DRAG_MIME = "text/x-reminder-id";
+
+  function enableReminderDrag(itemEl, r) {
+    itemEl.draggable = true;
+    itemEl.addEventListener("dragstart", (e) => {
+      // Don't begin a drag if the user actually grabbed a checkbox / button.
+      if (e.target.tagName === "INPUT" || e.target.closest("button")) {
+        e.preventDefault();
+        return;
+      }
+      e.dataTransfer.setData(DRAG_MIME, r.id);
+      e.dataTransfer.effectAllowed = "move";
+      itemEl.classList.add("dragging");
+    });
+    itemEl.addEventListener("dragend", () => itemEl.classList.remove("dragging"));
+  }
+
+  function enableDayDrop(bodyEl, colEl, dayStr) {
+    bodyEl.addEventListener("dragover", (e) => {
+      if (!e.dataTransfer.types.includes(DRAG_MIME)) return;
+      e.preventDefault();
+      e.dataTransfer.dropEffect = "move";
+      colEl.classList.add("drop-target");
+    });
+    bodyEl.addEventListener("dragleave", (e) => {
+      // Only clear the highlight when the cursor actually leaves the column,
+      // not when it moves between child elements inside it.
+      if (e.target === bodyEl) colEl.classList.remove("drop-target");
+    });
+    bodyEl.addEventListener("drop", async (e) => {
+      if (!e.dataTransfer.types.includes(DRAG_MIME)) return;
+      e.preventDefault();
+      colEl.classList.remove("drop-target");
+      const id = e.dataTransfer.getData(DRAG_MIME);
+      if (!id) return;
+      const r = reminders.find((x) => x.id === id);
+      if (!r || r.dueAt === dayStr) return;
+      await applyReschedule(r, { dueAt: dayStr });
+    });
+  }
+
+  function enableHourDrop(slotEl, hour) {
+    slotEl.addEventListener("dragover", (e) => {
+      if (!e.dataTransfer.types.includes(DRAG_MIME)) return;
+      e.preventDefault();
+      e.dataTransfer.dropEffect = "move";
+      slotEl.classList.add("drop-target");
+    });
+    slotEl.addEventListener("dragleave", (e) => {
+      if (e.target === slotEl) slotEl.classList.remove("drop-target");
+    });
+    slotEl.addEventListener("drop", async (e) => {
+      if (!e.dataTransfer.types.includes(DRAG_MIME)) return;
+      e.preventDefault();
+      slotEl.classList.remove("drop-target");
+      const id = e.dataTransfer.getData(DRAG_MIME);
+      if (!id) return;
+      const r = reminders.find((x) => x.id === id);
+      if (!r) return;
+      const newTime = `${String(hour).padStart(2, "0")}:00`;
+      const patch = { time: newTime };
+      // Day view = today, so ensure dueAt is today when moving in.
+      const today = todayPh();
+      if (r.dueAt !== today) patch.dueAt = today;
+      if (r.time === newTime && r.dueAt === today) return;
+      await applyReschedule(r, patch);
+    });
+  }
+
+  function enableAnytimeDrop(containerEl) {
+    containerEl.addEventListener("dragover", (e) => {
+      if (!e.dataTransfer.types.includes(DRAG_MIME)) return;
+      e.preventDefault();
+      e.dataTransfer.dropEffect = "move";
+      containerEl.classList.add("drop-target");
+    });
+    containerEl.addEventListener("dragleave", (e) => {
+      if (e.target === containerEl) containerEl.classList.remove("drop-target");
+    });
+    containerEl.addEventListener("drop", async (e) => {
+      if (!e.dataTransfer.types.includes(DRAG_MIME)) return;
+      e.preventDefault();
+      containerEl.classList.remove("drop-target");
+      const id = e.dataTransfer.getData(DRAG_MIME);
+      if (!id) return;
+      const r = reminders.find((x) => x.id === id);
+      if (!r) return;
+      const patch = { time: null };
+      const today = todayPh();
+      if (r.dueAt !== today) patch.dueAt = today;
+      if (!r.time && r.dueAt === today) return;
+      await applyReschedule(r, patch);
+    });
+  }
+
+  // Apply a PATCH optimistically: update local state first, render, then PATCH.
+  // On failure, revert local state and re-render so the UI never lies about
+  // what's actually persisted.
+  async function applyReschedule(r, patch) {
+    const before = { dueAt: r.dueAt, time: r.time, rollDays: r.rollDays };
+    if (patch.dueAt !== undefined) { r.dueAt = patch.dueAt; r.rollDays = 0; }
+    if (patch.time !== undefined) r.time = patch.time;
+    render();
+    try {
+      await api("PATCH", `/reminders/${r.id}`, patch);
+    } catch (err) {
+      r.dueAt = before.dueAt;
+      r.time = before.time;
+      r.rollDays = before.rollDays;
+      render();
+      showError("Could not reschedule", err);
+    }
+  }
+
   function buildCalendarLayout(items) {
     const section = document.createElement("section");
     section.className = "card calendar";
@@ -967,6 +1086,21 @@
     const header = document.createElement("div");
     header.className = "calendar-header";
     header.appendChild(makeDayWeekSwitcher("calendar"));
+
+    // Explicit date label so the Day view announces which day it's showing.
+    // Day view is always "today" — there's no day-by-day navigation — but
+    // without a header the user can mistake it for the date they selected in
+    // Week view.
+    const dateLabel = document.createElement("div");
+    dateLabel.className = "calendar-date-label";
+    const todayDate = new Date();
+    const dateText = todayDate.toLocaleDateString(undefined, { weekday: "long", month: "short", day: "numeric" });
+    const strong = document.createElement("strong");
+    strong.textContent = "Today";
+    dateLabel.appendChild(strong);
+    dateLabel.appendChild(document.createTextNode(" · " + dateText));
+    header.appendChild(dateLabel);
+
     section.appendChild(header);
 
     const timed = items.filter((r) => !!r.time);
@@ -1000,21 +1134,34 @@
         .sort((a, b) => a.time.localeCompare(b.time));
       for (const r of inHour) slot.appendChild(buildCalendarItem(r));
 
+      // Drop target: drag a reminder into this hour to set its time to HH:00.
+      enableHourDrop(slot, h);
+
       row.append(label, slot);
       section.appendChild(row);
     }
 
-    if (anytime.length) {
+    // Anytime-today is always rendered (even if empty) so it can serve as a
+    // drop target: drag a timed item onto it to clear its time.
+    {
       const at = document.createElement("div");
       at.className = "cal-anytime";
       const heading = document.createElement("h3");
       heading.textContent = "Anytime today";
       at.appendChild(heading);
       const stack = document.createElement("div");
-      stack.style.display = "grid";
-      stack.style.gap = "4px";
+      stack.className = "cal-anytime-stack";
       for (const r of sortByOrderThenTime(anytime)) stack.appendChild(buildCalendarItem(r));
       at.appendChild(stack);
+      enableAnytimeDrop(at);
+      if (!anytime.length) {
+        const hint = document.createElement("p");
+        hint.className = "muted";
+        hint.style.fontSize = "11px";
+        hint.style.margin = "4px 0 0";
+        hint.textContent = "Drop a reminder here to clear its time.";
+        at.appendChild(hint);
+      }
       section.appendChild(at);
     }
 
@@ -1129,6 +1276,9 @@
         titleInput.scrollIntoView({ behavior: "smooth", block: "start" });
       });
 
+      // Drop target: drag a reminder onto this column to change its dueAt.
+      enableDayDrop(body, col, dayStr);
+
       col.appendChild(body);
       grid.appendChild(col);
     }
@@ -1144,6 +1294,7 @@
     if (r.priority === "high") item.classList.add("high");
     if (r.done) item.classList.add("done");
     if (r.snoozedUntil && new Date(r.snoozedUntil).getTime() > Date.now()) item.classList.add("snoozed");
+    enableReminderDrag(item, r);
 
     const head = document.createElement("div");
     head.className = "week-item-head";
@@ -1210,7 +1361,18 @@
 
     const text = document.createElement("span");
     text.className = "cal-item-text";
-    text.textContent = r.rollDays > 0 ? `${displayTitle(r)}  (+${r.rollDays}d)` : displayTitle(r);
+    text.textContent = displayTitle(r);
+
+    // Rolled-over badge so items that drifted into today from a past dueAt
+    // don't masquerade as having been scheduled for today.
+    if (r.rollDays > 0) {
+      const rolled = document.createElement("span");
+      rolled.className = "rolled-badge";
+      rolled.textContent = `rolled +${r.rollDays}d`;
+      rolled.title = `This was originally for ${r.rollDays} day${r.rollDays === 1 ? '' : 's'} ago and got rolled forward to today.`;
+      text.appendChild(document.createTextNode(" "));
+      text.appendChild(rolled);
+    }
 
     const more = document.createElement("button");
     more.type = "button";
@@ -1225,6 +1387,7 @@
       if (e.target === cb || e.target === more || e.target.closest("button")) return;
       startTitleEdit(r, text);
     });
+    enableReminderDrag(item, r);
     return item;
   }
 
