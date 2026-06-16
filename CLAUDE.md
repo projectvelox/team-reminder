@@ -73,6 +73,35 @@ Secrets, GUIDs, and connection strings live in the Claude memory file `project_d
 
 ## What ships today (v1.7.x)
 
+### v1.7.43 — compliance bundle (soft-delete, GDPR DSR, tests, CI, types)
+
+Closes the top gaps identified in the v1.7.42 compliance audit. Tab + bot + repo infrastructure.
+
+**Backend — soft-delete with 30-day retention**
+- `store.deleteLicense(id, actor)` now stamps `deletedAt` + `deletedByOid/Name` instead of hard-deleting. `listLicenses()` / `getLicense()` hide soft-deleted rows by default; pass `{ includeDeleted: true }` to see them.
+- New helpers: `listDeletedLicenses()`, `hardDeleteLicense(id)`, `restoreLicense(id)`.
+- New endpoints: `GET /api/licenses/deleted` (recovery list), `POST /api/licenses/{id}/restore` (undo).
+- New scheduler branch `processSoftDeletePurge` runs daily 3:00-3:10 AM PH, hard-deletes any row whose `deletedAt` is older than 30 days. Idempotent.
+
+**Backend — GDPR data-subject rights (`bot/src/functions/meExport.js`)**
+- `GET /api/me/export` returns a JSON dump of everything we store about the caller (settings, reminders, templates, hasConversationRef, owned license rows). Sets `Content-Disposition: attachment` so the browser downloads it.
+- `DELETE /api/me/data` wipes the caller's reminders + templates + settings + conversationRef, then unassigns the caller as owner on every license row they own (license rows themselves stay — tenant artifacts).
+
+**Backend — type safety + tests**
+- `bot/jsconfig.json` + `bot/src/lib/types.js` with canonical JSDoc typedefs for `License`, `Reminder`, `Settings`, `UserRecord`, `LicenseComment`, `LicenseEvent`. `// @ts-check` on the new files; legacy files run loose-mode via `npm run typecheck`.
+- `bot/test/` with Node's built-in test runner. 20 tests across `store-helpers.test.js` (parseLeadDays / serializeLeadDays edge cases) and `license-validation.test.js` (required fields, length caps, leadDays array coercion, status/cycle enums, PATCH merge semantics). All green.
+- `npm run lint` / `npm test` / `npm run typecheck` scripts added.
+
+**Repo infrastructure — CI + supply chain**
+- `.github/dependabot.yml`: weekly npm updates for `bot/`, monthly for GitHub Actions. Minor + patch grouped into one PR.
+- `.github/workflows/ci.yml`: on every push to `main` + every PR, runs syntax check + tests + `npm audit --audit-level=high` (fails the build on high/critical vulns). Tab JS also gets syntax-checked.
+
+**Frontend**
+- **Recently-deleted recovery view** — Settings dialog gets an *Open recovery…* button. Lists every soft-deleted license with "Deleted Ns ago by NAME · N days until permanent purge" and a Restore button per row.
+- **Privacy & data section** in Settings: explanation copy + *More details* link to a full privacy dialog (what we store, where, how long, your controls, third parties), plus **Export my data** (downloads the `/api/me/export` JSON) and **Delete my account data…** (confirm dialog + type-DELETE prompt → calls `DELETE /api/me/data`).
+
+Cache-bust `v=1.7.43` on Licenses. **Backend redeploy required.**
+
 ### v1.7.42 — design language + shareable filters + strategic reporting
 
 Polish pass to close the gap toward Linear/Stripe-tier internal tools. Tab-only release; no backend changes.

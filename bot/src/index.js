@@ -13,3 +13,4 @@ require('./functions/customers');
 require('./functions/emailTemplates');
 require('./functions/userSearch');
 require('./functions/digestPreview');
+require('./functions/meExport');

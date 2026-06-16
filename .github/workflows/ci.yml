@@ -1,0 +1,54 @@
+# v1.7.43 — minimal CI: syntax-check every JS file, run the bot test suite,
+# audit npm deps. Runs on every push to main + on PRs. Catches the silent
+# "you broke a file" regressions that direct push-to-prod can't.
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  bot:
+    name: bot (audit + tests + syntax)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: bot
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: bot/package-lock.json
+      - name: Install
+        run: npm ci || npm install
+      - name: Syntax check
+        run: npm run lint
+      - name: Tests
+        run: npm test
+      - name: Audit (high+ severity is a failure)
+        # `npm audit` exits non-zero on findings >= the threshold. We accept
+        # moderate vulns (would block deploys for weeks on transitive deps);
+        # high + critical fail the build.
+        run: npm audit --audit-level=high
+        continue-on-error: false
+
+  tab:
+    name: tab (syntax)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Syntax check tab JS
+        run: |
+          node -c app.js
+          node -c licenses.js
+          node -c outlook.js

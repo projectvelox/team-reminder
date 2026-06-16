@@ -86,8 +86,38 @@ app.timer('scheduler', {
       try { await processMonthlyDigest(ph, context); }
       catch (err) { context.error(`[scheduler] monthly digest failed: ${err?.message || err}`); }
     }
+
+    // v1.7.43 — daily soft-delete purge at 3:00-3:10 AM PH. Hard-deletes any
+    // license whose deletedAt is older than 30 days. Idempotent — multiple
+    // ticks in the window can't double-delete since the row is gone after the
+    // first tick.
+    if (ph.minutesOfDay >= 3 * 60 && ph.minutesOfDay < 3 * 60 + 10) {
+      try { await processSoftDeletePurge(context); }
+      catch (err) { context.error(`[scheduler] purge failed: ${err?.message || err}`); }
+    }
   },
 });
+
+async function processSoftDeletePurge(context) {
+  const RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
+  const cutoff = new Date(Date.now() - RETENTION_MS).toISOString();
+  let deleted;
+  try { deleted = await store.listDeletedLicenses(); }
+  catch (err) { context.error(`[purge] listDeleted failed: ${err?.message || err}`); return; }
+  let purged = 0;
+  for (const lic of deleted) {
+    if (!lic.deletedAt) continue;
+    if (lic.deletedAt > cutoff) continue; // still within retention
+    try {
+      await store.hardDeleteLicense(lic.id);
+      purged++;
+      context.log(`[purge] hard-deleted ${lic.id} (${lic.customer}, ${lic.licenseType}) deletedAt=${lic.deletedAt}`);
+    } catch (err) {
+      context.error(`[purge] ${lic.id}: ${err?.message || err}`);
+    }
+  }
+  if (purged > 0) context.log(`[purge] ${purged} licenses purged after 30-day retention`);
+}
 
 async function processUser(appId, user, ph, context) {
   const defaultLead = user.settings?.leadMinutes ?? 10;

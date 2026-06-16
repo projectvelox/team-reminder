@@ -2169,3 +2169,41 @@ body:is([data-theme="dark"], [data-theme="contrast"]) .lic-renewal-trend {
   .lic-cal-pill { font-size: var(--text-xs, 11px); padding: 2px 4px; }
   .renewal-trend-canvas { height: 100px; }
 }
+
+/* ---------- v1.7.43 recovery + privacy dialogs ---------- */
+.recovery-list { list-style: none; padding: 0; margin: var(--space-3, 12px) 0; max-height: 380px; overflow-y: auto; }
+.recovery-row {
+  display: grid; grid-template-columns: 1fr auto; gap: var(--space-1, 4px) var(--space-3, 12px);
+  align-items: center;
+  padding: var(--space-2, 10px) 0;
+  border-bottom: 1px solid var(--border, #f0f0f0);
+}
+.recovery-row:last-child { border-bottom: 0; }
+.recovery-head { grid-column: 1; font-size: var(--text-base, 13px); color: var(--text, #1c1c1e); }
+.recovery-meta { grid-column: 1; font-size: var(--text-xs, 11px); color: var(--muted, #6a6a6a); }
+.recovery-row .btn { grid-column: 2; grid-row: 1 / span 2; align-self: center; }
+.recovery-empty, .recovery-loading {
+  padding: var(--space-5, 24px); text-align: center;
+  color: var(--muted, #6a6a6a); font-style: italic;
+}
+
+.privacy-body h3 {
+  font-size: var(--text-md, 14px); margin: var(--space-4, 16px) 0 var(--space-1, 4px);
+  color: var(--text, #1c1c1e);
+}
+.privacy-body ul { margin: 0 0 var(--space-2, 8px); padding-left: var(--space-5, 20px); }
+.privacy-body li { font-size: var(--text-base, 13px); margin-bottom: var(--space-1, 4px); }
+.privacy-body p { font-size: var(--text-base, 13px); margin: 0 0 var(--space-2, 8px); color: var(--text, #1c1c1e); }
+.privacy-body code {
+  background: var(--accent-bg, rgba(56,174,235,.10));
+  padding: 1px 4px; border-radius: 3px; font-size: var(--text-sm, 12px);
+}
+
+.btn.danger {
+  color: var(--color-danger-fg, #b71c1c);
+  border-color: var(--color-danger-fg, #b71c1c);
+}
+.btn.danger:hover {
+  background: var(--color-danger-fg, #b71c1c);
+  color: #fff;
+}

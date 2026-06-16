@@ -21,10 +21,10 @@
   <link rel="preconnect" href="https://func-day-reminders-17023.azurewebsites.net" crossorigin />
   <link rel="dns-prefetch" href="https://func-day-reminders-17023.azurewebsites.net" />
   <link rel="preconnect" href="https://res.cdn.office.net" crossorigin />
-  <link rel="preload" as="script" href="licenses.js?v=1.7.42" />
-  <link rel="preload" as="style" href="licenses.css?v=1.7.42" />
-  <link rel="stylesheet" href="styles.css?v=1.7.42" />
-  <link rel="stylesheet" href="licenses.css?v=1.7.42" />
+  <link rel="preload" as="script" href="licenses.js?v=1.7.43" />
+  <link rel="preload" as="style" href="licenses.css?v=1.7.43" />
+  <link rel="stylesheet" href="styles.css?v=1.7.43" />
+  <link rel="stylesheet" href="licenses.css?v=1.7.43" />
   <script src="https://res.cdn.office.net/teams-js/2.24.0/js/MicrosoftTeams.min.js"
           integrity="sha384-79NK4sbfVpgLoDFqyfj18/S1Uj8jhLBeRGvKO1Cqw5634RznExQ90myY/qV/0gsN"
           crossorigin="anonymous"></script>
@@ -681,7 +681,7 @@
     </section>
 
     <div class="lic-dialog-actions">
-      <span class="lic-version" id="licVersionLabel" title="Licenses tab build version">v1.7.42</span>
+      <span class="lic-version" id="licVersionLabel" title="Licenses tab build version">v1.7.43</span>
       <button type="button" class="btn primary" id="licGuideCloseBtn">Close</button>
     </div>
   </dialog>
@@ -747,11 +747,75 @@
         (sales-lead view: your licenses plus every other owner's).
       </p>
 
+      <!-- v1.7.43 Recovery (recently-deleted licenses, 30-day retention) -->
+      <section class="lic-field" style="margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--border, #ececec);">
+        <span class="lic-label">Recently deleted</span>
+        <p class="lic-hint" style="margin: 0 0 6px;">Soft-deleted licenses sit here for 30 days, then are permanently purged. Restore any row to bring it back.</p>
+        <button type="button" id="setOpenRecoveryBtn" class="btn ghost">Open recovery&hellip;</button>
+      </section>
+
+      <!-- v1.7.43 Privacy & data controls (GDPR DSR) -->
+      <section class="lic-field" style="margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--border, #ececec);">
+        <span class="lic-label">Your data</span>
+        <p class="lic-hint" style="margin: 0 0 6px;">
+          We store your settings, reminders, your saved views, and the Teams chat handle so the bot can ping you. License rows are tenant-shared and stay with Kation. <a href="#" id="privacyDetailsLink">More details</a>.
+        </p>
+        <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+          <button type="button" id="setExportMyDataBtn" class="btn ghost" title="Download a JSON file with everything we store about you">Export my data</button>
+          <button type="button" id="setDeleteMyDataBtn" class="btn ghost danger" title="Wipe your reminders, settings, templates, and unassign your owner from license rows">Delete my account data&hellip;</button>
+        </div>
+      </section>
+
       <div class="lic-dialog-actions">
         <button type="button" class="btn ghost" id="setCancelBtn">Cancel</button>
         <button type="button" class="btn primary" id="setSaveBtn">Save</button>
       </div>
     </form>
+  </dialog>
+
+  <!-- v1.7.43 Recovery dialog (recently-deleted licenses) -->
+  <dialog id="recoveryDialog" class="lic-dialog">
+    <h2>Recently deleted licenses</h2>
+    <p class="lic-hint">Each row is permanently purged 30 days after its deletion. Restore brings it back to the main table with all comments and history intact.</p>
+    <ol id="recoveryList" class="recovery-list"></ol>
+    <div class="lic-dialog-actions">
+      <button type="button" class="btn ghost" id="recoveryCloseBtn">Close</button>
+    </div>
+  </dialog>
+
+  <!-- v1.7.43 Privacy details dialog -->
+  <dialog id="privacyDialog" class="lic-dialog">
+    <h2>Privacy &amp; data handling</h2>
+    <div class="privacy-body">
+      <h3>What we store</h3>
+      <ul>
+        <li><strong>Your settings</strong> (lead times, quiet hours, EOD time, theme override).</li>
+        <li><strong>Your reminders</strong> (title, time, dates, tags, notes — only ever visible to you).</li>
+        <li><strong>Your saved license filter views.</strong></li>
+        <li><strong>A Teams chat handle (conversation reference)</strong> so the bot can send you proactive cards. No tokens or message content.</li>
+        <li><strong>License rows that you create or are assigned as Owner of</strong> — shared with the rest of the Kation tenant, not deleted with your account.</li>
+      </ul>
+      <h3>Where it's stored</h3>
+      <p>Azure Table Storage (Southeast Asia). Compute runs in East Asia. Authentication is Microsoft Entra (Teams SSO); we never see your password. All API responses set <code>Cache-Control: no-store</code> and <code>X-Content-Type-Options: nosniff</code>.</p>
+      <h3>How long we keep it</h3>
+      <ul>
+        <li>Active reminders &amp; license rows: indefinitely, until you delete them.</li>
+        <li>Soft-deleted license rows: 30 days, then permanently purged.</li>
+        <li>Done reminders &gt; 24h: hidden from the UI; storage retains them until you delete.</li>
+        <li>License event log: last 50 events per row.</li>
+        <li>License comments: last 30 per row.</li>
+      </ul>
+      <h3>Your controls</h3>
+      <ul>
+        <li><strong>Export my data</strong> — downloads a JSON of everything we store about you.</li>
+        <li><strong>Delete my account data</strong> — wipes your reminders, settings, templates, and conversation ref; unassigns you from any license rows you own.</li>
+      </ul>
+      <h3>Third parties</h3>
+      <p>Microsoft Graph (to send Teams cards + the monthly email digest). No analytics SDKs, no ad networks, no third-party tracking.</p>
+    </div>
+    <div class="lic-dialog-actions">
+      <button type="button" class="btn primary" id="privacyCloseBtn">Close</button>
+    </div>
   </dialog>
 
   <!-- v1.7.39 Command palette: Ctrl+K / Cmd+K -->
@@ -796,6 +860,6 @@
 
   <div id="toast" class="toast" hidden></div>
 
-  <script src="licenses.js?v=1.7.42" defer></script>
+  <script src="licenses.js?v=1.7.43" defer></script>
 </body>
 </html>

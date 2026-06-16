@@ -276,8 +276,10 @@ app.http('licensesItem', {
     if (!id) return json(400, { error: 'id is required' });
 
     if (request.method === 'DELETE') {
-      const ok = await store.deleteLicense(id);
-      if (ok) return { status: 204, headers: corsHeaders() };
+      // v1.7.43 — soft-delete. Returns 204 either way; client treats as success.
+      // Row stays in storage for 30 days for recovery.
+      const lic = await store.deleteLicense(id, { oid: user.oid, name: user.name });
+      if (lic) return { status: 204, headers: corsHeaders() };
       return json(404, { error: 'not found' });
     }
 
@@ -394,6 +396,40 @@ app.http('licensesRenew', {
     appendEvent(merged, 'renewed', user, `expiry advanced to ${newExpiry}`);
     await store.upsertLicense(merged);
     return json(200, { license: merged });
+  },
+});
+
+// v1.7.43 — GET /api/licenses/deleted — soft-deleted rows still inside the
+// 30-day retention window. Used by the recovery view in Settings.
+app.http('licensesDeleted', {
+  methods: ['GET', 'OPTIONS'],
+  authLevel: 'anonymous',
+  route: 'licenses/deleted',
+  handler: async (request, context) => {
+    if (request.method === 'OPTIONS') return { status: 204, headers: corsHeaders() };
+    let user;
+    try { user = await authed(request); } catch (err) { return json(err.status || 401, { error: err.message }); }
+    await registerCaller(user);
+    const items = await store.listDeletedLicenses();
+    return json(200, { licenses: items });
+  },
+});
+
+// v1.7.43 — POST /api/licenses/{id}/restore — undo a soft-delete.
+app.http('licensesRestore', {
+  methods: ['POST', 'OPTIONS'],
+  authLevel: 'anonymous',
+  route: 'licenses/{id}/restore',
+  handler: async (request, context) => {
+    if (request.method === 'OPTIONS') return { status: 204, headers: corsHeaders() };
+    let user;
+    try { user = await authed(request); } catch (err) { return json(err.status || 401, { error: err.message }); }
+    await registerCaller(user);
+    const id = request.params.id;
+    if (!id) return json(400, { error: 'id is required' });
+    const lic = await store.restoreLicense(id);
+    if (!lic) return json(404, { error: 'not found or not soft-deleted' });
+    return json(200, { license: lic });
   },
 });
 

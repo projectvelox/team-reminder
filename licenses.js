@@ -3142,6 +3142,13 @@
     $("setCancelBtn").addEventListener("click", () => $("licSettingsDialog").close());
     $("setSendTestDigestBtn").addEventListener("click", () => sendTestDigest(false));
     $("setSendTestDigestAllBtn").addEventListener("click", () => sendTestDigest(true));
+    // v1.7.43 Recovery + Privacy
+    $("setOpenRecoveryBtn").addEventListener("click", openRecoveryDialog);
+    $("recoveryCloseBtn").addEventListener("click", () => $("recoveryDialog").close());
+    $("setExportMyDataBtn").addEventListener("click", exportMyData);
+    $("setDeleteMyDataBtn").addEventListener("click", deleteMyData);
+    $("privacyDetailsLink").addEventListener("click", (e) => { e.preventDefault(); $("privacyDialog").showModal(); });
+    $("privacyCloseBtn").addEventListener("click", () => $("privacyDialog").close());
 
     // Quick guide
     $("licGuideBtn").addEventListener("click", () => $("licGuideDialog").showModal());
@@ -3792,6 +3799,117 @@
     $("setSkipMonthlyDigest").checked = !!userSettings.licenseSkipMonthlyDigest;
     $("setRollupDigest").checked = !!userSettings.licenseRollupDigest;
     $("licSettingsDialog").showModal();
+  }
+
+  // ---------- v1.7.43 Recovery (recently-deleted licenses) ----------
+  async function openRecoveryDialog() {
+    const list = $("recoveryList");
+    list.innerHTML = '<li class="recovery-loading">Loading…</li>';
+    $("recoveryDialog").showModal();
+    try {
+      const { licenses: items } = await api("GET", "/licenses/deleted");
+      list.innerHTML = "";
+      if (!items.length) {
+        const li = document.createElement("li");
+        li.className = "recovery-empty";
+        li.textContent = "Nothing in the recycle bin. Anything you delete shows up here for 30 days.";
+        list.appendChild(li);
+        return;
+      }
+      items.sort((a, b) => (b.deletedAt || "").localeCompare(a.deletedAt || ""));
+      const now = Date.now();
+      for (const lic of items) {
+        const li = document.createElement("li");
+        li.className = "recovery-row";
+        const head = document.createElement("div");
+        head.className = "recovery-head";
+        const name = document.createElement("strong");
+        name.textContent = `${lic.customer} · ${lic.licenseType}`;
+        head.appendChild(name);
+        const meta = document.createElement("div");
+        meta.className = "recovery-meta";
+        const deletedMs = Date.parse(lic.deletedAt);
+        const daysLeft = Math.max(0, 30 - Math.floor((now - deletedMs) / 86400000));
+        meta.textContent = `Deleted ${fmtRelative(deletedMs)}${lic.deletedByName ? ` by ${lic.deletedByName}` : ""}  ·  ${daysLeft} day${daysLeft === 1 ? "" : "s"} until permanent purge`;
+        const restoreBtn = document.createElement("button");
+        restoreBtn.type = "button";
+        restoreBtn.className = "btn primary small";
+        restoreBtn.textContent = "Restore";
+        restoreBtn.addEventListener("click", async () => {
+          restoreBtn.disabled = true;
+          restoreBtn.textContent = "Restoring…";
+          try {
+            const { license } = await api("POST", `/licenses/${lic.id}/restore`);
+            licenses = [...licenses, license];
+            render();
+            li.remove();
+            toast(`Restored: ${license.customer}, ${license.licenseType}`);
+            if (!list.querySelector(".recovery-row")) openRecoveryDialog();
+          } catch (err) {
+            restoreBtn.disabled = false;
+            restoreBtn.textContent = "Restore";
+            showError("Restore failed", err);
+          }
+        });
+        li.appendChild(head);
+        li.appendChild(meta);
+        li.appendChild(restoreBtn);
+        list.appendChild(li);
+      }
+    } catch (err) {
+      list.innerHTML = "";
+      const li = document.createElement("li");
+      li.className = "recovery-empty";
+      li.textContent = `Could not load: ${err.message || err}`;
+      list.appendChild(li);
+    }
+  }
+
+  // ---------- v1.7.43 GDPR data subject rights ----------
+  async function exportMyData() {
+    const btn = $("setExportMyDataBtn");
+    btn.disabled = true;
+    const original = btn.textContent;
+    btn.textContent = "Preparing…";
+    try {
+      const res = await fetch(`${API_BASE}/me/export`, {
+        headers: { Authorization: `Bearer ${authToken}` },
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `day-reminders-export-${todayPh()}.json`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      setTimeout(() => URL.revokeObjectURL(url), 100);
+      toast("Your data export was downloaded.");
+    } catch (err) { showError("Export failed", err); }
+    finally { btn.disabled = false; btn.textContent = original; }
+  }
+  async function deleteMyData() {
+    const confirmed = confirm(
+      "This will permanently delete your reminders, templates, settings, and Teams chat handle, and unassign you from any license rows you own. License rows themselves stay with Kation. This cannot be undone — proceed?"
+    );
+    if (!confirmed) return;
+    const second = prompt('Type "DELETE" to confirm:');
+    if (second !== "DELETE") { toast("Cancelled — nothing was deleted."); return; }
+    const btn = $("setDeleteMyDataBtn");
+    btn.disabled = true;
+    const original = btn.textContent;
+    btn.textContent = "Deleting…";
+    try {
+      const res = await api("DELETE", "/me/data");
+      toast(`Done — ${res.reminderCount || 0} reminder${res.reminderCount === 1 ? "" : "s"} deleted, ${res.licensesUnassigned || 0} license${res.licensesUnassigned === 1 ? "" : "s"} unassigned.`);
+      // Hard reload after a tick so the tab refetches everything cleanly.
+      setTimeout(() => location.reload(), 1500);
+    } catch (err) {
+      btn.disabled = false;
+      btn.textContent = original;
+      showError("Delete failed", err);
+    }
   }
   async function sendTestDigest(forceRollup) {
     const btn = forceRollup ? $("setSendTestDigestAllBtn") : $("setSendTestDigestBtn");

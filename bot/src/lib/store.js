@@ -398,25 +398,45 @@ function entityToLicense(e) {
     lastFollowUpAt: e.lastFollowUpAt || null,
     lastEscalatedDays: typeof e.lastEscalatedDays === 'number' ? e.lastEscalatedDays : null,
     leadSnoozedUntil: e.leadSnoozedUntil || null,
+    // v1.7.43 — soft-delete. Rows with deletedAt set are hidden from default
+    // queries; a scheduled task hard-deletes after 30 days. Restoring within
+    // the window clears the field.
+    deletedAt: e.deletedAt || null,
+    deletedByOid: e.deletedByOid || null,
+    deletedByName: e.deletedByName || null,
     events,
   };
 }
 
-async function listLicenses() {
+// v1.7.43 — default queries skip soft-deleted rows. Pass `includeDeleted` to
+// see them (the recovery view + the 30-day purge timer use this).
+async function listLicenses(opts) {
   await ensureTable();
   const iter = getClient().listEntities({
     queryOptions: { filter: `PartitionKey eq '${LICENSE_PARTITION}'` },
   });
   const out = [];
-  for await (const e of iter) out.push(entityToLicense(e));
+  for await (const e of iter) {
+    const lic = entityToLicense(e);
+    if (lic.deletedAt && !(opts && opts.includeDeleted)) continue;
+    out.push(lic);
+  }
   return out;
 }
 
-async function getLicense(id) {
+// Same as listLicenses({ includeDeleted: true }), filtered to soft-deleted only.
+async function listDeletedLicenses() {
+  const all = await listLicenses({ includeDeleted: true });
+  return all.filter((l) => l.deletedAt);
+}
+
+async function getLicense(id, opts) {
   await ensureTable();
   try {
     const e = await getClient().getEntity(LICENSE_PARTITION, `l:${id}`);
-    return entityToLicense({ ...e, rowKey: `l:${id}` });
+    const lic = entityToLicense({ ...e, rowKey: `l:${id}` });
+    if (lic.deletedAt && !(opts && opts.includeDeleted)) return null;
+    return lic;
   } catch (err) {
     if (err.statusCode === 404) return null;
     throw err;
@@ -454,12 +474,31 @@ async function upsertLicense(license) {
     lastFollowUpAt: license.lastFollowUpAt || null,
     lastEscalatedDays: typeof license.lastEscalatedDays === 'number' ? license.lastEscalatedDays : null,
     leadSnoozedUntil: license.leadSnoozedUntil || null,
+    deletedAt: license.deletedAt || null,
+    deletedByOid: license.deletedByOid || null,
+    deletedByName: license.deletedByName || null,
     events: JSON.stringify(Array.isArray(license.events) ? license.events.slice(-50) : []),
     comments: JSON.stringify(Array.isArray(license.comments) ? license.comments.slice(-30) : []),
   }, 'Replace');
 }
 
-async function deleteLicense(id) {
+// v1.7.43 — soft-delete: stamp deletedAt + actor and upsert. Row stays in
+// storage; default queries skip it; the scheduled purge hard-deletes after
+// 30 days. Returns the soft-deleted license (or null if not found).
+async function deleteLicense(id, actor) {
+  const lic = await getLicense(id);
+  if (!lic) return null;
+  lic.deletedAt = new Date().toISOString();
+  lic.deletedByOid = (actor && actor.oid) || null;
+  lic.deletedByName = (actor && actor.name) || null;
+  await upsertLicense(lic);
+  return lic;
+}
+
+// Permanent removal — used by the purge timer for rows soft-deleted > 30 days
+// ago, and by admin/restore endpoints if we ever expose them. NOT called from
+// the HTTP DELETE handler.
+async function hardDeleteLicense(id) {
   await ensureTable();
   try {
     await getClient().deleteEntity(LICENSE_PARTITION, `l:${id}`);
@@ -468,6 +507,19 @@ async function deleteLicense(id) {
     if (err.statusCode === 404) return false;
     throw err;
   }
+}
+
+// Restore a soft-deleted row by clearing deletedAt. Returns the restored
+// license, or null if the id wasn't soft-deleted (so we don't accidentally
+// "restore" a live row).
+async function restoreLicense(id) {
+  const lic = await getLicense(id, { includeDeleted: true });
+  if (!lic || !lic.deletedAt) return null;
+  lic.deletedAt = null;
+  lic.deletedByOid = null;
+  lic.deletedByName = null;
+  await upsertLicense(lic);
+  return lic;
 }
 
 // ---------- members (tenant-shared, v1.7) ----------
@@ -682,9 +734,12 @@ module.exports = {
   setTemplates,
   todayKey,
   listLicenses,
+  listDeletedLicenses,
   getLicense,
   upsertLicense,
   deleteLicense,
+  hardDeleteLicense,
+  restoreLicense,
   registerMember,
   listMembers,
   listCustomers,
