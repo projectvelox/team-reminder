@@ -75,6 +75,9 @@
   let importRows = []; // staged rows during CSV import
   let licOwnerPicker = null;
   let bulkReassignPicker = null;
+  // Precomputed once per render so every row in the same cluster shows the
+  // same Bundle: N badge. Recomputed by computeBundles().
+  let licenseBundles = new Map(); // licenseId -> { id, members[], size }
 
   // localStorage keys (tab-only UI state)
   const LS_VIEW = "lic.view";
@@ -442,6 +445,7 @@
 
   // ---------- render ----------
   function render() {
+    computeBundles();
     recomputeSummary();
     recomputeStats();
     refreshDataLists();
@@ -1025,19 +1029,53 @@
     return String(text || "").replace(/\{(\w+)\}/g, (_, key) => vars[key] != null ? vars[key] : `{${key}}`);
   }
 
-  // Detect a multi-line "renewal package": same customer + ≥2 licenses with expiry
-  // dates within 14 days of each other (and matching the row's expiry +/- 14).
-  function bundleFor(lic) {
-    if (!lic || !lic.customer || !lic.expiryDate) return [lic];
-    const cust = lic.customer.trim().toLowerCase();
-    const anchorMs = parseISO(lic.expiryDate)?.getTime();
-    if (!anchorMs) return [lic];
+  // Compute disjoint renewal-package clusters once for the entire table.
+  // Algorithm: for each customer, sort licenses by expiryDate, then walk in
+  // order grouping consecutive licenses whose gap is ≤ 14 days. Each cluster
+  // of size ≥ 2 becomes a bundle; every member sees the same size in their
+  // Bundle: N badge. Abandoned and renewed rows are excluded.
+  function computeBundles() {
+    licenseBundles = new Map();
+    const byCustomer = new Map();
+    for (const lic of licenses) {
+      if (lic.state === "abandoned" || lic.status === "renewed") continue;
+      if (!lic.customer || !lic.expiryDate) continue;
+      const key = lic.customer.trim().toLowerCase();
+      if (!byCustomer.has(key)) byCustomer.set(key, []);
+      byCustomer.get(key).push(lic);
+    }
     const WINDOW = 14 * 86400000;
-    return licenses.filter((l) =>
-      l.state !== "abandoned" && l.status !== "renewed" &&
-      l.customer && l.customer.trim().toLowerCase() === cust &&
-      l.expiryDate && Math.abs((parseISO(l.expiryDate)?.getTime() || 0) - anchorMs) <= WINDOW
-    ).sort((a, b) => (a.expiryDate || "").localeCompare(b.expiryDate || ""));
+    let bundleIdCounter = 0;
+    function emitCluster(cluster) {
+      if (cluster.length < 2) return;
+      bundleIdCounter++;
+      const bundle = { id: bundleIdCounter, members: cluster.slice(), size: cluster.length };
+      for (const lic of cluster) licenseBundles.set(lic.id, bundle);
+    }
+    for (const list of byCustomer.values()) {
+      list.sort((a, b) => (a.expiryDate || "").localeCompare(b.expiryDate || ""));
+      let cluster = [];
+      let lastMs = null;
+      for (const lic of list) {
+        const ms = parseISO(lic.expiryDate)?.getTime() ?? null;
+        if (ms === null) continue;
+        if (lastMs !== null && ms - lastMs > WINDOW) {
+          emitCluster(cluster);
+          cluster = [];
+        }
+        cluster.push(lic);
+        lastMs = ms;
+      }
+      if (cluster.length) emitCluster(cluster);
+    }
+  }
+
+  // Returns the precomputed cluster members for this license, or [lic] if it's
+  // not part of any bundle. Same result for every row in the same cluster.
+  function bundleFor(lic) {
+    if (!lic) return [lic];
+    const bundle = licenseBundles.get(lic.id);
+    return bundle ? bundle.members : [lic];
   }
 
   function emailCustomer(lic) {
