@@ -1968,3 +1968,85 @@ body:is([data-theme="dark"], [data-theme="contrast"]) .lic-skeleton-cell {
   background: linear-gradient(90deg, #2a2a30 0%, #3a3a42 50%, #2a2a30 100%);
   background-size: 200% 100%;
 }
+
+/* ---------- v1.7.41 renewal-rate widget ---------- */
+.lic-renewal-rate {
+  background: var(--card-bg, #fff);
+  border: 1px solid var(--border, #e4e4e4);
+  border-radius: 10px;
+  padding: 12px;
+  margin-top: 10px;
+}
+.renewal-rate-head {
+  display: flex; justify-content: space-between; align-items: baseline;
+  margin-bottom: 8px;
+}
+.renewal-rate-label {
+  font-size: 11px; font-weight: 600; text-transform: uppercase;
+  letter-spacing: 0.04em; color: var(--muted, #6a6a6a);
+}
+.renewal-rate-value { font-size: 24px; font-weight: 700; }
+.lic-renewal-rate.rate-good .renewal-rate-value { color: #1b5e20; }
+.lic-renewal-rate.rate-ok   .renewal-rate-value { color: #c45104; }
+.lic-renewal-rate.rate-bad  .renewal-rate-value { color: #b71c1c; }
+.renewal-rate-bar {
+  display: flex; height: 6px; border-radius: 3px; overflow: hidden;
+  background: var(--border, #e4e4e4);
+  margin-bottom: 8px;
+}
+.renewal-rate-bar-renewed   { background: #43a047; }
+.renewal-rate-bar-lapsed    { background: #b71c1c; }
+.renewal-rate-bar-abandoned { background: #757575; }
+.renewal-rate-legend {
+  display: flex; gap: 14px; flex-wrap: wrap;
+  font-size: 11px; color: var(--muted, #6a6a6a);
+}
+.renewal-rate-key strong { color: var(--text, #1c1c1e); margin-right: 4px; }
+.renewal-rate-key.key-renewed   strong { color: #1b5e20; }
+.renewal-rate-key.key-lapsed    strong { color: #b71c1c; }
+.renewal-rate-key.key-abandoned strong { color: #555; }
+body:is([data-theme="dark"], [data-theme="contrast"]) .lic-renewal-rate {
+  background: #2b2b30; border-color: #3d3d42;
+}
+body:is([data-theme="dark"], [data-theme="contrast"]) .lic-renewal-rate.rate-good .renewal-rate-value { color: #a8e0a8; }
+body:is([data-theme="dark"], [data-theme="contrast"]) .lic-renewal-rate.rate-ok   .renewal-rate-value { color: #ffd9a8; }
+body:is([data-theme="dark"], [data-theme="contrast"]) .lic-renewal-rate.rate-bad  .renewal-rate-value { color: #ffb4b4; }
+body:is([data-theme="dark"], [data-theme="contrast"]) .renewal-rate-key.key-renewed   strong { color: #a8e0a8; }
+body:is([data-theme="dark"], [data-theme="contrast"]) .renewal-rate-key.key-lapsed    strong { color: #ffb4b4; }
+body:is([data-theme="dark"], [data-theme="contrast"]) .renewal-rate-key.key-abandoned strong { color: #aaa; }
+
+/* ---------- v1.7.41 customer merge dialog ---------- */
+.merge-candidate-list {
+  list-style: none; padding: 0; margin: 8px 0 16px;
+  max-height: 280px; overflow-y: auto;
+  border: 1px solid var(--border, #e4e4e4); border-radius: 6px;
+  background: var(--card-bg, #fff);
+}
+.merge-candidate-list .merge-candidate-row {
+  display: flex; align-items: center; gap: 10px;
+  padding: 8px 12px; cursor: pointer;
+  border-bottom: 1px solid var(--border, #f0f0f0);
+  font-size: 13px;
+}
+.merge-candidate-list li:last-child .merge-candidate-row { border-bottom: 0; }
+.merge-candidate-list .merge-candidate-row:hover {
+  background: var(--accent-bg, rgba(56, 174, 235, 0.10));
+}
+.merge-empty {
+  padding: 16px; color: var(--muted, #6a6a6a); font-style: italic;
+  text-align: center;
+}
+body:is([data-theme="dark"], [data-theme="contrast"]) .merge-candidate-list {
+  background: #2b2b30; border-color: #3d3d42;
+}
+
+/* ---------- v1.7.41 bulk-bar additions ---------- */
+.bulk-bar .btn.danger {
+  color: #b71c1c; border-color: #b71c1c;
+}
+.bulk-bar .btn.danger:hover {
+  background: #b71c1c; color: #fff;
+}
+body:is([data-theme="dark"], [data-theme="contrast"]) .bulk-bar .btn.danger {
+  color: #ffb4b4; border-color: #ffb4b4;
+}

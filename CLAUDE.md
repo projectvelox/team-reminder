@@ -73,6 +73,18 @@ Secrets, GUIDs, and connection strings live in the Claude memory file `project_d
 
 ## What ships today (v1.7.x)
 
+### v1.7.41 — concurrency, merge, bulk, dashboard, CSP
+
+Five-feature bundle building on the v1.7.40 audit. Backend + frontend + headers.
+
+- **Concurrent-edit conflict detection** — PATCH `/api/licenses/{id}` and POST `/api/licenses/{id}/renew` now honor an `If-Match` header carrying the row's `lastEditedAt`. Mismatch → 409 with the current row. The tab sends If-Match on every Save / Renew / quick-renew and surfaces conflicts as a toast *"Save blocked: Dona changed this row first."* with a Reload action. Cures silent overwrites in the tenant-shared dataset.
+- **Customer merge** — new `POST /api/customers/merge` consolidates source customer rows into a target name: rewrites every license's `customer` string, absorbs source primary/secondary emails into the target's `secondaryEmails`, appends a "Merged from: X, Y" note, deletes the source registry rows, stamps a `customerMerged` event on each touched license. UI: **Merge in duplicates…** button on the customer drawer opens a candidate list (anything with ≥3-char token overlap) with per-row checkboxes.
+- **Bulk operations beyond reassign** — bulk-mode bar gains **Renew +1y**, **Export CSV**, **Delete**. Renew loops through `/renew` with per-row If-Match guards so a stale row reports as "skipped" without aborting the batch. Export uses the shared CSV builder. Delete is optimistic with a single combined Undo toast (6s window).
+- **Renewal-rate dashboard** — sidebar widget summarizing the last 90 days: `Renewal rate · 80% · 12 renewed · 2 lapsed · 1 won't renew`. Stacked bar by category; headline color-coded (green ≥80, amber ≥60, red below). Definitions: renewed = `lastRenewedAt` in window; lapsed = expiry fell in window AND not renewed/abandoned; abandoned = `state=abandoned` AND an `abandoned` event in window. Hidden when no rows fell in the window.
+- **CSP + SRI** — both `licenses.html` and `index.html` get a `<meta http-equiv="Content-Security-Policy">` locking script-src to `'self' + res.cdn.office.net`, connect-src to `'self' + func-day-reminders-17023.azurewebsites.net`, frame-ancestors to the Teams host families. The Teams SDK `<script>` carries an `integrity="sha384-…"` hash + `crossorigin="anonymous"` so a compromised CDN can't inject. Future SDK version bumps require re-hashing.
+
+Cache-bust `v=1.7.41` on Licenses, `v=1.5.3` unchanged on Reminders (only CSP+SRI added to its HTML; no JS/CSS code changes there). **Backend redeploy required** — If-Match handlers + merge endpoint.
+
 ### v1.7.40 — security + perf audit + dialog close X
 
 Defense-in-depth + performance pass triggered by the user's "heavy security and optimization audit" ask. Plus a usability ask: every modal now has a corner **× close button** so users don't have to scroll to find Cancel or remember Esc.

@@ -8,17 +8,26 @@
   <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
   <meta http-equiv="Pragma" content="no-cache" />
   <meta http-equiv="Expires" content="0" />
+  <!-- v1.7.41 — Content Security Policy. Locks script sources to (a) this
+       origin (the tab itself), and (b) the Microsoft Teams CDN. Combined with
+       the SRI hash on the SDK <script>, this defeats a malicious CDN swap.
+       'unsafe-inline' is required for style attributes the tab sets via JS;
+       no inline <script> blocks exist. Connect-src covers the Function App
+       and Graph photo proxy. img-src allows owner avatars from our API. -->
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' https://res.cdn.office.net; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://func-day-reminders-17023.azurewebsites.net; connect-src 'self' https://func-day-reminders-17023.azurewebsites.net; frame-ancestors https://teams.microsoft.com https://*.teams.microsoft.com https://*.cloud.microsoft https://*.skype.com https://*.microsoft.com; form-action 'self'; base-uri 'self';" />
   <title>Day Reminders &mdash; Licenses</title>
   <!-- Warm up the TCP + TLS handshake to the API and Teams CDN in parallel
        with HTML parse, shaving ~150-300ms off the first /api/licenses call. -->
   <link rel="preconnect" href="https://func-day-reminders-17023.azurewebsites.net" crossorigin />
   <link rel="dns-prefetch" href="https://func-day-reminders-17023.azurewebsites.net" />
   <link rel="preconnect" href="https://res.cdn.office.net" crossorigin />
-  <link rel="preload" as="script" href="licenses.js?v=1.7.40" />
-  <link rel="preload" as="style" href="licenses.css?v=1.7.40" />
-  <link rel="stylesheet" href="styles.css?v=1.7.40" />
-  <link rel="stylesheet" href="licenses.css?v=1.7.40" />
-  <script src="https://res.cdn.office.net/teams-js/2.24.0/js/MicrosoftTeams.min.js"></script>
+  <link rel="preload" as="script" href="licenses.js?v=1.7.41" />
+  <link rel="preload" as="style" href="licenses.css?v=1.7.41" />
+  <link rel="stylesheet" href="styles.css?v=1.7.41" />
+  <link rel="stylesheet" href="licenses.css?v=1.7.41" />
+  <script src="https://res.cdn.office.net/teams-js/2.24.0/js/MicrosoftTeams.min.js"
+          integrity="sha384-79NK4sbfVpgLoDFqyfj18/S1Uj8jhLBeRGvKO1Cqw5634RznExQ90myY/qV/0gsN"
+          crossorigin="anonymous"></script>
 </head>
 <body data-theme="default" data-page="licenses">
 
@@ -203,6 +212,23 @@
         <span class="lic-stat"><strong id="statRenewed30">0</strong> renewed last 30 days</span>
       </section>
 
+      <section id="renewalRateStrip" class="lic-renewal-rate" aria-label="Renewal rate (last 90 days)" hidden>
+        <div class="renewal-rate-head">
+          <span class="renewal-rate-label">Renewal rate · last 90 days</span>
+          <strong id="renewalRateValue" class="renewal-rate-value">—</strong>
+        </div>
+        <div class="renewal-rate-bar" aria-hidden="true">
+          <span id="renewalRateBarRenewed" class="renewal-rate-bar-renewed"></span>
+          <span id="renewalRateBarLapsed" class="renewal-rate-bar-lapsed"></span>
+          <span id="renewalRateBarAbandoned" class="renewal-rate-bar-abandoned"></span>
+        </div>
+        <div class="renewal-rate-legend">
+          <span class="renewal-rate-key key-renewed"><strong id="rrCntRenewed">0</strong> renewed</span>
+          <span class="renewal-rate-key key-lapsed"><strong id="rrCntLapsed">0</strong> lapsed</span>
+          <span class="renewal-rate-key key-abandoned"><strong id="rrCntAbandoned">0</strong> won't renew</span>
+        </div>
+      </section>
+
       <section id="statusStrip" class="lic-breakdown" aria-label="By status" hidden>
         <span class="lic-breakdown-label">Status</span>
         <div id="statusChips" class="lic-breakdown-chips"></div>
@@ -364,7 +390,19 @@
     <ol id="customerDialogList" class="customer-license-list"></ol>
     <div class="lic-dialog-actions">
       <button type="button" class="btn primary" id="customerEditBtn">Edit customer details&hellip;</button>
+      <button type="button" class="btn ghost" id="customerMergeBtn" title="Consolidate duplicate customer rows into this one">Merge in duplicates&hellip;</button>
       <button type="button" class="btn ghost" id="customerDialogClose">Close</button>
+    </div>
+  </dialog>
+
+  <!-- v1.7.41 Customer merge dialog -->
+  <dialog id="customerMergeDialog" class="lic-dialog small">
+    <h2>Merge duplicate customers</h2>
+    <p class="lic-hint">Pick rows that are the same customer with different spelling. They'll all become <strong id="mergeTargetName"></strong>. Licenses, contact emails, and notes are consolidated. The originals are deleted.</p>
+    <ul id="mergeCandidateList" class="merge-candidate-list" role="listbox"></ul>
+    <div class="lic-dialog-actions">
+      <button type="button" class="btn primary" id="mergeConfirmBtn">Merge selected</button>
+      <button type="button" class="btn ghost" id="mergeCancelBtn">Cancel</button>
     </div>
   </dialog>
 
@@ -450,6 +488,9 @@
   <div id="bulkBar" class="bulk-bar" hidden role="region" aria-label="Bulk actions">
     <span class="bulk-count"><strong id="bulkBarCount">0</strong> selected</span>
     <button type="button" class="btn primary" id="bulkReassignBtn">Reassign owner&hellip;</button>
+    <button type="button" class="btn ghost" id="bulkRenewBtn" title="Renew every selected license by +1 year">Renew +1y</button>
+    <button type="button" class="btn ghost" id="bulkExportBtn" title="Export the selected rows to CSV">Export CSV</button>
+    <button type="button" class="btn ghost danger" id="bulkDeleteBtn" title="Delete every selected license (with Undo)">Delete</button>
     <button type="button" class="btn ghost" id="bulkClearBtn">Clear selection</button>
   </div>
 
@@ -606,7 +647,7 @@
     </section>
 
     <div class="lic-dialog-actions">
-      <span class="lic-version" id="licVersionLabel" title="Licenses tab build version">v1.7.40</span>
+      <span class="lic-version" id="licVersionLabel" title="Licenses tab build version">v1.7.41</span>
       <button type="button" class="btn primary" id="licGuideCloseBtn">Close</button>
     </div>
   </dialog>
@@ -721,6 +762,6 @@
 
   <div id="toast" class="toast" hidden></div>
 
-  <script src="licenses.js?v=1.7.40" defer></script>
+  <script src="licenses.js?v=1.7.41" defer></script>
 </body>
 </html>

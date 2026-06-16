@@ -254,22 +254,45 @@
   }
 
   // ---------- API ----------
-  async function api(method, path, body) {
+  // v1.7.41 — `opts.ifMatch` adds the optimistic-concurrency If-Match header.
+  // On 409 we throw an error tagged with .status=409 and .license=<currentRow>
+  // so callers can show a "Rey just edited this — reload?" toast instead of
+  // silently clobbering somebody else's edit.
+  async function api(method, path, body, opts) {
     const headers = { "Authorization": `Bearer ${authToken}` };
     const init = { method, headers };
     if (body !== undefined) {
       headers["Content-Type"] = "application/json";
       init.body = JSON.stringify(body);
     }
+    if (opts && opts.ifMatch) headers["If-Match"] = opts.ifMatch;
     const res = await fetch(API_BASE + path, init);
     if (res.status === 204) return null;
     let data = null;
     try { data = await res.json(); } catch (_) {}
     if (!res.ok) {
       const msg = data && data.error ? data.error : `HTTP ${res.status}`;
-      throw new Error(msg);
+      const err = new Error(msg);
+      err.status = res.status;
+      if (res.status === 409 && data && data.license) err.license = data.license;
+      throw err;
     }
     return data;
+  }
+  // Shared 409 handler: refresh from server + show a toast offering reload.
+  // Returns true if the error was a conflict (caller should stop).
+  function handleConflict(err, label) {
+    if (!err || err.status !== 409) return false;
+    if (err.license) {
+      licenses = licenses.map((l) => l.id === err.license.id ? err.license : l);
+      render();
+    }
+    const editedBy = err.license && err.license.lastEditedByName ? err.license.lastEditedByName : "someone";
+    toast(`${label || "Edit"} blocked: ${editedBy} changed this row first.`, {
+      actionLabel: "Reload",
+      onAction: () => refreshAll(),
+    });
+    return true;
   }
 
   // ---------- filtering / sorting ----------
@@ -798,6 +821,53 @@
     $("statSeats").textContent = seats.toLocaleString();
     $("statCustomers").textContent = customers.size;
     $("statRenewed30").textContent = renewed30;
+    renderRenewalRate();
+  }
+
+  // v1.7.41 — last-90-days renewal-rate widget. Definitions:
+  //   renewed  = lastRenewedAt within window
+  //   abandoned = an "abandoned" event in window (state=abandoned today)
+  //   lapsed   = expiryDate fell in window AND row is NOT renewed/abandoned
+  // Rate = renewed / (renewed + abandoned + lapsed). Hidden when nothing
+  // fell in the window so the widget doesn't show "—" for empty tenants.
+  function renderRenewalRate() {
+    const strip = $("renewalRateStrip");
+    if (!strip) return;
+    const windowMs = 90 * 86400000;
+    const cutoffMs = Date.now() - windowMs;
+    const cutoffIso = new Date(cutoffMs).toISOString();
+    const cutoffDate = cutoffIso.slice(0, 10);
+    const today = todayPh();
+    let renewed = 0, abandoned = 0, lapsed = 0;
+    for (const l of licenses) {
+      // Renewed in window
+      if (l.lastRenewedAt && l.lastRenewedAt >= cutoffIso) { renewed++; continue; }
+      // Abandoned: state=abandoned today AND most recent "abandoned" event in window
+      if (l.state === "abandoned" && Array.isArray(l.events)) {
+        const ab = [...l.events].reverse().find((e) => e && e.type === "abandoned");
+        if (ab && ab.at && ab.at >= cutoffIso) { abandoned++; continue; }
+      }
+      // Lapsed: expiryDate in window AND row is not renewed/abandoned
+      if (l.expiryDate && l.expiryDate >= cutoffDate && l.expiryDate < today &&
+          l.state !== "abandoned" && l.status !== "renewed") {
+        lapsed++;
+      }
+    }
+    const total = renewed + abandoned + lapsed;
+    if (total === 0) { strip.hidden = true; return; }
+    strip.hidden = false;
+    const rate = Math.round((renewed / total) * 100);
+    $("renewalRateValue").textContent = `${rate}%`;
+    $("rrCntRenewed").textContent = renewed;
+    $("rrCntLapsed").textContent = lapsed;
+    $("rrCntAbandoned").textContent = abandoned;
+    const pct = (n) => `${total ? (n / total) * 100 : 0}%`;
+    $("renewalRateBarRenewed").style.width = pct(renewed);
+    $("renewalRateBarLapsed").style.width = pct(lapsed);
+    $("renewalRateBarAbandoned").style.width = pct(abandoned);
+    // Color the headline by rate so Rey gets a glanceable health signal.
+    strip.classList.remove("rate-good", "rate-ok", "rate-bad");
+    strip.classList.add(rate >= 80 ? "rate-good" : rate >= 60 ? "rate-ok" : "rate-bad");
   }
 
   function renderOwnerChips() {
@@ -1730,7 +1800,9 @@
     if (!payload.ownerOid) { toast("Owner is required"); return; }
     try {
       if (editingId) {
-        const { license } = await api("PATCH", `/licenses/${editingId}`, payload);
+        const current = licenses.find((l) => l.id === editingId);
+        const ifMatch = current && current.lastEditedAt ? current.lastEditedAt : null;
+        const { license } = await api("PATCH", `/licenses/${editingId}`, payload, { ifMatch });
         licenses = licenses.map((l) => l.id === license.id ? license : l);
         toast("Saved");
       } else {
@@ -1741,6 +1813,7 @@
       closeEditDialog();
       render();
     } catch (err) {
+      if (handleConflict(err, "Save")) return;
       showError("Save failed", err);
     }
   }
@@ -2263,6 +2336,163 @@
     }
   }
 
+  // v1.7.41 — bulk Renew +1y. Loops through the per-id renew endpoint
+  // (no bulk-renew route on the server) and shows aggregate progress.
+  // If-Match guards each call individually, so a stale row is reported
+  // without aborting the whole batch.
+  async function bulkRenewSelected() {
+    const ids = [...bulkSelected];
+    if (!ids.length) return;
+    if (!confirm(`Renew +1y on ${ids.length} licenses? (Each row's lastEditedAt is used as a guard against in-flight edits.)`)) return;
+    let ok = 0, conflicts = 0, failed = 0;
+    for (const id of ids) {
+      const lic = licenses.find((l) => l.id === id);
+      if (!lic) { failed++; continue; }
+      try {
+        const ifMatch = lic.lastEditedAt || null;
+        const { license } = await api("POST", `/licenses/${id}/renew`, { years: 1 }, { ifMatch });
+        licenses = licenses.map((l) => l.id === license.id ? license : l);
+        ok++;
+      } catch (err) {
+        if (err && err.status === 409) {
+          if (err.license) licenses = licenses.map((l) => l.id === err.license.id ? err.license : l);
+          conflicts++;
+        } else failed++;
+      }
+    }
+    bulkSelected.clear();
+    setBulkMode(false);
+    render();
+    const parts = [`${ok} renewed`];
+    if (conflicts) parts.push(`${conflicts} skipped (edited by someone else)`);
+    if (failed) parts.push(`${failed} failed`);
+    toast(parts.join(", "));
+  }
+
+  // v1.7.41 — bulk Export selected. Uses the same CSV builder as the
+  // toolbar's exportCsv() but only over the bulk-selected ids.
+  function bulkExportSelected() {
+    const ids = bulkSelected;
+    if (!ids.size) return;
+    const list = sortLicenses(licenses.filter((l) => ids.has(l.id)));
+    exportCsvList(list, `selected-licenses-${todayPh()}.csv`);
+    toast(`Exported ${list.length} selected license${list.length === 1 ? "" : "s"}`);
+  }
+
+  // v1.7.41 — bulk Delete selected with one combined Undo. Optimistic UI:
+  // remove from local state immediately, commit per-row after 6s. Click Undo
+  // before the timer to roll the batch back in one toast.
+  function bulkDeleteSelected() {
+    const ids = [...bulkSelected];
+    if (!ids.length) return;
+    if (!confirm(`Delete ${ids.length} license${ids.length === 1 ? "" : "s"}? You can Undo for 6 seconds.`)) return;
+    const removed = licenses.filter((l) => ids.includes(l.id));
+    licenses = licenses.filter((l) => !ids.includes(l.id));
+    bulkSelected.clear();
+    setBulkMode(false);
+    render();
+    let undone = false;
+    const timer = setTimeout(async () => {
+      if (undone) return;
+      let failed = 0;
+      for (const lic of removed) {
+        try { await api("DELETE", `/licenses/${lic.id}`); } catch { failed++; }
+      }
+      if (failed) toast(`Delete failed for ${failed} of ${removed.length}`);
+    }, 6000);
+    toast(`Deleted ${removed.length} license${removed.length === 1 ? "" : "s"}`, {
+      actionLabel: "Undo",
+      onAction: () => {
+        undone = true;
+        clearTimeout(timer);
+        licenses.push(...removed);
+        render();
+      },
+    });
+  }
+
+  // v1.7.41 — customer merge. Shows every other customer with at least 3 chars
+  // of name overlap with the current one, lets the user pick which are dupes,
+  // and POSTs the merge. Cures the "Beyond Innovations" vs "Beyond Innovations,
+  // Inc" inflation in counts.
+  let mergeTargetCustomer = null;
+  function openMergeDialog(targetName) {
+    if (!targetName) return;
+    mergeTargetCustomer = targetName;
+    $("mergeTargetName").textContent = targetName;
+    const list = $("mergeCandidateList");
+    list.innerHTML = "";
+    const targetNorm = targetName.trim().toLowerCase();
+    const targetTokens = new Set(targetNorm.split(/[\s,.&\-]+/).filter((t) => t.length >= 3));
+    // Build candidate set from BOTH customer rows + license customer strings,
+    // so even a customer that doesn't have a registry row yet can be merged in.
+    const candidates = new Map(); // norm -> { name, source }
+    for (const c of customers) {
+      const k = (c.name || "").trim().toLowerCase();
+      if (!k || k === targetNorm) continue;
+      const tokens = k.split(/[\s,.&\-]+/);
+      if (tokens.some((t) => t.length >= 3 && targetTokens.has(t))) {
+        candidates.set(k, { name: c.name, hasRegistry: true });
+      }
+    }
+    for (const lic of licenses) {
+      const name = (lic.customer || "").trim();
+      const k = name.toLowerCase();
+      if (!k || k === targetNorm || candidates.has(k)) continue;
+      const tokens = k.split(/[\s,.&\-]+/);
+      if (tokens.some((t) => t.length >= 3 && targetTokens.has(t))) {
+        candidates.set(k, { name, hasRegistry: false });
+      }
+    }
+    if (!candidates.size) {
+      const li = document.createElement("li");
+      li.className = "merge-empty";
+      li.textContent = "No obvious duplicates. Use the search box if you have a specific one in mind.";
+      list.appendChild(li);
+    } else {
+      for (const { name, hasRegistry } of candidates.values()) {
+        const li = document.createElement("li");
+        const lbl = document.createElement("label");
+        lbl.className = "merge-candidate-row";
+        const cb = document.createElement("input");
+        cb.type = "checkbox";
+        cb.value = name;
+        const txt = document.createElement("span");
+        const licCount = licenses.filter((l) => (l.customer || "").trim().toLowerCase() === name.toLowerCase()).length;
+        txt.textContent = `${name}  ·  ${licCount} license${licCount === 1 ? "" : "s"}${hasRegistry ? "" : "  ·  (no registry entry)"}`;
+        lbl.appendChild(cb);
+        lbl.appendChild(txt);
+        li.appendChild(lbl);
+        list.appendChild(li);
+      }
+    }
+    $("customerMergeDialog").showModal();
+  }
+  async function confirmMerge() {
+    if (!mergeTargetCustomer) return;
+    const sources = [...$("mergeCandidateList").querySelectorAll("input[type=checkbox]:checked")].map((cb) => cb.value);
+    if (!sources.length) { toast("Pick at least one duplicate to merge"); return; }
+    if (!confirm(`Merge ${sources.length} customer row${sources.length === 1 ? "" : "s"} into "${mergeTargetCustomer}"? Every license under those names will be updated. This can't be undone.`)) return;
+    const btn = $("mergeConfirmBtn");
+    btn.disabled = true;
+    btn.textContent = "Merging…";
+    try {
+      const res = await api("POST", "/customers/merge", {
+        sourceNames: sources,
+        targetName: mergeTargetCustomer,
+      });
+      // Hard refresh — merge touches lots of rows + the customer registry.
+      await refreshAll();
+      $("customerMergeDialog").close();
+      toast(`Merged ${res.customersDeleted} duplicate${res.customersDeleted === 1 ? "" : "s"}, updated ${res.licensesUpdated} license${res.licensesUpdated === 1 ? "" : "s"}`);
+    } catch (err) {
+      showError("Merge failed", err);
+    } finally {
+      btn.disabled = false;
+      btn.textContent = "Merge selected";
+    }
+  }
+
   // ---------- customer 360 drawer ----------
   function openCustomerDialog(customer) {
     if (!customer) return;
@@ -2319,6 +2549,8 @@
     }
     // Wire Edit Customer button to open the customer edit dialog.
     $("customerEditBtn").onclick = () => openCustomerEditDialog(customer);
+    // v1.7.41 — Merge button.
+    $("customerMergeBtn").onclick = () => openMergeDialog(customer);
 
     const ul = $("customerDialogList");
     ul.innerHTML = "";
@@ -2350,7 +2582,9 @@
     if (!renewTargetId) return;
     const body = customDate ? { newExpiryDate: customDate } : { years };
     try {
-      const { license } = await api("POST", `/licenses/${renewTargetId}/renew`, body);
+      const current = licenses.find((l) => l.id === renewTargetId);
+      const ifMatch = current && current.lastEditedAt ? current.lastEditedAt : null;
+      const { license } = await api("POST", `/licenses/${renewTargetId}/renew`, body, { ifMatch });
       licenses = licenses.map((l) => l.id === license.id ? license : l);
       $("renewDialog").close();
       // If the edit dialog is open for this license, refresh its expiry field.
@@ -2361,6 +2595,7 @@
       render();
       toast(`Renewed — new expiry ${fmtShortDate(license.expiryDate)}`);
     } catch (err) {
+      if (handleConflict(err, "Renew")) return;
       showError("Renewal failed", err);
     }
   }
@@ -2369,7 +2604,8 @@
   async function quickRenewOneYear(lic) {
     const before = { ...lic, comments: lic.comments ? [...lic.comments] : [] };
     try {
-      const { license } = await api("POST", `/licenses/${lic.id}/renew`, { years: 1 });
+      const ifMatch = lic.lastEditedAt || null;
+      const { license } = await api("POST", `/licenses/${lic.id}/renew`, { years: 1 }, { ifMatch });
       licenses = licenses.map((l) => l.id === license.id ? license : l);
       render();
       toast(`Renewed: ${license.customer}, ${license.licenseType}`, {
@@ -2387,7 +2623,10 @@
           } catch (err) { showError("Undo failed", err); }
         },
       });
-    } catch (err) { showError("Renewal failed", err); }
+    } catch (err) {
+      if (handleConflict(err, "Renew")) return;
+      showError("Renewal failed", err);
+    }
   }
 
   // ---------- day dialog (calendar overflow) ----------
@@ -2650,6 +2889,9 @@
 
     // Customer 360 dialog
     $("customerDialogClose").addEventListener("click", () => $("customerDialog").close());
+    // v1.7.41 Customer merge dialog
+    $("mergeConfirmBtn").addEventListener("click", confirmMerge);
+    $("mergeCancelBtn").addEventListener("click", () => $("customerMergeDialog").close());
 
     // Customer edit dialog
     $("custSaveBtn").addEventListener("click", saveCustomer);
@@ -2668,6 +2910,10 @@
     $("bulkClearBtn").addEventListener("click", () => { bulkSelected.clear(); updateBulkBar(); render(); });
     $("bulkReassignConfirm").addEventListener("click", confirmBulkReassign);
     $("bulkReassignCancel").addEventListener("click", () => $("bulkReassignDialog").close());
+    // v1.7.41 bulk Renew / Export / Delete
+    $("bulkRenewBtn").addEventListener("click", bulkRenewSelected);
+    $("bulkExportBtn").addEventListener("click", bulkExportSelected);
+    $("bulkDeleteBtn").addEventListener("click", bulkDeleteSelected);
 
     // Renew dialog
     document.querySelectorAll(".renew-presets [data-years]").forEach((b) => {
@@ -3597,9 +3843,10 @@
     return s;
   }
 
-  function exportCsv() {
-    const list = sortLicenses(visibleLicenses());
-    if (!list.length) { toast("Nothing to export with the current filters"); return; }
+  // v1.7.41 — shared CSV builder so the toolbar Export and the bulk-mode
+  // Export reuse the same column shape + escape rules.
+  function exportCsvList(list, filename) {
+    if (!list.length) { toast("Nothing to export"); return; }
     const headers = ["Customer", "License Type", "Number of Users", "Expiry Date", "Owner", "Product Line", "Lead Days", "Notes", "State", "Last Renewed"];
     const lines = [headers.map(csvEscape).join(",")];
     for (const l of list) {
@@ -3620,11 +3867,17 @@
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `day-reminders-licenses-${todayPh()}.csv`;
+    a.download = filename || `day-reminders-licenses-${todayPh()}.csv`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
     setTimeout(() => URL.revokeObjectURL(url), 100);
+  }
+
+  function exportCsv() {
+    const list = sortLicenses(visibleLicenses());
+    if (!list.length) { toast("Nothing to export with the current filters"); return; }
+    exportCsvList(list, `day-reminders-licenses-${todayPh()}.csv`);
     toast(`Exported ${list.length} license${list.length === 1 ? "" : "s"}`);
   }
 

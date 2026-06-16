@@ -284,6 +284,14 @@ app.http('licensesItem', {
     const existing = await store.getLicense(id);
     if (!existing) return json(404, { error: 'not found' });
     const body = await request.json().catch(() => ({}));
+    // v1.7.41 — concurrent-edit conflict detection. Client passes the
+    // lastEditedAt it saw via If-Match; if it no longer matches, somebody
+    // else edited the row in the meantime. Return 409 with the current row
+    // so the client can show a "reload" toast.
+    const ifMatch = request.headers.get('if-match');
+    if (ifMatch && existing.lastEditedAt && ifMatch !== existing.lastEditedAt) {
+      return json(409, { error: 'conflict', license: existing });
+    }
     const result = validatePayload(body, existing);
     if (result.error) return json(400, { error: result.error });
 
@@ -345,6 +353,12 @@ app.http('licensesRenew', {
 
     const existing = await store.getLicense(id);
     if (!existing) return json(404, { error: 'not found' });
+    // v1.7.41 — same If-Match guard as PATCH so a stale renew button click
+    // can't overwrite an in-flight edit by another user.
+    const ifMatch = request.headers.get('if-match');
+    if (ifMatch && existing.lastEditedAt && ifMatch !== existing.lastEditedAt) {
+      return json(409, { error: 'conflict', license: existing });
+    }
 
     const body = await request.json().catch(() => ({}));
     let newExpiry = null;
