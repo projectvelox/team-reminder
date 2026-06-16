@@ -313,6 +313,7 @@
     wrap.innerHTML = "";
     if (!map.size) { strip.hidden = true; return; }
     strip.hidden = false;
+    updateBreakdownLabel("ownerStrip", "Owner", ownerFilter);
     const entries = [...map.values()].sort((a, b) => b.count - a.count);
     for (const e of entries) {
       const btn = document.createElement("button");
@@ -346,6 +347,43 @@
     }
   }
 
+  // Render a small "(N) · Clear" affordance next to a breakdown label so a
+  // user can see how many filters are active and reset them with one click.
+  // Power BI-style multi-select: click chips to add/remove, click Clear to reset.
+  function updateBreakdownLabel(stripId, labelText, filterSet) {
+    const strip = document.getElementById(stripId);
+    if (!strip) return;
+    const labelEl = strip.querySelector(".lic-breakdown-label");
+    if (!labelEl) return;
+    labelEl.textContent = labelText;
+    let trailing = strip.querySelector(".lic-breakdown-meta");
+    if (filterSet.size > 0) {
+      if (!trailing) {
+        trailing = document.createElement("span");
+        trailing.className = "lic-breakdown-meta";
+        labelEl.after(trailing);
+      }
+      trailing.innerHTML = "";
+      const count = document.createElement("span");
+      count.className = "lic-breakdown-count";
+      count.textContent = `${filterSet.size} selected`;
+      const clear = document.createElement("button");
+      clear.type = "button";
+      clear.className = "lic-breakdown-clear";
+      clear.textContent = "Clear";
+      clear.title = "Clear all selections on this filter";
+      clear.addEventListener("click", (e) => {
+        e.stopPropagation();
+        filterSet.clear();
+        render();
+      });
+      trailing.appendChild(count);
+      trailing.appendChild(clear);
+    } else if (trailing) {
+      trailing.remove();
+    }
+  }
+
   function renderStatusChips() {
     const map = new Map();
     for (const l of licenses) {
@@ -358,6 +396,7 @@
     wrap.innerHTML = "";
     if (!map.size) { strip.hidden = true; return; }
     strip.hidden = false;
+    updateBreakdownLabel("statusStrip", "Status", statusFilter);
     // Keep canonical pipeline order.
     for (const status of STATUSES) {
       const count = map.get(status);
@@ -395,6 +434,7 @@
     wrap.innerHTML = "";
     if (!map.size) { strip.hidden = true; return; }
     strip.hidden = false;
+    updateBreakdownLabel("productStrip", "Product", productFilter);
     const entries = [...map.entries()].sort((a, b) => b[1] - a[1]);
     for (const [name, count] of entries) {
       const btn = document.createElement("button");
