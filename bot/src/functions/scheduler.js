@@ -168,10 +168,13 @@ async function processUser(appId, user, ph, context) {
   }
 
   // 1c) Daily morning license briefing. Weekday 8 AM PH (480 minutesOfDay,
-  // tolerate the window 8:00-8:10). Once per PH day per user.
+  // tolerate the window 8:00-8:10). Once per PH day per user. Honors the
+  // per-user licenseSkipBriefing opt-out in Settings.
   const isWeekendDay = ph.weekday === 'Sat' || ph.weekday === 'Sun';
   if (!isWeekendDay && ph.minutesOfDay >= 8 * 60 && ph.minutesOfDay < 8 * 60 + 10) {
-    if (user.lastBriefingDate !== ph.date && (!user.briefingSnoozedUntil || user.briefingSnoozedUntil <= ph.date)) {
+    if (!user.settings?.licenseSkipBriefing &&
+        user.lastBriefingDate !== ph.date &&
+        (!user.briefingSnoozedUntil || user.briefingSnoozedUntil <= ph.date)) {
       await processLicenseBriefing(appId, user, ph, context);
     }
   }
@@ -295,11 +298,20 @@ async function processMonthlyDigest(ph, context) {
 
   context.log(`[digest] ${yyyyMm}: ${byOwner.size} owners with upcoming/overdue licenses`);
 
+  // Pre-build the all-accounts section once so we can append it for opted-in users.
+  const allBuckets = aggregateAllBuckets(byOwner);
+
   for (const [ownerOid, buckets] of byOwner) {
     if (!buckets.thisMonth.length && !buckets.nextMonth.length && !buckets.overdue.length) continue;
     try {
       const user = await store.getUser(ownerOid);
       if (user.lastDigestSentMonth === yyyyMm) continue;
+      // Honor opt-out.
+      if (user.settings?.licenseSkipMonthlyDigest) {
+        user.lastDigestSentMonth = yyyyMm;
+        await store.upsertUser(ownerOid, user);
+        continue;
+      }
       const profile = await getUserBasic(ownerOid).catch(() => null);
       if (!profile || !profile.mail) {
         // Mark as sent anyway so we don't retry every minute for an unreachable user.
@@ -307,7 +319,7 @@ async function processMonthlyDigest(ph, context) {
         await store.upsertUser(ownerOid, user);
         continue;
       }
-      const html = buildDigestHtml(profile.displayName, buckets);
+      const html = buildDigestHtml(profile.displayName, buckets, user.settings?.licenseRollupDigest ? allBuckets : null);
       const subject = `Day Reminders monthly digest: ${buckets.thisMonth.length + buckets.overdue.length} renewals this month`;
       await sendMail({ to: { address: profile.mail, name: profile.displayName }, subject, body: html, contentType: 'HTML' });
       user.lastDigestSentMonth = yyyyMm;
@@ -320,7 +332,17 @@ async function processMonthlyDigest(ph, context) {
   }
 }
 
-function buildDigestHtml(displayName, buckets) {
+function aggregateAllBuckets(byOwner) {
+  const all = { thisMonth: [], nextMonth: [], overdue: [] };
+  for (const buckets of byOwner.values()) {
+    all.thisMonth.push(...buckets.thisMonth);
+    all.nextMonth.push(...buckets.nextMonth);
+    all.overdue.push(...buckets.overdue);
+  }
+  return all;
+}
+
+function buildDigestHtml(displayName, buckets, rollupBuckets) {
   const firstName = (displayName || '').split(/\s+/)[0] || 'there';
   const deepLink = 'https://teams.microsoft.com/l/entity/5a03bfa3-63c4-417c-b668-b02234ebc11b/dayReminders.licenses';
   const section = (title, items, color) => {
@@ -348,14 +370,22 @@ function buildDigestHtml(displayName, buckets) {
         <tbody>${rows}</tbody>
       </table>`;
   };
+  const rollupHtml = rollupBuckets ? `
+    <h2 style="margin:32px 0 8px;border-top:1px solid #ddd;padding-top:24px;">All accounts (across every owner)</h2>
+    <p style="color:#666;">You opted in to the all-accounts roll-up in Settings.</p>
+    ${section('All overdue', rollupBuckets.overdue, '#c50f1f')}
+    ${section('All expiring this month', rollupBuckets.thisMonth, '#ca5010')}
+    ${section('All expiring next month', rollupBuckets.nextMonth, '#0078d4')}
+  ` : '';
   return `
     <p>Hi ${esc(firstName)},</p>
     <p>Here's your monthly snapshot of license renewals you own:</p>
     ${section('Overdue (action needed)', buckets.overdue, '#c50f1f')}
     ${section('Expiring this month', buckets.thisMonth, '#ca5010')}
     ${section('Expiring next month', buckets.nextMonth, '#0078d4')}
+    ${rollupHtml}
     <p style="margin-top:24px"><a href="${deepLink}">Open Day Reminders in Teams</a> to update status, mark renewed, or email customers.</p>
-    <p style="color:#888;font-size:12px;margin-top:24px">Sent once per month from Day Reminders. Renewing or marking a row as Renewed removes it from next month's digest.</p>
+    <p style="color:#888;font-size:12px;margin-top:24px">Sent once per month from Day Reminders. To opt out, open Day Reminders &rarr; Licenses &rarr; Settings.</p>
   `;
 }
 

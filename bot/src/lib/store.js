@@ -38,6 +38,11 @@ const DEFAULT_SETTINGS = {
   quietStart: null, // HH:MM, null/empty = quiet hours disabled
   quietEnd: null,
   autoImportFlagged: false, // when true, flagged Outlook emails auto-create reminders. v1.5: setting persisted but subscription flow not yet active.
+  // License-tab settings (v1.7.22)
+  licenseLeadDays: 14,           // per-user default lead days, used when license.leadDays is null
+  licenseSkipBriefing: false,    // opt out of the morning briefing card
+  licenseSkipMonthlyDigest: false, // opt out of the monthly email digest
+  licenseRollupDigest: false,    // opt in to include an all-accounts section in the digest (sales lead use case)
 };
 
 // ---------- user ----------

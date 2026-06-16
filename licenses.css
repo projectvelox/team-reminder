@@ -432,36 +432,36 @@ body[data-theme="dark"] .lic-table th {
   border-bottom-color: #3d3d42;
 }
 
-/* Column-specific sizing. Explicit widths win against table-layout: auto's
-   content-driven growth, so the table looks the same regardless of how long
-   any one customer's name is. */
-.lic-table th:nth-child(1), .lic-table td:nth-child(1) { /* Customer */
-  width: 240px;
-  min-width: 220px;
-  max-width: 280px;
+/* Column-specific sizing via class names. Classes survive the bulk-mode shift
+   (where a checkbox column is inserted at position 1) without breaking the
+   nth-child positions. */
+.lic-table th.col-customer, .lic-table td.col-customer {
+  width: 280px;
+  min-width: 240px;
+  max-width: 320px;
 }
-.lic-table th:nth-child(2), .lic-table td:nth-child(2) { /* License type */
-  width: 200px;
-  min-width: 150px;
-  max-width: 220px;
+.lic-table th.col-licensetype, .lic-table td.col-licensetype {
+  width: 220px;
+  min-width: 170px;
+  max-width: 240px;
   word-break: break-word;
 }
-.lic-table th:nth-child(3), .lic-table td:nth-child(3) { /* Users */
+.lic-table th.col-users, .lic-table td.col-users {
   width: 1%; white-space: nowrap; text-align: right;
 }
-.lic-table th:nth-child(4), .lic-table td:nth-child(4) { /* Expires */
+.lic-table th.col-expires, .lic-table td.col-expires {
   white-space: nowrap; width: 1%;
 }
-.lic-table th:nth-child(5), .lic-table td:nth-child(5) { /* Owner */
+.lic-table th.col-owner, .lic-table td.col-owner {
   white-space: nowrap;
 }
-.lic-table th:nth-child(6), .lic-table td:nth-child(6) { /* Product line */
+.lic-table th.col-productline, .lic-table td.col-productline {
   width: 1%; white-space: nowrap;
 }
-.lic-table th:nth-child(7), .lic-table td:nth-child(7) { /* Status */
+.lic-table th.col-status, .lic-table td.col-status {
   width: 1%; white-space: nowrap;
 }
-.lic-table th:nth-child(8), .lic-table td:nth-child(8) { /* Actions */
+.lic-table th.col-actions, .lic-table td.col-actions {
   width: 1%; white-space: nowrap; text-align: right;
 }
 .lic-table th.sortable { cursor: pointer; user-select: none; }

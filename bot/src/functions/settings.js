@@ -43,6 +43,11 @@ app.http('settings', {
       quietStart: validHHMM(incoming.quietStart) ? incoming.quietStart : null,
       quietEnd: validHHMM(incoming.quietEnd) ? incoming.quietEnd : null,
       autoImportFlagged: !!incoming.autoImportFlagged,
+      // License-tab settings (v1.7.22)
+      licenseLeadDays: clampInt(incoming.licenseLeadDays, 0, 365, store.DEFAULT_SETTINGS.licenseLeadDays),
+      licenseSkipBriefing: !!incoming.licenseSkipBriefing,
+      licenseSkipMonthlyDigest: !!incoming.licenseSkipMonthlyDigest,
+      licenseRollupDigest: !!incoming.licenseRollupDigest,
     };
     // Both must be set, or both null — partial config means quiet hours disabled.
     if (!settings.quietStart || !settings.quietEnd) {

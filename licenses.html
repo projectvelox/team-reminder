@@ -9,10 +9,10 @@
   <link rel="preconnect" href="https://func-day-reminders-17023.azurewebsites.net" crossorigin />
   <link rel="dns-prefetch" href="https://func-day-reminders-17023.azurewebsites.net" />
   <link rel="preconnect" href="https://res.cdn.office.net" crossorigin />
-  <link rel="preload" as="script" href="licenses.js?v=1.7.21" />
-  <link rel="preload" as="style" href="licenses.css?v=1.7.21" />
-  <link rel="stylesheet" href="styles.css?v=1.7.21" />
-  <link rel="stylesheet" href="licenses.css?v=1.7.21" />
+  <link rel="preload" as="script" href="licenses.js?v=1.7.22" />
+  <link rel="preload" as="style" href="licenses.css?v=1.7.22" />
+  <link rel="stylesheet" href="styles.css?v=1.7.22" />
+  <link rel="stylesheet" href="licenses.css?v=1.7.22" />
   <script src="https://res.cdn.office.net/teams-js/2.24.0/js/MicrosoftTeams.min.js"></script>
 </head>
 <body data-theme="default" data-page="licenses">
@@ -34,16 +34,17 @@
         <button type="button" data-group="productLine" class="view-btn" aria-pressed="false" title="Group rows by product line">Product</button>
       </div>
       <div class="split-btn-group">
-        <button id="importCsvBtn" class="btn ghost" title="Import licenses from a CSV file">Import CSV</button>
-        <button id="importCsvMenuToggle" class="btn ghost split-chevron" type="button" aria-haspopup="true" aria-expanded="false" aria-label="Import options" title="More import options">&#9662;</button>
-        <div id="importCsvMenu" class="split-menu" role="menu" hidden>
-          <button type="button" id="downloadTemplateBtn" role="menuitem">Download CSV template&hellip;</button>
+        <button id="csvMenuBtn" class="btn ghost" type="button" aria-haspopup="true" aria-expanded="false" title="Import, export, or download a CSV template">CSV &#9662;</button>
+        <div id="csvMenu" class="split-menu" role="menu" hidden>
+          <button type="button" id="importCsvBtn" role="menuitem">Import CSV&hellip;</button>
+          <button type="button" id="exportCsvBtn" role="menuitem">Export current view to CSV</button>
+          <button type="button" id="downloadTemplateBtn" role="menuitem">Download CSV template</button>
         </div>
       </div>
-      <button id="exportCsvBtn" class="btn ghost" title="Export the current filtered view to a CSV file">Export CSV</button>
       <button id="emailTemplatesBtn" class="btn ghost" title="Edit per-product-line renewal email templates">Templates</button>
       <button id="bulkSelectBtn" class="btn ghost" aria-pressed="false" title="Select multiple licenses to reassign owner">Select</button>
       <button id="refreshBtn" class="btn ghost" title="Reload licenses, customers, members, and templates from the server">&#x21bb; Refresh</button>
+      <button id="licSettingsBtn" class="btn ghost" title="Settings for the Licenses tab">&#9881; Settings</button>
       <button id="addLicenseBtn" class="btn primary">+ Add license</button>
     </div>
   </header>
@@ -69,14 +70,14 @@
         <table id="licTable" class="lic-table" hidden>
           <thead>
             <tr>
-              <th class="sortable" data-sort="customer">Customer</th>
-              <th class="sortable" data-sort="licenseType">License type</th>
-              <th class="sortable" data-sort="userCount">Users</th>
-              <th class="sortable" data-sort="expiryDate" aria-sort="ascending">Expires</th>
-              <th class="sortable" data-sort="ownerName">Owner</th>
-              <th class="sortable" data-sort="productLine">Product line</th>
-              <th class="sortable" data-sort="status">Status</th>
-              <th></th>
+              <th class="sortable col-customer" data-sort="customer">Customer</th>
+              <th class="sortable col-licensetype" data-sort="licenseType">License type</th>
+              <th class="sortable col-users" data-sort="userCount">Users</th>
+              <th class="sortable col-expires" data-sort="expiryDate" aria-sort="ascending">Expires</th>
+              <th class="sortable col-owner" data-sort="ownerName">Owner</th>
+              <th class="sortable col-productline" data-sort="productLine">Product line</th>
+              <th class="sortable col-status" data-sort="status">Status</th>
+              <th class="col-actions"></th>
             </tr>
           </thead>
           <tbody id="licTbody"></tbody>
@@ -437,8 +438,48 @@
   <!-- Per-row kebab menu (Delete, etc.) -->
   <div id="rowMenu" class="row-menu" role="menu" hidden></div>
 
+  <!-- License-tab Settings dialog -->
+  <dialog id="licSettingsDialog" class="lic-dialog">
+    <form method="dialog">
+      <h2>License settings</h2>
+      <p class="lic-hint">These preferences only affect the Licenses tab and the related emails.</p>
+
+      <div class="lic-field">
+        <span class="lic-label">Default lead time</span>
+        <p class="lic-hint" style="margin: 0 0 6px;">How many days before each license expires should the bot remind you? Per-row overrides on individual licenses take precedence.</p>
+        <select id="setLicenseLeadDays">
+          <option value="7">7 days</option>
+          <option value="14">14 days (default)</option>
+          <option value="30">30 days</option>
+          <option value="60">60 days</option>
+          <option value="90">90 days</option>
+        </select>
+      </div>
+
+      <label class="lic-field" style="flex-direction: row; align-items: center; gap: 10px;">
+        <input id="setSkipBriefing" type="checkbox" />
+        <span>Skip the daily morning briefing card on weekdays</span>
+      </label>
+
+      <label class="lic-field" style="flex-direction: row; align-items: center; gap: 10px;">
+        <input id="setSkipMonthlyDigest" type="checkbox" />
+        <span>Skip the monthly email digest</span>
+      </label>
+
+      <label class="lic-field" style="flex-direction: row; align-items: center; gap: 10px;">
+        <input id="setRollupDigest" type="checkbox" />
+        <span>Include an all-accounts roll-up in my monthly digest (sales-lead view)</span>
+      </label>
+
+      <div class="lic-dialog-actions">
+        <button type="button" class="btn primary" id="setSaveBtn">Save</button>
+        <button type="button" class="btn ghost" id="setCancelBtn">Cancel</button>
+      </div>
+    </form>
+  </dialog>
+
   <div id="toast" class="toast" hidden></div>
 
-  <script src="licenses.js?v=1.7.21" defer></script>
+  <script src="licenses.js?v=1.7.22" defer></script>
 </body>
 </html>

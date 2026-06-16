@@ -77,6 +77,12 @@
   let importRows = []; // staged rows during CSV import
   let licOwnerPicker = null;
   let bulkReassignPicker = null;
+  let userSettings = {
+    licenseLeadDays: 14,
+    licenseSkipBriefing: false,
+    licenseSkipMonthlyDigest: false,
+    licenseRollupDigest: false,
+  };
   // Precomputed once per render so every row in the same cluster shows the
   // same Bundle: N badge. Recomputed by computeBundles().
   let licenseBundles = new Map(); // licenseId -> { id, members[], size }
@@ -545,6 +551,7 @@
     if (lic.state === "abandoned") tr.classList.add("abandoned");
 
     const tdCustomer = document.createElement("td");
+    tdCustomer.className = "col-customer";
     const custBtn = document.createElement("button");
     custBtn.type = "button";
     custBtn.className = "customer-link";
@@ -566,15 +573,17 @@
     tr.appendChild(tdCustomer);
 
     const tdType = document.createElement("td");
+    tdType.className = "col-licensetype";
     tdType.textContent = lic.licenseType || "";
     tr.appendChild(tdType);
 
     const tdUsers = document.createElement("td");
-    tdUsers.className = "num";
+    tdUsers.className = "num col-users";
     tdUsers.textContent = lic.userCount || 0;
     tr.appendChild(tdUsers);
 
     const tdExpiry = document.createElement("td");
+    tdExpiry.className = "col-expires";
     const expSpan = document.createElement("span");
     expSpan.textContent = fmtShortDate(lic.expiryDate);
     tdExpiry.appendChild(expSpan);
@@ -589,6 +598,7 @@
     tr.appendChild(tdExpiry);
 
     const tdOwner = document.createElement("td");
+    tdOwner.className = "col-owner";
     const pill = document.createElement("span");
     pill.className = "owner-pill";
     pill.style.background = ownerColor(lic.ownerOid);
@@ -597,6 +607,7 @@
     tr.appendChild(tdOwner);
 
     const tdProd = document.createElement("td");
+    tdProd.className = "col-productline";
     if (lic.productLine) {
       const tag = document.createElement("span");
       tag.className = "product-tag";
@@ -607,6 +618,7 @@
 
     // Status pill column
     const tdStatus = document.createElement("td");
+    tdStatus.className = "col-status";
     const sPill = document.createElement("span");
     const statusVal = lic.status || "notStarted";
     sPill.className = `status-pill status-${statusVal}`;
@@ -615,7 +627,7 @@
     tr.appendChild(tdStatus);
 
     const tdActions = document.createElement("td");
-    tdActions.className = "actions";
+    tdActions.className = "actions col-actions";
     const editBtn = document.createElement("button");
     editBtn.type = "button";
     editBtn.className = "btn ghost small";
@@ -1671,38 +1683,36 @@
     $("addLicenseBtn").addEventListener("click", openAddDialog);
     $("licEmptyAdd").addEventListener("click", openAddDialog);
 
-    // CSV export
-    $("exportCsvBtn").addEventListener("click", exportCsv);
-
     // Manual refresh
     $("refreshBtn").addEventListener("click", refreshAll);
 
-    // CSV import + split-button menu
-    $("importCsvBtn").addEventListener("click", openImportDialog);
-    $("licEmptyImport").addEventListener("click", openImportDialog);
-    const menuToggle = $("importCsvMenuToggle");
-    const menu = $("importCsvMenu");
-    menuToggle.addEventListener("click", (e) => {
+    // Unified CSV menu (Import / Export / Download template)
+    const csvMenuBtn = $("csvMenuBtn");
+    const csvMenu = $("csvMenu");
+    function closeCsvMenu() {
+      csvMenu.hidden = true;
+      csvMenuBtn.setAttribute("aria-expanded", "false");
+    }
+    csvMenuBtn.addEventListener("click", (e) => {
       e.stopPropagation();
-      const isHidden = menu.hidden;
-      menu.hidden = !isHidden;
-      menuToggle.setAttribute("aria-expanded", String(isHidden));
+      const wasHidden = csvMenu.hidden;
+      csvMenu.hidden = !wasHidden;
+      csvMenuBtn.setAttribute("aria-expanded", String(wasHidden));
     });
     document.addEventListener("click", (e) => {
-      if (!menu.contains(e.target) && e.target !== menuToggle) {
-        menu.hidden = true;
-        menuToggle.setAttribute("aria-expanded", "false");
-      }
+      if (!csvMenu.contains(e.target) && e.target !== csvMenuBtn) closeCsvMenu();
     });
-    document.addEventListener("keydown", (e) => {
-      if (e.key === "Escape") { menu.hidden = true; menuToggle.setAttribute("aria-expanded", "false"); }
-    });
-    $("downloadTemplateBtn").addEventListener("click", () => {
-      downloadCsvTemplate();
-      menu.hidden = true;
-      menuToggle.setAttribute("aria-expanded", "false");
-    });
+    document.addEventListener("keydown", (e) => { if (e.key === "Escape") closeCsvMenu(); });
+    $("importCsvBtn").addEventListener("click", () => { closeCsvMenu(); openImportDialog(); });
+    $("exportCsvBtn").addEventListener("click", () => { closeCsvMenu(); exportCsv(); });
+    $("downloadTemplateBtn").addEventListener("click", () => { closeCsvMenu(); downloadCsvTemplate(); });
+    $("licEmptyImport").addEventListener("click", openImportDialog);
     $("downloadTemplateBtnInDialog").addEventListener("click", downloadCsvTemplate);
+
+    // License-tab Settings
+    $("licSettingsBtn").addEventListener("click", openSettingsDialog);
+    $("setSaveBtn").addEventListener("click", saveLicSettings);
+    $("setCancelBtn").addEventListener("click", () => $("licSettingsDialog").close());
     $("importFile").addEventListener("change", (e) => {
       const f = e.target.files && e.target.files[0];
       if (f) handleImportFile(f);
@@ -2325,6 +2335,32 @@
     importRows = [];
   }
 
+  // ---------- license-tab settings ----------
+  function openSettingsDialog() {
+    $("setLicenseLeadDays").value = String(userSettings.licenseLeadDays || 14);
+    $("setSkipBriefing").checked = !!userSettings.licenseSkipBriefing;
+    $("setSkipMonthlyDigest").checked = !!userSettings.licenseSkipMonthlyDigest;
+    $("setRollupDigest").checked = !!userSettings.licenseRollupDigest;
+    $("licSettingsDialog").showModal();
+  }
+  async function saveLicSettings() {
+    const next = {
+      ...userSettings,
+      licenseLeadDays: parseInt($("setLicenseLeadDays").value, 10) || 14,
+      licenseSkipBriefing: $("setSkipBriefing").checked,
+      licenseSkipMonthlyDigest: $("setSkipMonthlyDigest").checked,
+      licenseRollupDigest: $("setRollupDigest").checked,
+    };
+    try {
+      const { settings } = await api("PUT", "/settings", { settings: next });
+      userSettings = { ...userSettings, ...settings };
+      $("licSettingsDialog").close();
+      toast("Settings saved.");
+    } catch (err) {
+      showError("Save failed", err);
+    }
+  }
+
   // ---------- manual refresh ----------
   async function refreshAll() {
     const btn = $("refreshBtn");
@@ -2453,6 +2489,9 @@
       const templatesPromise = api("GET", "/email-templates")
         .then((res) => { emailTemplates = res.templates || []; })
         .catch(() => {});
+      const settingsPromise = api("GET", "/settings")
+        .then((res) => { if (res && res.settings) userSettings = { ...userSettings, ...res.settings }; })
+        .catch(() => {});
       const { licenses: lics } = await api("GET", "/licenses");
       licenses = lics || [];
 
@@ -2461,7 +2500,7 @@
       if (bi) bi.classList.add("gone");
       render();
       // Don't await secondaries if still in flight; they just refresh state in background.
-      void membersPromise; void customersPromise; void templatesPromise;
+      void membersPromise; void customersPromise; void templatesPromise; void settingsPromise;
     } catch (err) {
       const bi = $("bootIndicator");
       if (bi) bi.classList.add("gone");
