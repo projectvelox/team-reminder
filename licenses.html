@@ -14,10 +14,10 @@
   <link rel="preconnect" href="https://func-day-reminders-17023.azurewebsites.net" crossorigin />
   <link rel="dns-prefetch" href="https://func-day-reminders-17023.azurewebsites.net" />
   <link rel="preconnect" href="https://res.cdn.office.net" crossorigin />
-  <link rel="preload" as="script" href="licenses.js?v=1.7.34" />
-  <link rel="preload" as="style" href="licenses.css?v=1.7.34" />
-  <link rel="stylesheet" href="styles.css?v=1.7.34" />
-  <link rel="stylesheet" href="licenses.css?v=1.7.34" />
+  <link rel="preload" as="script" href="licenses.js?v=1.7.35" />
+  <link rel="preload" as="style" href="licenses.css?v=1.7.35" />
+  <link rel="stylesheet" href="styles.css?v=1.7.35" />
+  <link rel="stylesheet" href="licenses.css?v=1.7.35" />
   <script src="https://res.cdn.office.net/teams-js/2.24.0/js/MicrosoftTeams.min.js"></script>
 </head>
 <body data-theme="default" data-page="licenses">
@@ -528,7 +528,7 @@
     </section>
 
     <div class="lic-dialog-actions">
-      <span class="lic-version" id="licVersionLabel" title="Licenses tab build version">v1.7.34</span>
+      <span class="lic-version" id="licVersionLabel" title="Licenses tab build version">v1.7.35</span>
       <button type="button" class="btn primary" id="licGuideCloseBtn">Close</button>
     </div>
   </dialog>
@@ -577,15 +577,19 @@
         <span>Include an all-accounts roll-up in my monthly digest (sales-lead view)</span>
       </label>
 
+      <p class="lic-hint" style="margin-top: 12px;">
+        Want to see what the monthly digest looks like? <button type="button" id="setSendTestDigestBtn" class="link-btn">Send a test digest to my mailbox</button> &mdash; same content the scheduler would send on the 1st of next month.
+      </p>
+
       <div class="lic-dialog-actions">
-        <button type="button" class="btn primary" id="setSaveBtn">Save</button>
         <button type="button" class="btn ghost" id="setCancelBtn">Cancel</button>
+        <button type="button" class="btn primary" id="setSaveBtn">Save</button>
       </div>
     </form>
   </dialog>
 
   <div id="toast" class="toast" hidden></div>
 
-  <script src="licenses.js?v=1.7.34" defer></script>
+  <script src="licenses.js?v=1.7.35" defer></script>
 </body>
 </html>

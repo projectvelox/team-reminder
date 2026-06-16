@@ -1753,6 +1753,7 @@
     $("licSettingsBtn").addEventListener("click", openSettingsDialog);
     $("setSaveBtn").addEventListener("click", saveLicSettings);
     $("setCancelBtn").addEventListener("click", () => $("licSettingsDialog").close());
+    $("setSendTestDigestBtn").addEventListener("click", sendTestDigest);
 
     // Quick guide
     $("licGuideBtn").addEventListener("click", () => $("licGuideDialog").showModal());
@@ -2388,6 +2389,33 @@
     $("setRollupDigest").checked = !!userSettings.licenseRollupDigest;
     $("licSettingsDialog").showModal();
   }
+  async function sendTestDigest() {
+    const btn = $("setSendTestDigestBtn");
+    const original = btn.textContent;
+    btn.disabled = true;
+    btn.textContent = "Sending…";
+    try {
+      const res = await api("POST", "/licenses/digest/preview", {});
+      const counts = res.counts || {};
+      const sentTo = res.sentTo || "your mailbox";
+      const total = (counts.overdue || 0) + (counts.thisMonth || 0) + (counts.nextMonth || 0);
+      if (total === 0) {
+        toast(`Sent to ${sentTo} (no licenses in window — empty digest).`);
+      } else {
+        const parts = [];
+        if (counts.overdue) parts.push(`${counts.overdue} overdue`);
+        if (counts.thisMonth) parts.push(`${counts.thisMonth} this month`);
+        if (counts.nextMonth) parts.push(`${counts.nextMonth} next month`);
+        toast(`Sent to ${sentTo} — ${parts.join(", ")}.`);
+      }
+    } catch (err) {
+      showError("Test digest failed", err);
+    } finally {
+      btn.disabled = false;
+      btn.textContent = original;
+    }
+  }
+
   async function saveLicSettings() {
     // Theme override is tab-only state, persisted in localStorage. Save first
     // so users see the new theme apply instantly even if the /api/settings
