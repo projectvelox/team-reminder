@@ -1,5 +1,30 @@
 /* Day Reminders - Licenses tab specific styles. Inherits base theming from styles.css. */
 
+/* Page-level background tint so light mode doesn't hit the user with pure
+   #fff (harsh), and dark mode has more contrast between the page and the
+   table card. Scoped to the licenses page so the Reminders tab is untouched. */
+body[data-page="licenses"] { background: #f7f7f9; }
+body[data-page="licenses"][data-theme="dark"] { background: #1a1a1d; }
+body[data-page="licenses"][data-theme="contrast"] { background: #000; }
+body[data-page="licenses"] .lic-table {
+  background: #ffffff;
+  border-radius: 10px;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+}
+body[data-page="licenses"][data-theme="dark"] .lic-table {
+  background: #25252a;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
+}
+body[data-page="licenses"][data-theme="contrast"] .lic-table {
+  background: #000;
+  box-shadow: none;
+  border: 1px solid #fff;
+}
+body[data-page="licenses"][data-theme="dark"] .lic-table tbody tr:hover {
+  background: rgba(255, 255, 255, 0.04);
+}
+
+
 /* Don't let the search input shrink so small the placeholder truncates. */
 body[data-page="licenses"] .topbar-actions { gap: 8px; flex-wrap: wrap; row-gap: 10px; }
 body[data-page="licenses"] .search-input { min-width: 180px; }
