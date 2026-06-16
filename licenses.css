@@ -186,13 +186,14 @@ body:is([data-theme="dark"], [data-theme="contrast"]) .lic-aside .lic-stats {
 .status-pill.status-awaitingCustomer  { background: rgba(202, 80, 16, 0.18);   color: #ca5010; border-color: rgba(202, 80, 16, 0.4); }
 .status-pill.status-customerConfirmed { background: rgba(0, 120, 212, 0.18);   color: #005a9e; border-color: rgba(0, 120, 212, 0.4); }
 .status-pill.status-renewed           { background: rgba(16, 124, 16, 0.18);   color: #0b5a0b; border-color: rgba(16, 124, 16, 0.4); }
-/* Dark-mode: more saturated background tints and brighter text so the status
-   pills are unambiguously readable against the dark table card. */
-body:is([data-theme="dark"], [data-theme="contrast"]) .status-pill.status-notStarted        { background: rgba(200, 200, 205, 0.14); color: #e8e8ec; border-color: rgba(200, 200, 205, 0.35); }
-body:is([data-theme="dark"], [data-theme="contrast"]) .status-pill.status-noticeSent        { background: rgba(240, 192, 64, 0.18);  color: #ffd771; border-color: rgba(240, 192, 64, 0.5); }
-body:is([data-theme="dark"], [data-theme="contrast"]) .status-pill.status-awaitingCustomer  { background: rgba(255, 140, 74, 0.18);  color: #ffa979; border-color: rgba(255, 140, 74, 0.5); }
-body:is([data-theme="dark"], [data-theme="contrast"]) .status-pill.status-customerConfirmed { background: rgba(75, 168, 238, 0.18);  color: #7fc1f0; border-color: rgba(75, 168, 238, 0.5); }
-body:is([data-theme="dark"], [data-theme="contrast"]) .status-pill.status-renewed           { background: rgba(93, 187, 93, 0.18);   color: #9adf9a; border-color: rgba(93, 187, 93, 0.5); }
+/* Dark-mode: keep the same subtle background tints from light mode; only the
+   text color is brightened so the pills read as calm labels, not saturated
+   filled chips. */
+body:is([data-theme="dark"], [data-theme="contrast"]) .status-pill.status-notStarted        { color: #d6d6d6; }
+body:is([data-theme="dark"], [data-theme="contrast"]) .status-pill.status-noticeSent        { color: #f0c040; }
+body:is([data-theme="dark"], [data-theme="contrast"]) .status-pill.status-awaitingCustomer  { color: #ff8c4a; }
+body:is([data-theme="dark"], [data-theme="contrast"]) .status-pill.status-customerConfirmed { color: #4ba8ee; }
+body:is([data-theme="dark"], [data-theme="contrast"]) .status-pill.status-renewed           { color: #5dbb5d; }
 
 /* Y-of-N badge for non-annual renewal cycles. */
 .cycle-badge {
