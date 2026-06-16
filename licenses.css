@@ -1152,6 +1152,13 @@ body[data-theme="dark"] .templates-list { --border: #3d3d42; }
 }
 
 
+/* Tell the browser our page is dark-themed so native form controls
+   (checkboxes, radio buttons, scrollbars, date pickers, select arrows)
+   render in their dark variant instead of the bright light defaults. */
+body[data-theme="dark"] { color-scheme: dark; }
+body[data-theme="dark"] input[type="checkbox"],
+body[data-theme="dark"] input[type="radio"] { accent-color: var(--accent, #38AEEB); }
+
 /* Dark theme nudges (Teams dark theme: bg #1f1f1f, surfaces #2b2b30, dividers #4a4a4f). */
 body[data-theme="dark"] .lic-summary-chip,
 body[data-theme="dark"] .lic-breakdown-chip,
