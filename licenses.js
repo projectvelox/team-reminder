@@ -1296,8 +1296,19 @@
           txt.appendChild(sub);
         }
         btn.appendChild(txt);
+        // mousedown fires before blur on the input, so we can pick without the
+        // input losing focus first. preventDefault keeps the focus on the input
+        // during the synchronous render swap.
         btn.addEventListener("mousedown", (e) => { e.preventDefault(); pick(u); });
-        btn.addEventListener("mouseenter", () => { highlighted = i; renderResults(); });
+        // Update the highlighted class WITHOUT rebuilding the dropdown -- a full
+        // re-render here destroys the button mid-click and was eating the pick.
+        btn.addEventListener("mouseenter", () => {
+          if (highlighted === i) return;
+          highlighted = i;
+          dropdown.querySelectorAll(".ppicker-result").forEach((el, idx) => {
+            el.classList.toggle("highlighted", idx === i);
+          });
+        });
         dropdown.appendChild(btn);
       });
       dropdown.hidden = false;
