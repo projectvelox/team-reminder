@@ -186,11 +186,13 @@ body:is([data-theme="dark"], [data-theme="contrast"]) .lic-aside .lic-stats {
 .status-pill.status-awaitingCustomer  { background: rgba(202, 80, 16, 0.18);   color: #ca5010; border-color: rgba(202, 80, 16, 0.4); }
 .status-pill.status-customerConfirmed { background: rgba(0, 120, 212, 0.18);   color: #005a9e; border-color: rgba(0, 120, 212, 0.4); }
 .status-pill.status-renewed           { background: rgba(16, 124, 16, 0.18);   color: #0b5a0b; border-color: rgba(16, 124, 16, 0.4); }
-body:is([data-theme="dark"], [data-theme="contrast"]) .status-pill.status-notStarted        { color: #d6d6d6; }
-body:is([data-theme="dark"], [data-theme="contrast"]) .status-pill.status-noticeSent        { color: #f0c040; }
-body:is([data-theme="dark"], [data-theme="contrast"]) .status-pill.status-awaitingCustomer  { color: #ff8c4a; }
-body:is([data-theme="dark"], [data-theme="contrast"]) .status-pill.status-customerConfirmed { color: #4ba8ee; }
-body:is([data-theme="dark"], [data-theme="contrast"]) .status-pill.status-renewed           { color: #5dbb5d; }
+/* Dark-mode: more saturated background tints and brighter text so the status
+   pills are unambiguously readable against the dark table card. */
+body:is([data-theme="dark"], [data-theme="contrast"]) .status-pill.status-notStarted        { background: rgba(200, 200, 205, 0.14); color: #e8e8ec; border-color: rgba(200, 200, 205, 0.35); }
+body:is([data-theme="dark"], [data-theme="contrast"]) .status-pill.status-noticeSent        { background: rgba(240, 192, 64, 0.18);  color: #ffd771; border-color: rgba(240, 192, 64, 0.5); }
+body:is([data-theme="dark"], [data-theme="contrast"]) .status-pill.status-awaitingCustomer  { background: rgba(255, 140, 74, 0.18);  color: #ffa979; border-color: rgba(255, 140, 74, 0.5); }
+body:is([data-theme="dark"], [data-theme="contrast"]) .status-pill.status-customerConfirmed { background: rgba(75, 168, 238, 0.18);  color: #7fc1f0; border-color: rgba(75, 168, 238, 0.5); }
+body:is([data-theme="dark"], [data-theme="contrast"]) .status-pill.status-renewed           { background: rgba(93, 187, 93, 0.18);   color: #9adf9a; border-color: rgba(93, 187, 93, 0.5); }
 
 /* Y-of-N badge for non-annual renewal cycles. */
 .cycle-badge {
@@ -527,20 +529,20 @@ body:is([data-theme="dark"], [data-theme="contrast"]) .lic-table th {
   min-height: 24px;
   line-height: 1.4;
 }
-/* Renewed is the primary action; tone down its visual weight so it stops
-   competing with adjacent sidebar chips at high zoom levels. */
+/* Renew is the primary row action; keep it solid so it's the obvious CTA
+   among Edit / Email / Renew / ⋯. */
 .lic-table td.actions .btn.primary {
-  background: transparent;
-  color: var(--accent, #0078d4);
+  background: var(--accent, #0078d4);
+  color: #fff;
   border: 1px solid var(--accent, #0078d4);
 }
 .lic-table td.actions .btn.primary:hover {
-  background: var(--accent, #0078d4);
-  color: #fff;
+  filter: brightness(1.08);
 }
 body:is([data-theme="dark"], [data-theme="contrast"]) .lic-table td.actions .btn.primary {
-  color: #66c0ff;
-  border-color: #66c0ff;
+  background: #2b8fe6;
+  border-color: #2b8fe6;
+  color: #fff;
 }
 .lic-table tr.overdue td:first-child { border-left: 3px solid #c50f1f; }
 .lic-table tr.overdue td:first-child { padding-left: 9px; }
