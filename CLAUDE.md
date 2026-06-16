@@ -73,6 +73,21 @@ Secrets, GUIDs, and connection strings live in the Claude memory file `project_d
 
 ## What ships today (v1.7.x)
 
+### v1.7.38 — enterprise filter bar (Ella review)
+
+Tab-only release. Addresses Ella's filter-UX review by adding the genuinely-new pieces (active-filters summary, month dropdown, 4-bucket expiry pill) without duplicating what was already shipped (sidebar breakdown chips, quick filters, sortable columns, owner count alongside unique customers).
+
+- **Active-filters bar** above the table/calendar — GitHub Issues / Linear pattern. Shows `47 licenses` when no filters; switches to `12 of 47   [Owner: Dona ×] [Product: BC ×] [Expiry: Expiring soon ×] …   [Clear all]` once anything is selected. Removable per-chip + global Clear all. All filter axes (`quickFilter`, `summaryFilter`, `ownerFilter`, `productFilter`, `statusFilter`, `expiryFilter`, `monthFilter`, `searchText`) render through one builder so adding new dimensions later is one entry.
+- **Month dropdown** in the quick-filter row. Populated dynamically with months that actually have expiring licenses (chrono order, `Any month` first). Selecting a month also jumps the Calendar view to it — single mental model across views.
+- **Expiry pill** (4 buckets: Expired / Expiring soon / Expiring this month / Active). Rendered next to the days-left badge on every table row and as a left-edge stripe on calendar pills (so owner color is still the fill). Click any pill to filter by that bucket; toggle off by clicking again.
+- **Expiry filter popover** in the filter row — Radix/cmdk-style: checkbox-per-bucket with the matching color dot. Live count summary on the trigger button (`Any` / `Expiring soon` / `2 selected`). Closes on click-outside or Escape.
+- **"Soon" threshold is dynamic, not hardcoded**: tied to the user's smallest `licenseLeadDays` (default `7`). A user whose lead-days are `[60,30,15,7,1]` sees `Expiring soon` = ≤7d; switching their default to `[14]` makes it ≤14d. Matches what's actually being notified about.
+- **Filter persistence**: every filter axis writes through to localStorage and re-hydrates on next load. Filters are preserved across Table↔Calendar (already true; just verified).
+- **Empty-results swap**: when filters hide every row, the "No licenses yet" hero swaps in place to "No licenses match these filters" with a single **Clear all filters** button. No more thinking your data was wiped.
+- **What got explicitly rejected from Ella's spec** (and why): (1) "Owner chip = unique customers only" — regresses [feedback_ella_unique_vs_record_counts](C:\Users\MSI%202\.claude\projects\c--Users-MSI-2-Documents-GitHub-team-reminder\memory\feedback_ella_unique_vs_record_counts.md). Workload (records) and concentration (customers) answer different questions; we keep both. (2) "Collapsible filter panel" — sidebar isn't dominating screen space at current scale; collapse traded discoverability for nothing. (3) Combobox-style Owner picker — overkill at ~4 owners; revisit when owner list > 8. (4) Renaming Ella's date-derived "Status" filter to "Expiry" to avoid colliding with the existing workflow `status` enum (notStarted/noticeSent/awaitingCustomer/customerConfirmed/renewed).
+
+Cache-bust to `v=1.7.38` on `licenses.html`/`licenses.js`/`licenses.css`. No backend changes; no Function App redeploy needed.
+
 ### v1.7.37 — multi-threshold lead-day reminders
 
 The single per-license "Notify me N days before expiry" dropdown is gone. Both the per-license override and the per-user default in Settings are now **arrays of lead-day thresholds** picked from a chip-style multi-select (presets `60 / 30 / 15 / 7 / 1` + `+ Custom…`).

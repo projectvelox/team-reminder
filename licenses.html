@@ -14,10 +14,10 @@
   <link rel="preconnect" href="https://func-day-reminders-17023.azurewebsites.net" crossorigin />
   <link rel="dns-prefetch" href="https://func-day-reminders-17023.azurewebsites.net" />
   <link rel="preconnect" href="https://res.cdn.office.net" crossorigin />
-  <link rel="preload" as="script" href="licenses.js?v=1.7.37" />
-  <link rel="preload" as="style" href="licenses.css?v=1.7.37" />
-  <link rel="stylesheet" href="styles.css?v=1.7.37" />
-  <link rel="stylesheet" href="licenses.css?v=1.7.37" />
+  <link rel="preload" as="script" href="licenses.js?v=1.7.38" />
+  <link rel="preload" as="style" href="licenses.css?v=1.7.38" />
+  <link rel="stylesheet" href="styles.css?v=1.7.38" />
+  <link rel="stylesheet" href="licenses.css?v=1.7.38" />
   <script src="https://res.cdn.office.net/teams-js/2.24.0/js/MicrosoftTeams.min.js"></script>
 </head>
 <body data-theme="default" data-page="licenses">
@@ -69,6 +69,33 @@
         <button type="button" class="filter-pill" data-quick="month" aria-pressed="false" title="Expiring this calendar month">This month</button>
         <button type="button" class="filter-pill" data-quick="overdue" aria-pressed="false" title="Expired and not renewed">Overdue</button>
         <button type="button" class="filter-pill" data-quick="attention" aria-pressed="false" title="Stuck in a status >7 days or close to expiry with no status set">&#9888;&#65039; Needs attention</button>
+
+        <span class="filter-pills-sep" aria-hidden="true"></span>
+
+        <label class="filter-dropdown-wrap">
+          <span class="filter-dropdown-label">Month</span>
+          <select id="monthFilter" class="filter-dropdown" aria-label="Filter by expiry month">
+            <option value="">Any month</option>
+          </select>
+        </label>
+
+        <div class="filter-dropdown-wrap filter-dropdown-popover">
+          <button type="button" id="expiryFilterBtn" class="filter-dropdown filter-dropdown-btn" aria-haspopup="true" aria-expanded="false" aria-label="Filter by expiry health">
+            <span class="filter-dropdown-label">Expiry</span>
+            <span id="expiryFilterValue">Any</span>
+            <span class="filter-dropdown-caret" aria-hidden="true">&#9662;</span>
+          </button>
+          <div id="expiryFilterMenu" class="filter-popover" role="menu" hidden></div>
+        </div>
+      </div>
+
+      <!-- v1.7.38 active-filter summary bar: shows the result count and a
+           removable chip per active filter, with a Clear all when any apply.
+           Inspired by GitHub Issues / Linear filter-pill bars. -->
+      <div id="activeFilterBar" class="active-filter-bar" role="region" aria-label="Active filters and result count">
+        <span id="resultCount" class="result-count" aria-live="polite"></span>
+        <div id="activeFilterChips" class="active-filter-chips"></div>
+        <button type="button" id="clearAllFiltersBtn" class="filter-clear-all" hidden>Clear all</button>
       </div>
 
       <section id="tableView">
@@ -535,7 +562,7 @@
     </section>
 
     <div class="lic-dialog-actions">
-      <span class="lic-version" id="licVersionLabel" title="Licenses tab build version">v1.7.37</span>
+      <span class="lic-version" id="licVersionLabel" title="Licenses tab build version">v1.7.38</span>
       <button type="button" class="btn primary" id="licGuideCloseBtn">Close</button>
     </div>
   </dialog>
@@ -610,6 +637,6 @@
 
   <div id="toast" class="toast" hidden></div>
 
-  <script src="licenses.js?v=1.7.37" defer></script>
+  <script src="licenses.js?v=1.7.38" defer></script>
 </body>
 </html>

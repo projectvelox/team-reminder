@@ -1432,3 +1432,227 @@ body:is([data-theme="dark"], [data-theme="contrast"]) .lead-custom-input {
   border-color: #3d3d42;
   color: #f0f0f2;
 }
+
+/* ---------- v1.7.38 filter bar additions ---------- */
+.filter-pills-sep {
+  display: inline-block;
+  width: 1px;
+  align-self: stretch;
+  margin: 0 4px;
+  background: var(--border, #e4e4e4);
+}
+.filter-dropdown-wrap {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  position: relative;
+}
+.filter-dropdown-label {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted, #6a6a6a);
+}
+.filter-dropdown {
+  font: inherit;
+  font-size: 13px;
+  padding: 6px 10px;
+  border: 1px solid var(--border, #d1d1d1);
+  border-radius: 8px;
+  background: var(--card-bg, #fff);
+  color: var(--text, #1c1c1e);
+  cursor: pointer;
+  min-height: 30px;
+}
+.filter-dropdown:hover { border-color: var(--accent, #38AEEB); }
+.filter-dropdown:focus-visible {
+  outline: 2px solid var(--accent, #38AEEB);
+  outline-offset: 2px;
+}
+.filter-dropdown-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.filter-dropdown-btn .filter-dropdown-label {
+  font-size: 11px;
+}
+.filter-dropdown-caret {
+  font-size: 9px;
+  opacity: 0.7;
+}
+.filter-popover {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  min-width: 200px;
+  background: var(--card-bg, #fff);
+  border: 1px solid var(--border, #d1d1d1);
+  border-radius: 8px;
+  padding: 6px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+  z-index: 50;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.filter-popover-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 13px;
+  user-select: none;
+}
+.filter-popover-row:hover { background: var(--accent-bg, rgba(56, 174, 235, 0.10)); }
+.expiry-dot {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex: 0 0 auto;
+}
+
+.active-filter-bar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--border, #ececec);
+  margin-bottom: 10px;
+  min-height: 38px;
+}
+.result-count {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text, #1c1c1e);
+  margin-right: 4px;
+}
+.active-filter-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.active-filter-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: var(--accent-bg, rgba(56, 174, 235, 0.12));
+  border: 1px solid var(--accent, #38AEEB);
+  color: var(--accent, #0078d4);
+  border-radius: 12px;
+  padding: 2px 4px 2px 10px;
+  font-size: 12px;
+  font-weight: 600;
+  max-width: 320px;
+}
+.active-filter-chip > span:first-child {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.active-filter-chip-x {
+  background: transparent;
+  border: 0;
+  color: inherit;
+  cursor: pointer;
+  font-size: 14px;
+  line-height: 1;
+  padding: 0 4px;
+  border-radius: 8px;
+  opacity: 0.75;
+}
+.active-filter-chip-x:hover { opacity: 1; background: rgba(0, 0, 0, 0.08); }
+.filter-clear-all {
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--accent, #0078d4);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  padding: 4px 10px;
+  cursor: pointer;
+}
+.filter-clear-all:hover {
+  background: var(--accent-bg, rgba(56, 174, 235, 0.10));
+  border-color: var(--accent, #38AEEB);
+}
+
+/* ---------- v1.7.38 Expiry pill (4-bucket date-derived health) ---------- */
+.expiry-pill {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 2px 8px;
+  border-radius: 10px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  cursor: pointer;
+  border: 1px solid transparent;
+  vertical-align: middle;
+}
+.expiry-pill:hover { filter: brightness(0.95); }
+.expiry-pill.exp-expired,
+.expiry-dot.exp-expired { background: #fdecec; color: #b71c1c; border-color: rgba(183, 28, 28, 0.25); }
+.expiry-dot.exp-expired { background: #d32f2f; border-color: transparent; }
+
+.expiry-pill.exp-soon,
+.expiry-dot.exp-soon { background: #fff3e0; color: #c45104; border-color: rgba(196, 81, 4, 0.25); }
+.expiry-dot.exp-soon { background: #f57c00; border-color: transparent; }
+
+.expiry-pill.exp-thisMonth,
+.expiry-dot.exp-thisMonth { background: #fffbe6; color: #8a6d00; border-color: rgba(138, 109, 0, 0.25); }
+.expiry-dot.exp-thisMonth { background: #fbc02d; border-color: transparent; }
+
+.expiry-pill.exp-active,
+.expiry-dot.exp-active { background: #e7f6ec; color: #1b5e20; border-color: rgba(27, 94, 32, 0.25); }
+.expiry-dot.exp-active { background: #43a047; border-color: transparent; }
+
+/* Calendar pill: 3px left-edge stripe in the same 4-bucket palette so the
+   month grid surfaces health-at-a-glance without overriding the owner color. */
+.lic-cal-pill { border-left: 3px solid transparent; }
+.lic-cal-pill.exp-expired { border-left-color: #d32f2f; }
+.lic-cal-pill.exp-soon { border-left-color: #f57c00; }
+.lic-cal-pill.exp-thisMonth { border-left-color: #fbc02d; }
+.lic-cal-pill.exp-active { border-left-color: #43a047; }
+
+/* Dark / contrast palette: keep stripes vivid but soften pill backgrounds so
+   they stay legible on dark surfaces. */
+body:is([data-theme="dark"], [data-theme="contrast"]) .expiry-pill.exp-expired {
+  background: rgba(244, 67, 54, 0.18); color: #ffb4b4; border-color: rgba(244, 67, 54, 0.4);
+}
+body:is([data-theme="dark"], [data-theme="contrast"]) .expiry-pill.exp-soon {
+  background: rgba(255, 152, 0, 0.18); color: #ffd9a8; border-color: rgba(255, 152, 0, 0.4);
+}
+body:is([data-theme="dark"], [data-theme="contrast"]) .expiry-pill.exp-thisMonth {
+  background: rgba(255, 235, 59, 0.16); color: #ffe98a; border-color: rgba(255, 235, 59, 0.32);
+}
+body:is([data-theme="dark"], [data-theme="contrast"]) .expiry-pill.exp-active {
+  background: rgba(76, 175, 80, 0.18); color: #a8e0a8; border-color: rgba(76, 175, 80, 0.4);
+}
+body:is([data-theme="dark"], [data-theme="contrast"]) .filter-dropdown,
+body:is([data-theme="dark"], [data-theme="contrast"]) .filter-popover {
+  background: #2b2b30;
+  border-color: #3d3d42;
+  color: #f0f0f2;
+}
+body:is([data-theme="dark"], [data-theme="contrast"]) .filter-popover-row:hover {
+  background: rgba(56, 174, 235, 0.16);
+}
+body:is([data-theme="dark"], [data-theme="contrast"]) .active-filter-chip {
+  background: rgba(56, 174, 235, 0.18);
+  color: #9ed7f5;
+}
+body:is([data-theme="dark"], [data-theme="contrast"]) .active-filter-chip-x:hover {
+  background: rgba(255, 255, 255, 0.12);
+}
+body:is([data-theme="dark"], [data-theme="contrast"]) .filter-pills-sep {
+  background: #3d3d42;
+}

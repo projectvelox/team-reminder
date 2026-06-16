@@ -65,11 +65,38 @@
   // axis; otherwise only rows whose value is in the set pass.
   let ownerFilter = new Set();   // Set<ownerOid>
   let productFilter = new Set(); // Set<productLine>
-  let statusFilter = new Set();  // Set<status>
+  let statusFilter = new Set();  // Set<status>  -- workflow status (notStarted/...)
+  let expiryFilter = new Set();  // Set<'expired'|'soon'|'thisMonth'|'active'>  -- v1.7.38 date-derived
+  let monthFilter = "";          // YYYY-MM, applies to expiryDate; "" = any month
   let groupBy = "none";     // 'none' | 'customer' | 'ownerName' | 'productLine'
   let searchText = "";
   let sortKey = "expiryDate";
   let sortDir = 1; // 1 asc, -1 desc
+
+  // v1.7.38 expiry buckets (date-derived "health"). The "soon" threshold tracks
+  // the user's smallest lead-day default so the visual bucket agrees with what's
+  // actually being notified about — instead of hardcoding 10 days like Ella's
+  // spec, which would disagree with a user whose lead-days are [60,30,15,7,1].
+  const EXPIRY_BUCKETS = ["expired", "soon", "thisMonth", "active"];
+  const EXPIRY_LABEL = {
+    expired: "Expired",
+    soon: "Expiring soon",
+    thisMonth: "Expiring this month",
+    active: "Active",
+  };
+  function soonThresholdDays() {
+    const arr = Array.isArray(userSettings.licenseLeadDays) && userSettings.licenseLeadDays.length
+      ? userSettings.licenseLeadDays.slice().sort((a, b) => a - b)
+      : [7];
+    return arr[0];
+  }
+  function expiryBucket(daysLeft) {
+    if (daysLeft === null) return null;
+    if (daysLeft < 0) return "expired";
+    if (daysLeft <= soonThresholdDays()) return "soon";
+    if (daysLeft <= 30) return "thisMonth";
+    return "active";
+  }
 
   let calCursor = startOfMonth(new Date());
   let editingId = null; // id of license being edited in licDialog; null = new
@@ -108,6 +135,12 @@
   const LS_QUICK = "lic.quickFilter";
   const LS_SORT = "lic.sort";
   const LS_GROUP = "lic.groupBy";
+  // v1.7.38 — multi-axis filter persistence so a refresh keeps Ella's drilldown.
+  const LS_OWNER_FILTER = "lic.ownerFilter";
+  const LS_PRODUCT_FILTER = "lic.productFilter";
+  const LS_STATUS_FILTER = "lic.statusFilter";
+  const LS_EXPIRY_FILTER = "lic.expiryFilter";
+  const LS_MONTH_FILTER = "lic.monthFilter";
 
   try {
     const v = localStorage.getItem(LS_VIEW);
@@ -122,7 +155,26 @@
     }
     const g = localStorage.getItem(LS_GROUP);
     if (["none", "customer", "ownerName", "productLine"].includes(g)) groupBy = g;
+    const ownerJson = localStorage.getItem(LS_OWNER_FILTER);
+    if (ownerJson) JSON.parse(ownerJson).forEach((x) => ownerFilter.add(x));
+    const prodJson = localStorage.getItem(LS_PRODUCT_FILTER);
+    if (prodJson) JSON.parse(prodJson).forEach((x) => productFilter.add(x));
+    const statusJson = localStorage.getItem(LS_STATUS_FILTER);
+    if (statusJson) JSON.parse(statusJson).forEach((x) => statusFilter.add(x));
+    const expiryJson = localStorage.getItem(LS_EXPIRY_FILTER);
+    if (expiryJson) JSON.parse(expiryJson).forEach((x) => { if (EXPIRY_BUCKETS.includes(x)) expiryFilter.add(x); });
+    const mFilter = localStorage.getItem(LS_MONTH_FILTER);
+    if (mFilter && /^\d{4}-\d{2}$/.test(mFilter)) monthFilter = mFilter;
   } catch (_) {}
+  function persistFilters() {
+    try {
+      localStorage.setItem(LS_OWNER_FILTER, JSON.stringify([...ownerFilter]));
+      localStorage.setItem(LS_PRODUCT_FILTER, JSON.stringify([...productFilter]));
+      localStorage.setItem(LS_STATUS_FILTER, JSON.stringify([...statusFilter]));
+      localStorage.setItem(LS_EXPIRY_FILTER, JSON.stringify([...expiryFilter]));
+      localStorage.setItem(LS_MONTH_FILTER, monthFilter || "");
+    } catch (_) {}
+  }
 
   // ---------- date helpers ----------
   function todayPh() {
@@ -227,6 +279,15 @@
     if (ok && ownerFilter.size > 0 && !ownerFilter.has(lic.ownerOid)) ok = false;
     if (ok && productFilter.size > 0 && !productFilter.has(lic.productLine)) ok = false;
     if (ok && statusFilter.size > 0 && !statusFilter.has(lic.status || "notStarted")) ok = false;
+    // v1.7.38 expiry-bucket multi-select
+    if (ok && expiryFilter.size > 0) {
+      const bucket = expiryBucket(d);
+      if (!bucket || !expiryFilter.has(bucket)) ok = false;
+    }
+    // v1.7.38 month filter (YYYY-MM)
+    if (ok && monthFilter) {
+      if (!lic.expiryDate || lic.expiryDate.slice(0, 7) !== monthFilter) ok = false;
+    }
     return ok;
   }
 
@@ -292,6 +353,176 @@
     document.querySelectorAll(".lic-summary-chip").forEach((b) => {
       b.setAttribute("aria-pressed", summaryFilter === b.dataset.summary ? "true" : "false");
     });
+  }
+
+  // ---------- v1.7.38 active-filter bar ----------
+  function ownerNameByOid(oid) {
+    if (!oid) return "(none)";
+    // Prefer the in-memory members list (auto-registered), fall back to the
+    // license rows where the owner was last seen, then truncated oid.
+    const m = members.find((x) => x.oid === oid);
+    if (m && m.displayName) return m.displayName;
+    const lic = licenses.find((l) => l.ownerOid === oid && l.ownerName);
+    return lic ? lic.ownerName : oid.slice(0, 8);
+  }
+  function fmtMonthShort(yyyyMm) {
+    const [y, m] = yyyyMm.split("-").map(Number);
+    return new Date(y, m - 1, 1).toLocaleString(undefined, { month: "short", year: "numeric" });
+  }
+  function hasAnyFilter() {
+    return (
+      quickFilter !== "all" ||
+      summaryFilter !== null ||
+      ownerFilter.size > 0 ||
+      productFilter.size > 0 ||
+      statusFilter.size > 0 ||
+      expiryFilter.size > 0 ||
+      !!monthFilter ||
+      !!searchText
+    );
+  }
+  function renderActiveFilterBar() {
+    const visibleCount = visibleLicenses().length;
+    const totalCount = licenses.length;
+    const countEl = $("resultCount");
+    if (!hasAnyFilter()) {
+      countEl.textContent = `${totalCount} license${totalCount === 1 ? "" : "s"}`;
+    } else {
+      countEl.textContent = `${visibleCount} of ${totalCount}`;
+    }
+    const chipsEl = $("activeFilterChips");
+    chipsEl.innerHTML = "";
+
+    function addChip(label, onClear) {
+      const chip = document.createElement("span");
+      chip.className = "active-filter-chip";
+      const lab = document.createElement("span");
+      lab.textContent = label;
+      const x = document.createElement("button");
+      x.type = "button";
+      x.className = "active-filter-chip-x";
+      x.setAttribute("aria-label", `Remove filter: ${label}`);
+      x.textContent = "×";
+      x.addEventListener("click", onClear);
+      chip.appendChild(lab);
+      chip.appendChild(x);
+      chipsEl.appendChild(chip);
+    }
+
+    if (quickFilter && quickFilter !== "all") {
+      const QUICK_LABEL = { mine: "Mine", month: "This month", overdue: "Overdue", attention: "Needs attention" };
+      addChip(QUICK_LABEL[quickFilter] || quickFilter, () => { setQuickFilter("all"); });
+    }
+    if (summaryFilter) {
+      const SUM_LABEL = { week: "Expiring this week", month: "Expiring this month", overdue: "Overdue" };
+      addChip(SUM_LABEL[summaryFilter] || summaryFilter, () => { summaryFilter = null; render(); });
+    }
+    for (const oid of ownerFilter) {
+      addChip(`Owner: ${ownerNameByOid(oid)}`, () => { ownerFilter.delete(oid); persistFilters(); render(); });
+    }
+    for (const p of productFilter) {
+      addChip(`Product: ${p || "(none)"}`, () => { productFilter.delete(p); persistFilters(); render(); });
+    }
+    for (const s of statusFilter) {
+      addChip(`Status: ${STATUS_LABEL[s] || s}`, () => { statusFilter.delete(s); persistFilters(); render(); });
+    }
+    for (const b of expiryFilter) {
+      addChip(`Expiry: ${EXPIRY_LABEL[b] || b}`, () => { expiryFilter.delete(b); persistFilters(); renderExpiryFilterMenu(); render(); });
+    }
+    if (monthFilter) {
+      addChip(`Month: ${fmtMonthShort(monthFilter)}`, () => { monthFilter = ""; persistFilters(); $("monthFilter").value = ""; render(); });
+    }
+    if (searchText) {
+      addChip(`Search: "${searchText}"`, () => { searchText = ""; $("searchInput").value = ""; $("searchClear").hidden = true; render(); });
+    }
+
+    $("clearAllFiltersBtn").hidden = !hasAnyFilter();
+  }
+  function clearAllFilters() {
+    quickFilter = "all";
+    summaryFilter = null;
+    ownerFilter.clear();
+    productFilter.clear();
+    statusFilter.clear();
+    expiryFilter.clear();
+    monthFilter = "";
+    searchText = "";
+    $("searchInput").value = "";
+    $("searchClear").hidden = true;
+    $("monthFilter").value = "";
+    try { localStorage.setItem(LS_QUICK, "all"); } catch (_) {}
+    persistFilters();
+    renderExpiryFilterMenu();
+    render();
+  }
+  function setQuickFilter(next) {
+    quickFilter = next;
+    try { localStorage.setItem(LS_QUICK, next); } catch (_) {}
+  }
+
+  // Populate the Month dropdown with months that actually have expiring
+  // licenses, in chronological order. Preserves the user's current selection
+  // if the month is still present after a reload.
+  function populateMonthDropdown() {
+    const sel = $("monthFilter");
+    if (!sel) return;
+    const months = new Set();
+    for (const lic of licenses) {
+      if (!lic.expiryDate) continue;
+      months.add(lic.expiryDate.slice(0, 7));
+    }
+    const sorted = [...months].sort();
+    // Preserve selection if still present, else fall back to "any".
+    if (monthFilter && !months.has(monthFilter)) monthFilter = "";
+    const current = monthFilter;
+    sel.innerHTML = "";
+    const any = document.createElement("option");
+    any.value = "";
+    any.textContent = "Any month";
+    sel.appendChild(any);
+    for (const ym of sorted) {
+      const opt = document.createElement("option");
+      opt.value = ym;
+      opt.textContent = fmtMonthShort(ym);
+      sel.appendChild(opt);
+    }
+    sel.value = current;
+  }
+
+  // Expiry filter is a 4-option multi-select inside a popover (button shows
+  // current selection summary). Re-rendered each time so checkbox state stays
+  // in sync with `expiryFilter` mutations from chip removal or Clear all.
+  function renderExpiryFilterMenu() {
+    const menu = $("expiryFilterMenu");
+    const valueEl = $("expiryFilterValue");
+    if (!menu || !valueEl) return;
+    menu.innerHTML = "";
+    for (const b of EXPIRY_BUCKETS) {
+      const lbl = document.createElement("label");
+      lbl.className = "filter-popover-row";
+      const cb = document.createElement("input");
+      cb.type = "checkbox";
+      cb.value = b;
+      cb.checked = expiryFilter.has(b);
+      cb.addEventListener("change", () => {
+        if (cb.checked) expiryFilter.add(b);
+        else expiryFilter.delete(b);
+        persistFilters();
+        renderExpiryFilterMenu();
+        render();
+      });
+      const dot = document.createElement("span");
+      dot.className = `expiry-dot exp-${b}`;
+      const txt = document.createElement("span");
+      txt.textContent = EXPIRY_LABEL[b];
+      lbl.appendChild(cb);
+      lbl.appendChild(dot);
+      lbl.appendChild(txt);
+      menu.appendChild(lbl);
+    }
+    if (expiryFilter.size === 0) valueEl.textContent = "Any";
+    else if (expiryFilter.size === 1) valueEl.textContent = EXPIRY_LABEL[[...expiryFilter][0]];
+    else valueEl.textContent = `${expiryFilter.size} selected`;
   }
 
   // ---------- stats + breakdowns ----------
@@ -371,6 +602,7 @@
         else ownerFilter.add(e.oid);
         // Owner-chip selection overrides the Mine quick-filter so the chip wins.
         if (ownerFilter.size > 0 && quickFilter === "mine") quickFilter = "all";
+        persistFilters();
         render();
       });
       wrap.appendChild(btn);
@@ -405,6 +637,7 @@
       clear.addEventListener("click", (e) => {
         e.stopPropagation();
         filterSet.clear();
+        persistFilters();
         render();
       });
       trailing.appendChild(count);
@@ -446,6 +679,7 @@
       btn.addEventListener("click", () => {
         if (statusFilter.has(status)) statusFilter.delete(status);
         else statusFilter.add(status);
+        persistFilters();
         render();
       });
       wrap.appendChild(btn);
@@ -479,6 +713,7 @@
       btn.addEventListener("click", () => {
         if (productFilter.has(name)) productFilter.delete(name);
         else productFilter.add(name);
+        persistFilters();
         render();
       });
       wrap.appendChild(btn);
@@ -524,9 +759,12 @@
     recomputeSummary();
     recomputeStats();
     refreshDataLists();
+    populateMonthDropdown();
+    renderExpiryFilterMenu();
     renderOwnerChips();
     renderProductChips();
     renderStatusChips();
+    renderActiveFilterBar();
     document.querySelectorAll("#viewSwitch .view-btn").forEach((b) => {
       b.setAttribute("aria-pressed", b.dataset.view === currentView ? "true" : "false");
     });
@@ -618,6 +856,23 @@
       else if (d === 0) badge.textContent = "today";
       else badge.textContent = `${d}d left`;
       tdExpiry.appendChild(badge);
+      // v1.7.38 — 4-bucket Expiry pill (Expired / Soon / This month / Active)
+      const bucket = expiryBucket(d);
+      if (bucket) {
+        const pill = document.createElement("span");
+        pill.className = `expiry-pill exp-${bucket}`;
+        pill.textContent = EXPIRY_LABEL[bucket];
+        pill.title = `Click to filter by ${EXPIRY_LABEL[bucket]}`;
+        pill.addEventListener("click", (e) => {
+          e.stopPropagation();
+          // Toggle: if this bucket is the only filter, clear it; else replace.
+          if (expiryFilter.size === 1 && expiryFilter.has(bucket)) expiryFilter.clear();
+          else { expiryFilter.clear(); expiryFilter.add(bucket); }
+          persistFilters();
+          render();
+        });
+        tdExpiry.appendChild(pill);
+      }
     }
     tr.appendChild(tdExpiry);
 
@@ -755,6 +1010,39 @@
     if (!list.length) {
       tbl.hidden = true;
       empty.hidden = false;
+      // v1.7.38 — distinguish "no data at all" from "filters hid everything"
+      // so users don't think their data was wiped. Swaps the hero copy in
+      // place and offers a 1-click Clear all filters out.
+      const isFiltered = hasAnyFilter() && licenses.length > 0;
+      const heroH = empty.querySelector("h2");
+      const heroP = empty.querySelector("p");
+      const actions = empty.querySelector(".lic-empty-actions");
+      const filteredId = "licEmptyClearFilters";
+      const addBtn = $("licEmptyAdd");
+      const importBtn = $("licEmptyImport");
+      let clearBtn = document.getElementById(filteredId);
+      if (isFiltered) {
+        if (heroH) heroH.textContent = "No licenses match these filters";
+        if (heroP) heroP.textContent = `You have ${licenses.length} license${licenses.length === 1 ? "" : "s"} total. Clear the filters above to see them.`;
+        if (addBtn) addBtn.hidden = true;
+        if (importBtn) importBtn.hidden = true;
+        if (!clearBtn && actions) {
+          clearBtn = document.createElement("button");
+          clearBtn.id = filteredId;
+          clearBtn.type = "button";
+          clearBtn.className = "btn primary";
+          clearBtn.textContent = "Clear all filters";
+          clearBtn.addEventListener("click", clearAllFilters);
+          actions.appendChild(clearBtn);
+        }
+        if (clearBtn) clearBtn.hidden = false;
+      } else {
+        if (heroH) heroH.textContent = "No licenses yet";
+        if (heroP) heroP.textContent = "Track when your customers' Microsoft licenses (and anything else with a renewal date) need to be renewed.";
+        if (addBtn) addBtn.hidden = false;
+        if (importBtn) importBtn.hidden = false;
+        if (clearBtn) clearBtn.hidden = true;
+      }
       return;
     }
     tbl.hidden = false;
@@ -851,11 +1139,18 @@
         const pill = document.createElement("button");
         pill.type = "button";
         pill.className = "lic-cal-pill";
+        // v1.7.38 — left-edge expiry-status stripe (color-codes the bucket
+        // without overriding the owner-color fill that keeps the calendar
+        // visually grouped by who owns each renewal).
+        const d = daysBetween(todayKey, lic.expiryDate);
+        const bucket = expiryBucket(d);
+        if (bucket) pill.classList.add(`exp-${bucket}`);
         if (lic.state === "abandoned") pill.classList.add("abandoned");
         pill.style.background = ownerColor(lic.ownerOid);
         const text = `${lic.customer} · ${lic.licenseType}`;
         pill.textContent = text.length > 40 ? text.slice(0, 39) + "…" : text;
-        pill.title = `${lic.customer} — ${lic.licenseType} (${lic.userCount} users, owner: ${lic.ownerName || "—"})`;
+        const bucketTitle = bucket ? ` [${EXPIRY_LABEL[bucket]}]` : "";
+        pill.title = `${lic.customer} — ${lic.licenseType} (${lic.userCount} users, owner: ${lic.ownerName || "—"})${bucketTitle}`;
         pill.addEventListener("click", (e) => { e.stopPropagation(); openEditDialog(lic); });
         cell.appendChild(pill);
       }
@@ -1796,6 +2091,45 @@
         render();
       });
     });
+
+    // v1.7.38 Month dropdown
+    $("monthFilter").addEventListener("change", (e) => {
+      monthFilter = e.target.value || "";
+      persistFilters();
+      // Calendar view: jump the calendar to the selected month for parity
+      // (Table just filters in-place). Hands the user a single mental model.
+      if (monthFilter) {
+        const [y, m] = monthFilter.split("-").map(Number);
+        calCursor = new Date(y, m - 1, 1);
+      }
+      render();
+    });
+
+    // v1.7.38 Expiry filter popover
+    const expBtn = $("expiryFilterBtn");
+    const expMenu = $("expiryFilterMenu");
+    expBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      const open = !expMenu.hidden;
+      expMenu.hidden = open;
+      expBtn.setAttribute("aria-expanded", String(!open));
+    });
+    document.addEventListener("click", (e) => {
+      if (!expMenu.hidden && !expMenu.contains(e.target) && e.target !== expBtn && !expBtn.contains(e.target)) {
+        expMenu.hidden = true;
+        expBtn.setAttribute("aria-expanded", "false");
+      }
+    });
+    document.addEventListener("keydown", (e) => {
+      if (e.key === "Escape" && !expMenu.hidden) {
+        expMenu.hidden = true;
+        expBtn.setAttribute("aria-expanded", "false");
+        expBtn.focus();
+      }
+    });
+
+    // v1.7.38 Clear-all-filters button
+    $("clearAllFiltersBtn").addEventListener("click", clearAllFilters);
 
     // Search
     const searchInput = $("searchInput");
