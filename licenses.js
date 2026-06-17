@@ -8,7 +8,7 @@
   const API_BASE = "https://func-day-reminders-17023.azurewebsites.net/api";
   // v1.7.51 — version set in JS so a stale cached HTML still shows the
   // current build label (the JS itself is cache-busted via ?v=...).
-  const LIC_VERSION = "v1.8.1";
+  const LIC_VERSION = "v1.8.2";
   function paintVersionLabel() {
     const lbl = document.getElementById("licVersionLabel");
     if (lbl) lbl.textContent = LIC_VERSION;
@@ -3583,6 +3583,8 @@
       const res = await api("PUT", "/product-lines", { productLines: next });
       productLinesRegistry = res.productLines || next;
       input.value = "";
+      // v1.8.2 — Toast for consistency with Rename / Delete actions.
+      toast(`Added: ${name}`);
       renderProductLinesList();
       renderLegacyMappingRows();
     } catch (err) {
@@ -3599,9 +3601,13 @@
     try {
       const res = await api("PUT", "/product-lines", { productLines: next });
       productLinesRegistry = res.productLines || next;
-      // Old name still on licenses — surface as a legacy row in the mapping UI.
-      // User can normalize old → new in one click using the legacy mapping.
-      toast(`Renamed. ${countProductLineUsage().get(oldName) || 0} license${(countProductLineUsage().get(oldName) || 0) === 1 ? "" : "s"} still reference the old name; map them below to migrate.`);
+      // v1.8.2 — Short, clear toast fired BEFORE the list re-render so the
+      // user can't miss it. The "still referenced by licenses" hint moved
+      // to the legacy panel below (which will now show the old name as a
+      // legacy value with an auto-suggested target of the new name).
+      const stillUsed = countProductLineUsage().get(oldName) || 0;
+      const tail = stillUsed > 0 ? ` (${stillUsed} license${stillUsed === 1 ? "" : "s"} now legacy)` : "";
+      toast(`Renamed: ${oldName} → ${newName}${tail}`);
       renderProductLinesList();
       renderLegacyMappingRows();
     } catch (err) {
@@ -3617,6 +3623,7 @@
     try {
       await api("DELETE", `/product-lines/${encodeURIComponent(name)}`);
       productLinesRegistry = productLinesRegistry.filter((p) => p.name !== name);
+      toast(`Deleted: ${name}`);
       renderProductLinesList();
       renderLegacyMappingRows();
     } catch (err) {
@@ -3658,6 +3665,16 @@
       p.addEventListener("click", () => {
         quickFilter = p.dataset.quick;
         summaryFilter = null;
+        // v1.8.2 — date quick-filters (month/quarter) clear the corresponding
+        // dropdowns so the user never lands on an empty intersection like
+        // "This quarter (Q2)" + "Quarter dropdown = Q3" → 0 rows.
+        if (quickFilter === "month" || quickFilter === "quarter") {
+          monthFilter = "";
+          quarterFilter = "";
+          const mf = $("monthFilter"); if (mf) mf.value = "";
+          const qf = $("quarterFilter"); if (qf) qf.value = "";
+          persistFilters();
+        }
         try { localStorage.setItem(LS_QUICK, quickFilter); } catch (_) {}
         render();
       });
@@ -3666,6 +3683,16 @@
     // v1.7.38 Month dropdown
     $("monthFilter").addEventListener("change", (e) => {
       monthFilter = e.target.value || "";
+      // v1.8.2 — MONTH and QUARTER are mutually exclusive in BOTH directions.
+      // Picking a specific month also clears the QUARTER dropdown + the
+      // "This quarter" quick-filter pill so the user can never end up with
+      // an empty intersection of date filters.
+      if (monthFilter) {
+        quarterFilter = "";
+        const qs = $("quarterFilter");
+        if (qs) qs.value = "";
+        if (quickFilter === "quarter") quickFilter = "all";
+      }
       persistFilters();
       // Calendar view: jump the calendar to the selected month for parity
       // (Table just filters in-place). Hands the user a single mental model.
@@ -4043,10 +4070,13 @@
     const qSel = $("quarterFilter");
     if (qSel) qSel.addEventListener("change", (e) => {
       quarterFilter = e.target.value || "";
-      // Mutually exclusive with month filter — picking a quarter clears the month.
+      // v1.8.2 — Picking a specific quarter clears the MONTH dropdown AND
+      // the "This quarter" quick-filter pill (which means "current quarter"
+      // and would intersect to zero rows for any other quarter).
       if (quarterFilter) {
         monthFilter = "";
         $("monthFilter").value = "";
+        if (quickFilter === "quarter" || quickFilter === "month") quickFilter = "all";
       }
       persistFilters();
       render();
