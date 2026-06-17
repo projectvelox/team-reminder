@@ -77,6 +77,7 @@
   let statusFilter = new Set();  // Set<status>  -- workflow status (notStarted/...)
   let expiryFilter = new Set();  // Set<'expired'|'soon'|'thisMonth'|'active'>  -- v1.7.38 date-derived
   let monthFilter = "";          // YYYY-MM, applies to expiryDate; "" = any month
+  let quarterFilter = "";        // YYYY-QN (e.g. "2026-Q3"); "" = any quarter (v1.8.0)
   let dateFromFilter = "";       // YYYY-MM-DD inclusive (v1.7.42)
   let dateToFilter = "";         // YYYY-MM-DD inclusive (v1.7.42)
   let groupBy = "none";     // 'none' | 'customer' | 'ownerName' | 'productLine'
@@ -110,6 +111,16 @@
   }
 
   let calCursor = startOfMonth(new Date());
+  // v1.8.0 — Quarter view cursor (year + 1-4 index). Anchors which 3-month
+  // grid Quarter view renders. Defaults to the quarter that contains today.
+  let quarterCursor = (function () {
+    const d = new Date();
+    return { year: d.getFullYear(), q: Math.floor(d.getMonth() / 3) + 1 };
+  })();
+  // v1.8.0 — controlled-vocab registry for productLine. Empty until first
+  // fetch completes; row renderer guards against the empty case so the
+  // "legacy" flag doesn't false-positive during boot.
+  let productLinesRegistry = []; // [{name, sortOrder}]
   let editingId = null; // id of license being edited in licDialog; null = new
   let renewTargetId = null;
   let importRows = []; // staged rows during CSV import
@@ -153,12 +164,13 @@
   const LS_STATUS_FILTER = "lic.statusFilter";
   const LS_EXPIRY_FILTER = "lic.expiryFilter";
   const LS_MONTH_FILTER = "lic.monthFilter";
+  const LS_QUARTER_FILTER = "lic.quarterFilter"; // v1.8.0
 
   try {
     const v = localStorage.getItem(LS_VIEW);
-    if (v === "table" || v === "calendar") currentView = v;
+    if (v === "table" || v === "calendar" || v === "quarter") currentView = v;
     const q = localStorage.getItem(LS_QUICK);
-    if (["all", "mine", "month", "overdue", "attention"].includes(q)) quickFilter = q;
+    if (["all", "mine", "month", "quarter", "overdue", "attention"].includes(q)) quickFilter = q;
     const s = localStorage.getItem(LS_SORT);
     if (s) {
       const [k, d] = s.split(":");
@@ -177,6 +189,8 @@
     if (expiryJson) JSON.parse(expiryJson).forEach((x) => { if (EXPIRY_BUCKETS.includes(x)) expiryFilter.add(x); });
     const mFilter = localStorage.getItem(LS_MONTH_FILTER);
     if (mFilter && /^\d{4}-\d{2}$/.test(mFilter)) monthFilter = mFilter;
+    const qFilter = localStorage.getItem(LS_QUARTER_FILTER);
+    if (qFilter && /^\d{4}-Q[1-4]$/.test(qFilter)) quarterFilter = qFilter;
   } catch (_) {}
   function persistFilters() {
     try {
@@ -185,6 +199,7 @@
       localStorage.setItem(LS_STATUS_FILTER, JSON.stringify([...statusFilter]));
       localStorage.setItem(LS_EXPIRY_FILTER, JSON.stringify([...expiryFilter]));
       localStorage.setItem(LS_MONTH_FILTER, monthFilter || "");
+      localStorage.setItem(LS_QUARTER_FILTER, quarterFilter || "");
     } catch (_) {}
     syncFiltersToHash();
   }
@@ -202,6 +217,7 @@
     if (statusFilter.size) params.set("st", [...statusFilter].join(","));
     if (expiryFilter.size) params.set("x", [...expiryFilter].join(","));
     if (monthFilter) params.set("m", monthFilter);
+    if (quarterFilter) params.set("qf", quarterFilter); // v1.8.0
     if (dateFromFilter) params.set("df", dateFromFilter);
     if (dateToFilter) params.set("dt", dateToFilter);
     if (searchText) params.set("q2", searchText);
@@ -229,10 +245,14 @@
     if (params.has("st")) { statusFilter = new Set(params.get("st").split(",").filter(Boolean)); touched = true; }
     if (params.has("x")) { expiryFilter = new Set(params.get("x").split(",").filter(Boolean).filter((b) => EXPIRY_BUCKETS.includes(b))); touched = true; }
     if (params.has("m")) { monthFilter = params.get("m"); touched = true; }
+    if (params.has("qf")) {
+      const qf = params.get("qf");
+      if (/^\d{4}-Q[1-4]$/.test(qf)) { quarterFilter = qf; touched = true; }
+    }
     if (params.has("df")) { dateFromFilter = params.get("df"); touched = true; }
     if (params.has("dt")) { dateToFilter = params.get("dt"); touched = true; }
     if (params.has("q2")) { searchText = params.get("q2"); touched = true; }
-    if (params.has("v")) { const v = params.get("v"); if (v === "calendar" || v === "table") currentView = v; touched = true; }
+    if (params.has("v")) { const v = params.get("v"); if (v === "calendar" || v === "table" || v === "quarter") currentView = v; touched = true; }
     return touched;
   }
 
@@ -375,6 +395,17 @@
         ok = exp && exp.getUTCFullYear() === now.getFullYear() && exp.getUTCMonth() === now.getMonth();
       }
     }
+    else if (f === "quarter") {
+      // v1.8.0 — calendar quarter (Q1=Jan-Mar, etc.) containing today.
+      if (!lic.expiryDate) ok = false;
+      else {
+        const exp = parseISO(lic.expiryDate);
+        const now = new Date();
+        const nowQ = Math.floor(now.getMonth() / 3);
+        const expQ = exp ? Math.floor(exp.getUTCMonth() / 3) : -1;
+        ok = exp && exp.getUTCFullYear() === now.getFullYear() && expQ === nowQ;
+      }
+    }
     else if (f === "overdue") ok = d !== null && d < 0 && lic.state !== "abandoned";
     else if (f === "week") ok = d !== null && d >= 0 && d <= 7;
     else if (f === "attention") ok = needsAttention(lic, today);
@@ -390,6 +421,19 @@
     // v1.7.38 month filter (YYYY-MM)
     if (ok && monthFilter) {
       if (!lic.expiryDate || lic.expiryDate.slice(0, 7) !== monthFilter) ok = false;
+    }
+    // v1.8.0 quarter filter (YYYY-QN)
+    if (ok && quarterFilter) {
+      const m = quarterFilter.match(/^(\d{4})-Q([1-4])$/);
+      if (!m || !lic.expiryDate) ok = false;
+      else {
+        const qYear = Number(m[1]);
+        const qIdx = Number(m[2]) - 1; // 0..3
+        const expYear = Number(lic.expiryDate.slice(0, 4));
+        const expMonth = Number(lic.expiryDate.slice(5, 7)) - 1;
+        const expQ = Math.floor(expMonth / 3);
+        if (expYear !== qYear || expQ !== qIdx) ok = false;
+      }
     }
     // v1.7.42 date-range filter (inclusive). Both ends optional.
     if (ok && dateFromFilter) {
@@ -611,10 +655,16 @@
       statusFilter.size > 0 ||
       expiryFilter.size > 0 ||
       !!monthFilter ||
+      !!quarterFilter ||
       !!dateFromFilter ||
       !!dateToFilter ||
       !!searchText
     );
+  }
+  function fmtQuarterLabel(yyyyQn) {
+    const m = (yyyyQn || "").match(/^(\d{4})-Q([1-4])$/);
+    if (!m) return yyyyQn;
+    return `Q${m[2]} ${m[1]}`;
   }
   function renderActiveFilterBar() {
     const visibleCount = visibleLicenses().length;
@@ -645,7 +695,7 @@
     }
 
     if (quickFilter && quickFilter !== "all") {
-      const QUICK_LABEL = { mine: "Mine", month: "This month", overdue: "Overdue", attention: "Needs attention" };
+      const QUICK_LABEL = { mine: "Mine", month: "This month", quarter: "This quarter", overdue: "Overdue", attention: "Needs attention" };
       addChip(QUICK_LABEL[quickFilter] || quickFilter, () => { setQuickFilter("all"); });
     }
     if (summaryFilter) {
@@ -666,6 +716,9 @@
     }
     if (monthFilter) {
       addChip(`Month: ${fmtMonthShort(monthFilter)}`, () => { monthFilter = ""; persistFilters(); $("monthFilter").value = ""; render(); });
+    }
+    if (quarterFilter) {
+      addChip(`Quarter: ${fmtQuarterLabel(quarterFilter)}`, () => { quarterFilter = ""; persistFilters(); $("quarterFilter").value = ""; render(); });
     }
     if (dateFromFilter || dateToFilter) {
       const lbl = dateFromFilter && dateToFilter
@@ -732,6 +785,7 @@
       statusFilter: [...statusFilter],
       expiryFilter: [...expiryFilter],
       monthFilter,
+      quarterFilter,
       dateFromFilter,
       dateToFilter,
       searchText,
@@ -747,6 +801,7 @@
     statusFilter = new Set(Array.isArray(snap.statusFilter) ? snap.statusFilter : []);
     expiryFilter = new Set(Array.isArray(snap.expiryFilter) ? snap.expiryFilter : []);
     monthFilter = typeof snap.monthFilter === "string" ? snap.monthFilter : "";
+    quarterFilter = typeof snap.quarterFilter === "string" ? snap.quarterFilter : "";
     dateFromFilter = typeof snap.dateFromFilter === "string" ? snap.dateFromFilter : "";
     dateToFilter = typeof snap.dateToFilter === "string" ? snap.dateToFilter : "";
     searchText = typeof snap.searchText === "string" ? snap.searchText : "";
@@ -757,6 +812,7 @@
     $("searchInput").value = searchText;
     $("searchClear").hidden = !searchText;
     $("monthFilter").value = monthFilter;
+    if ($("quarterFilter")) $("quarterFilter").value = quarterFilter;
     if ($("dateFromFilter")) $("dateFromFilter").value = dateFromFilter;
     if ($("dateToFilter")) $("dateToFilter").value = dateToFilter;
   }
@@ -875,12 +931,14 @@
     statusFilter.clear();
     expiryFilter.clear();
     monthFilter = "";
+    quarterFilter = "";
     dateFromFilter = "";
     dateToFilter = "";
     searchText = "";
     $("searchInput").value = "";
     $("searchClear").hidden = true;
     $("monthFilter").value = "";
+    if ($("quarterFilter")) $("quarterFilter").value = "";
     if ($("dateFromFilter")) $("dateFromFilter").value = "";
     if ($("dateToFilter")) $("dateToFilter").value = "";
     try { localStorage.setItem(LS_QUICK, "all"); } catch (_) {}
@@ -917,6 +975,37 @@
       const opt = document.createElement("option");
       opt.value = ym;
       opt.textContent = fmtMonthShort(ym);
+      sel.appendChild(opt);
+    }
+    sel.value = current;
+  }
+
+  // v1.8.0 — Quarter dropdown. Lists every YYYY-QN that contains at least
+  // one expiring license, in chronological order. Like the month dropdown,
+  // preserves the user's selection if still present.
+  function populateQuarterDropdown() {
+    const sel = $("quarterFilter");
+    if (!sel) return;
+    const quarters = new Set();
+    for (const lic of licenses) {
+      if (!lic.expiryDate) continue;
+      const y = lic.expiryDate.slice(0, 4);
+      const m = Number(lic.expiryDate.slice(5, 7));
+      const q = Math.floor((m - 1) / 3) + 1;
+      quarters.add(`${y}-Q${q}`);
+    }
+    const sorted = [...quarters].sort();
+    if (quarterFilter && !quarters.has(quarterFilter)) quarterFilter = "";
+    const current = quarterFilter;
+    sel.innerHTML = "";
+    const any = document.createElement("option");
+    any.value = "";
+    any.textContent = "Any quarter";
+    sel.appendChild(any);
+    for (const qk of sorted) {
+      const opt = document.createElement("option");
+      opt.value = qk;
+      opt.textContent = fmtQuarterLabel(qk);
       sel.appendChild(opt);
     }
     sel.value = current;
@@ -1446,6 +1535,7 @@
     recomputeStats();
     refreshDataLists();
     populateMonthDropdown();
+    populateQuarterDropdown();
     renderExpiryFilterMenu();
     renderOwnerChips();
     renderProductChips();
@@ -1475,13 +1565,21 @@
       p.setAttribute("aria-pressed", (summaryFilter ? "false" : (p.dataset.quick === quickFilter ? "true" : "false")));
     });
     document.body.dataset.view = currentView;
+    const qView = $("quarterView");
     if (currentView === "calendar") {
       $("tableView").hidden = true;
       $("calendarView").hidden = false;
+      if (qView) qView.hidden = true;
       renderCalendar();
+    } else if (currentView === "quarter") {
+      $("tableView").hidden = true;
+      $("calendarView").hidden = true;
+      if (qView) qView.hidden = false;
+      renderQuarter();
     } else {
       $("tableView").hidden = false;
       $("calendarView").hidden = true;
+      if (qView) qView.hidden = true;
       renderTable();
     }
   }
@@ -1514,6 +1612,29 @@
     // v1.7.39 — hover-tooltip with full notes so the cell text doesn't need
     // to be expanded to read context. Truncated for sanity.
     if (lic.notes) tr.title = lic.notes.length > 600 ? lic.notes.slice(0, 597) + "…" : lic.notes;
+
+    // v1.8.0 — Product line is now the leading column. Built first so it
+    // appends in column-1 position. (The previous tdProd block below is
+    // skipped; we still build the same chip here, just in a different slot.)
+    const tdProd = document.createElement("td");
+    tdProd.className = "col-productline";
+    if (lic.productLine) {
+      const tag = document.createElement("span");
+      tag.className = "product-tag";
+      tag.textContent = lic.productLine;
+      // v1.8.0 — flag legacy values (not in the registry) so users notice
+      // them and can normalize. Registry is loaded into productLinesRegistry
+      // once on boot; if it isn't ready yet, skip the flag rather than guess.
+      if (productLinesRegistry && productLinesRegistry.length > 0) {
+        const known = productLinesRegistry.some((p) => p.name === lic.productLine);
+        if (!known) {
+          tag.classList.add("product-tag-legacy");
+          tag.title = "Legacy value — not in product line registry. Open Settings → Product lines to normalize.";
+        }
+      }
+      tdProd.appendChild(tag);
+    }
+    tr.appendChild(tdProd);
 
     const tdCustomer = document.createElement("td");
     tdCustomer.className = "col-customer";
@@ -1599,15 +1720,8 @@
     tdOwner.appendChild(ownerWrap);
     tr.appendChild(tdOwner);
 
-    const tdProd = document.createElement("td");
-    tdProd.className = "col-productline";
-    if (lic.productLine) {
-      const tag = document.createElement("span");
-      tag.className = "product-tag";
-      tag.textContent = lic.productLine;
-      tdProd.appendChild(tag);
-    }
-    tr.appendChild(tdProd);
+    // (Product line cell is the leading column now — built at the top of
+    // this function. No second product cell here.)
 
     // Status pill column
     const tdStatus = document.createElement("td");
@@ -1897,6 +2011,141 @@
     }
   }
 
+  // v1.8.0 — Quarter view. Renders the 3 months of `quarterCursor` as
+  // stacked month grids so the user can scan a quarter without losing the
+  // per-day pill detail. Each month sub-grid uses the same pill/density
+  // styling as Calendar view. Pill clicks open Edit; cell clicks open Add
+  // for that date.
+  function renderQuarter() {
+    const title = $("qTitle");
+    if (!title) return;
+    const { year, q } = quarterCursor;
+    title.textContent = `Q${q} ${year}`;
+
+    const body = $("qBody");
+    body.innerHTML = "";
+
+    const visible = visibleLicenses();
+    const byDate = new Map();
+    for (const lic of visible) {
+      if (!lic.expiryDate) continue;
+      const arr = byDate.get(lic.expiryDate) || [];
+      arr.push(lic);
+      byDate.set(lic.expiryDate, arr);
+    }
+    const todayKey = todayPh();
+    const firstMonthIdx = (q - 1) * 3; // 0-based: Q1 -> 0, Q2 -> 3, Q3 -> 6, Q4 -> 9
+
+    for (let mOffset = 0; mOffset < 3; mOffset++) {
+      const monthIdx = firstMonthIdx + mOffset;
+      const monthDate = new Date(year, monthIdx, 1);
+      const monthLabel = monthDate.toLocaleString(undefined, { month: "long", year: "numeric" });
+
+      const sec = document.createElement("section");
+      sec.className = "lic-quarter-month";
+      const h3 = document.createElement("h3");
+      h3.className = "lic-quarter-month-title";
+      h3.textContent = monthLabel;
+      sec.appendChild(h3);
+
+      const grid = document.createElement("div");
+      grid.className = "lic-cal-grid";
+      // Day headers
+      ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].forEach((d) => {
+        const h = document.createElement("div");
+        h.className = "lic-cal-header";
+        h.textContent = d;
+        grid.appendChild(h);
+      });
+      const monthBody = document.createElement("div");
+      monthBody.className = "lic-cal-body";
+      monthBody.setAttribute("role", "grid");
+
+      const firstOfMonth = new Date(year, monthIdx, 1);
+      const lastOfMonth = new Date(year, monthIdx + 1, 0);
+      const startWeekday = (firstOfMonth.getDay() + 6) % 7;
+      for (let i = 0; i < startWeekday; i++) {
+        const cell = document.createElement("div");
+        cell.className = "lic-cal-cell muted";
+        monthBody.appendChild(cell);
+      }
+      const daysInMonth = lastOfMonth.getDate();
+      for (let day = 1; day <= daysInMonth; day++) {
+        const cell = document.createElement("div");
+        cell.className = "lic-cal-cell";
+        const yyyy = year;
+        const mm = String(monthIdx + 1).padStart(2, "0");
+        const dd = String(day).padStart(2, "0");
+        const isoDate = `${yyyy}-${mm}-${dd}`;
+        cell.dataset.date = isoDate;
+        if (isoDate === todayKey) cell.classList.add("today");
+
+        const num = document.createElement("div");
+        num.className = "lic-cal-num";
+        num.textContent = day;
+        cell.appendChild(num);
+
+        const items = byDate.get(isoDate) || [];
+        const MAX_VISIBLE = 3;
+        for (const lic of items.slice(0, MAX_VISIBLE)) {
+          const pill = document.createElement("button");
+          pill.type = "button";
+          pill.className = "lic-cal-pill";
+          const d = daysBetween(todayKey, lic.expiryDate);
+          const bucket = expiryBucket(d);
+          if (bucket) pill.classList.add(`exp-${bucket}`);
+          if (lic.state === "abandoned") pill.classList.add("abandoned");
+          pill.style.background = ownerColor(lic.ownerOid);
+          const text = `${lic.customer} · ${lic.licenseType}`;
+          pill.textContent = text.length > 40 ? text.slice(0, 39) + "…" : text;
+          const bucketTitle = bucket ? ` [${EXPIRY_LABEL[bucket]}]` : "";
+          pill.title = `${lic.customer} — ${lic.licenseType} (${lic.userCount} users, owner: ${lic.ownerName || "—"})${bucketTitle}`;
+          pill.addEventListener("click", (e) => { e.stopPropagation(); openEditDialog(lic); });
+          cell.appendChild(pill);
+        }
+        if (items.length > MAX_VISIBLE) {
+          const more = document.createElement("button");
+          more.type = "button";
+          more.className = "lic-cal-more";
+          more.textContent = `+${items.length - MAX_VISIBLE} more`;
+          more.addEventListener("click", (e) => { e.stopPropagation(); openDayDialog(isoDate, items); });
+          cell.appendChild(more);
+        }
+        cell.addEventListener("click", () => openAddDialogForDate(isoDate));
+        monthBody.appendChild(cell);
+      }
+      grid.appendChild(monthBody);
+      sec.appendChild(grid);
+      body.appendChild(sec);
+    }
+
+    // Populate the Quarter-jump dropdown (mirrors calYearJump).
+    const yearJump = $("qYearJump");
+    if (yearJump) {
+      const quarters = new Set();
+      const thisYear = new Date().getFullYear();
+      [thisYear - 1, thisYear, thisYear + 1, thisYear + 2].forEach((y) => {
+        for (let qi = 1; qi <= 4; qi++) quarters.add(`${y}-Q${qi}`);
+      });
+      for (const lic of licenses) {
+        if (!lic.expiryDate) continue;
+        const y = lic.expiryDate.slice(0, 4);
+        const m = Number(lic.expiryDate.slice(5, 7));
+        quarters.add(`${y}-Q${Math.floor((m - 1) / 3) + 1}`);
+      }
+      const sorted = [...quarters].sort();
+      const current = `${year}-Q${q}`;
+      yearJump.innerHTML = "";
+      for (const qk of sorted) {
+        const opt = document.createElement("option");
+        opt.value = qk;
+        opt.textContent = fmtQuarterLabel(qk);
+        yearJump.appendChild(opt);
+      }
+      yearJump.value = current;
+    }
+  }
+
   // ---------- lead-day picker (v1.7.37) ----------
   // Backs a chip-style multi-select for the per-license lead-days field and
   // the per-user default in Settings. Each picker container carries data-*
@@ -2020,6 +2269,38 @@
   }
 
   // ---------- dialogs ----------
+  // v1.8.0 — Populate the Edit dialog's product-line <select> from the
+  // registry. If `currentValue` isn't in the registry, append it as an extra
+  // option marked "(legacy)" so the row stays editable until somebody runs
+  // the normalize tool. Returns the resolved value applied to the select.
+  function populateProductLineSelect(currentValue) {
+    const sel = $("licProductLine");
+    if (!sel) return "";
+    sel.innerHTML = "";
+    const noneOpt = document.createElement("option");
+    noneOpt.value = "";
+    noneOpt.textContent = "(none)";
+    sel.appendChild(noneOpt);
+    const seen = new Set();
+    for (const pl of productLinesRegistry || []) {
+      const opt = document.createElement("option");
+      opt.value = pl.name;
+      opt.textContent = pl.name;
+      sel.appendChild(opt);
+      seen.add(pl.name);
+    }
+    const current = String(currentValue || "");
+    if (current && !seen.has(current)) {
+      const legacy = document.createElement("option");
+      legacy.value = current;
+      legacy.textContent = `${current} (legacy)`;
+      legacy.className = "product-option-legacy";
+      sel.appendChild(legacy);
+    }
+    sel.value = current;
+    return sel.value;
+  }
+
   function openAddDialog() {
     editingId = null;
     $("licDialogTitle").textContent = "Add license";
@@ -2028,7 +2309,7 @@
     $("licUsers").value = "1";
     $("licExpiry").value = todayPh();
     ensureLicOwnerPicker(me.oid || null, me.name || "");
-    $("licProductLine").value = "";
+    populateProductLineSelect("");
     $("licStatus").value = "notStarted";
     $("licRenewalCycle").value = "annual";
     ensureLeadPicker("licLeadDaysPicker").set([]);
@@ -2053,7 +2334,7 @@
     $("licUsers").value = lic.userCount || 0;
     $("licExpiry").value = lic.expiryDate || todayPh();
     ensureLicOwnerPicker(lic.ownerOid || null, lic.ownerName || "");
-    $("licProductLine").value = lic.productLine || "";
+    populateProductLineSelect(lic.productLine || "");
     $("licStatus").value = lic.status || "notStarted";
     $("licRenewalCycle").value = lic.renewalCycle || "annual";
     // leadDays may be: array (v1.7.37+), scalar (legacy row), or null/undefined.
@@ -3113,6 +3394,231 @@
     $("dayDialog").showModal();
   }
 
+  // ---------- v1.8.0 product lines admin dialog ----------
+  let plPendingPreview = []; // [{id, customer, from, to}]
+  async function openProductLinesDialog() {
+    // Re-fetch in case another tab added entries since the cached load.
+    try {
+      const { productLines } = await api("GET", "/product-lines");
+      productLinesRegistry = productLines || [];
+    } catch (_) { /* fall back to in-memory */ }
+    renderProductLinesList();
+    renderLegacyMappingRows();
+    plPendingPreview = [];
+    $("plPreviewSummary").hidden = true;
+    $("plNormalizeApplyBtn").disabled = true;
+    $("productLinesDialog").showModal();
+  }
+  function renderProductLinesList() {
+    const ul = $("plList");
+    if (!ul) return;
+    ul.innerHTML = "";
+    const usage = countProductLineUsage();
+    for (const pl of productLinesRegistry) {
+      const li = document.createElement("li");
+      li.className = "pl-item";
+      const nameInput = document.createElement("input");
+      nameInput.type = "text";
+      nameInput.value = pl.name;
+      nameInput.className = "pl-name-input";
+      nameInput.maxLength = 100;
+      nameInput.setAttribute("aria-label", `Product line name (${pl.name})`);
+      const count = document.createElement("span");
+      count.className = "pl-usage";
+      const n = usage.get(pl.name) || 0;
+      count.textContent = n === 1 ? "1 license" : `${n} licenses`;
+      const saveBtn = document.createElement("button");
+      saveBtn.type = "button";
+      saveBtn.className = "btn ghost small";
+      saveBtn.textContent = "Rename";
+      saveBtn.addEventListener("click", () => renameProductLine(pl.name, nameInput.value.trim()));
+      const delBtn = document.createElement("button");
+      delBtn.type = "button";
+      delBtn.className = "btn ghost small danger";
+      delBtn.textContent = "Delete";
+      delBtn.addEventListener("click", () => deleteProductLineEntry(pl.name, n));
+      li.appendChild(nameInput);
+      li.appendChild(count);
+      li.appendChild(saveBtn);
+      li.appendChild(delBtn);
+      ul.appendChild(li);
+    }
+  }
+  function countProductLineUsage() {
+    const m = new Map();
+    for (const lic of licenses) {
+      const v = String(lic.productLine || "").trim();
+      if (!v) continue;
+      m.set(v, (m.get(v) || 0) + 1);
+    }
+    return m;
+  }
+  function legacyValues() {
+    const known = new Set(productLinesRegistry.map((p) => p.name));
+    const set = new Set();
+    for (const lic of licenses) {
+      const v = String(lic.productLine || "").trim();
+      if (v && !known.has(v)) set.add(v);
+    }
+    return [...set].sort();
+  }
+  function renderLegacyMappingRows() {
+    const empty = $("plLegacyEmpty");
+    const ul = $("plLegacyList");
+    if (!empty || !ul) return;
+    ul.innerHTML = "";
+    const vals = legacyValues();
+    if (!vals.length) {
+      empty.hidden = false;
+      ul.hidden = true;
+      return;
+    }
+    empty.hidden = true;
+    ul.hidden = false;
+    for (const v of vals) {
+      const li = document.createElement("li");
+      li.className = "pl-legacy-row";
+      const from = document.createElement("span");
+      from.className = "pl-legacy-from";
+      from.textContent = v;
+      const arrow = document.createElement("span");
+      arrow.className = "pl-legacy-arrow";
+      arrow.textContent = "→";
+      const toSel = document.createElement("select");
+      toSel.className = "pl-legacy-to";
+      toSel.dataset.legacyFrom = v;
+      toSel.setAttribute("aria-label", `Map ${v} to`);
+      const skip = document.createElement("option");
+      skip.value = "";
+      skip.textContent = "(skip)";
+      toSel.appendChild(skip);
+      // Auto-pick a sensible default when the legacy value contains a known
+      // canonical name (e.g. "ERP - BC" → "Business Central").
+      const suggestion = autoSuggestCanonical(v);
+      for (const pl of productLinesRegistry) {
+        const opt = document.createElement("option");
+        opt.value = pl.name;
+        opt.textContent = pl.name;
+        if (pl.name === suggestion) opt.selected = true;
+        toSel.appendChild(opt);
+      }
+      li.appendChild(from);
+      li.appendChild(arrow);
+      li.appendChild(toSel);
+      ul.appendChild(li);
+    }
+  }
+  function autoSuggestCanonical(legacy) {
+    const v = (legacy || "").toLowerCase();
+    // Heuristics for the known Kation legacy values. Returns "" if no guess.
+    if (/\bbc\b|business\s*central/.test(v)) return "Business Central";
+    if (/f&o|f and o|finance/.test(v)) return "Finance and Operation";
+    if (/philtax/.test(v)) return "PHILTAX";
+    if (/m365|microsoft\s*365|office\s*365/.test(v)) return "M365";
+    if (/crm|dynamics\s*365\s*sales/.test(v)) return "CRM";
+    if (/security|defender/.test(v)) return "Security";
+    return "";
+  }
+  function gatherMappingFromUI() {
+    const map = {};
+    document.querySelectorAll("#plLegacyList .pl-legacy-to").forEach((sel) => {
+      const from = sel.dataset.legacyFrom;
+      const to = sel.value;
+      if (from && to) map[from] = to;
+    });
+    return map;
+  }
+  async function previewNormalize() {
+    const mapping = gatherMappingFromUI();
+    if (!Object.keys(mapping).length) {
+      toast("Pick a canonical value for at least one legacy entry.");
+      return;
+    }
+    try {
+      const res = await api("POST", "/licenses/normalize-product-lines", { mapping, dryRun: true });
+      plPendingPreview = res.preview || [];
+      const sum = $("plPreviewSummary");
+      sum.textContent = `${plPendingPreview.length} row${plPendingPreview.length === 1 ? "" : "s"} will change. Click Apply to commit.`;
+      sum.hidden = false;
+      $("plNormalizeApplyBtn").disabled = plPendingPreview.length === 0;
+    } catch (err) {
+      showError("Preview failed", err);
+    }
+  }
+  async function applyNormalize() {
+    const mapping = gatherMappingFromUI();
+    if (!Object.keys(mapping).length) return;
+    try {
+      const res = await api("POST", "/licenses/normalize-product-lines", { mapping, dryRun: false });
+      toast(`Normalized ${res.count} row${res.count === 1 ? "" : "s"}.`);
+      // Re-fetch licenses so the table reflects the new values immediately.
+      const { licenses: lics } = await api("GET", "/licenses");
+      licenses = lics || [];
+      lastLicensesSig = licensesSignature(licenses);
+      renderProductLinesList();
+      renderLegacyMappingRows();
+      plPendingPreview = [];
+      $("plPreviewSummary").hidden = true;
+      $("plNormalizeApplyBtn").disabled = true;
+      render();
+    } catch (err) {
+      showError("Apply failed", err);
+    }
+  }
+  async function addProductLineFromInput() {
+    const input = $("plAddInput");
+    const name = (input.value || "").trim().slice(0, 100);
+    if (!name) return;
+    if (productLinesRegistry.some((p) => p.name === name)) {
+      toast("Already exists.");
+      return;
+    }
+    const next = [...productLinesRegistry, { name, sortOrder: productLinesRegistry.length }];
+    try {
+      const res = await api("PUT", "/product-lines", { productLines: next });
+      productLinesRegistry = res.productLines || next;
+      input.value = "";
+      renderProductLinesList();
+      renderLegacyMappingRows();
+    } catch (err) {
+      showError("Add failed", err);
+    }
+  }
+  async function renameProductLine(oldName, newName) {
+    if (!newName || newName === oldName) return;
+    if (productLinesRegistry.some((p) => p.name === newName && p.name !== oldName)) {
+      toast("Name already in use.");
+      return;
+    }
+    const next = productLinesRegistry.map((p) => p.name === oldName ? { ...p, name: newName } : p);
+    try {
+      const res = await api("PUT", "/product-lines", { productLines: next });
+      productLinesRegistry = res.productLines || next;
+      // Old name still on licenses — surface as a legacy row in the mapping UI.
+      // User can normalize old → new in one click using the legacy mapping.
+      toast(`Renamed. ${countProductLineUsage().get(oldName) || 0} license${(countProductLineUsage().get(oldName) || 0) === 1 ? "" : "s"} still reference the old name; map them below to migrate.`);
+      renderProductLinesList();
+      renderLegacyMappingRows();
+    } catch (err) {
+      showError("Rename failed", err);
+    }
+  }
+  async function deleteProductLineEntry(name, usageCount) {
+    if (usageCount > 0) {
+      toast(`Cannot delete — ${usageCount} license${usageCount === 1 ? " uses" : "s use"} it. Re-map them first.`);
+      return;
+    }
+    if (!confirm(`Delete product line "${name}"?`)) return;
+    try {
+      await api("DELETE", `/product-lines/${encodeURIComponent(name)}`);
+      productLinesRegistry = productLinesRegistry.filter((p) => p.name !== name);
+      renderProductLinesList();
+      renderLegacyMappingRows();
+    } catch (err) {
+      showError("Delete failed", err);
+    }
+  }
+
   // ---------- event wiring ----------
   function wireEvents() {
     // View switcher (Table / Calendar)
@@ -3422,6 +3928,26 @@
     $("tplNewBtn").addEventListener("click", newTemplate);
     $("templatesCloseBtn").addEventListener("click", () => $("templatesDialog").close());
 
+    // v1.8.0 — Product Lines admin dialog
+    const openPlBtn = $("openProductLinesBtn");
+    if (openPlBtn) openPlBtn.addEventListener("click", () => {
+      $("licSettingsDialog").close();
+      openProductLinesDialog();
+    });
+    const manageLink = $("licProductLineManageLink");
+    if (manageLink) manageLink.addEventListener("click", (e) => {
+      e.preventDefault();
+      $("licDialog").close();
+      openProductLinesDialog();
+    });
+    $("plCloseBtn").addEventListener("click", () => $("productLinesDialog").close());
+    $("plAddBtn").addEventListener("click", addProductLineFromInput);
+    $("plAddInput").addEventListener("keydown", (e) => {
+      if (e.key === "Enter") { e.preventDefault(); addProductLineFromInput(); }
+    });
+    $("plNormalizePreviewBtn").addEventListener("click", previewNormalize);
+    $("plNormalizeApplyBtn").addEventListener("click", applyNormalize);
+
     // Bulk select + reassign
     $("bulkSelectBtn").addEventListener("click", () => setBulkMode(!bulkMode));
     $("bulkReassignBtn").addEventListener("click", openBulkReassign);
@@ -3474,6 +4000,50 @@
 
     $("calNextYear").addEventListener("click", () => {
       calCursor = new Date(calCursor.getFullYear() + 1, calCursor.getMonth(), 1);
+      render();
+    });
+
+    // v1.8.0 — Quarter view nav.
+    function bumpQuarter(delta) {
+      let { year, q } = quarterCursor;
+      q += delta;
+      while (q < 1) { q += 4; year -= 1; }
+      while (q > 4) { q -= 4; year += 1; }
+      quarterCursor = { year, q };
+      render();
+    }
+    const qPrev = $("qPrev");
+    if (qPrev) qPrev.addEventListener("click", () => bumpQuarter(-1));
+    const qNext = $("qNext");
+    if (qNext) qNext.addEventListener("click", () => bumpQuarter(1));
+    const qToday = $("qToday");
+    if (qToday) qToday.addEventListener("click", () => {
+      const d = new Date();
+      quarterCursor = { year: d.getFullYear(), q: Math.floor(d.getMonth() / 3) + 1 };
+      render();
+    });
+    const qYearJump = $("qYearJump");
+    if (qYearJump) qYearJump.addEventListener("change", (e) => {
+      const m = (e.target.value || "").match(/^(\d{4})-Q([1-4])$/);
+      if (!m) return;
+      quarterCursor = { year: Number(m[1]), q: Number(m[2]) };
+      render();
+    });
+    // Quarter view density toggle (mirrors Calendar density).
+    document.querySelectorAll("#qDensity .view-btn").forEach((b) => {
+      b.addEventListener("click", () => setCalDensity(b.dataset.density));
+    });
+
+    // v1.8.0 — quarter filter dropdown
+    const qSel = $("quarterFilter");
+    if (qSel) qSel.addEventListener("change", (e) => {
+      quarterFilter = e.target.value || "";
+      // Mutually exclusive with month filter — picking a quarter clears the month.
+      if (quarterFilter) {
+        monthFilter = "";
+        $("monthFilter").value = "";
+      }
+      persistFilters();
       render();
     });
   }
@@ -4191,16 +4761,18 @@
     btn.disabled = true;
     btn.textContent = "Refreshing…";
     try {
-      const [licRes, memRes, custRes, tplRes] = await Promise.all([
+      const [licRes, memRes, custRes, tplRes, plRes] = await Promise.all([
         api("GET", "/licenses"),
         api("GET", "/members").catch(() => ({ members })),
         api("GET", "/customers").catch(() => ({ customers })),
         api("GET", "/email-templates").catch(() => ({ templates: emailTemplates })),
+        api("GET", "/product-lines").catch(() => ({ productLines: productLinesRegistry })),
       ]);
       licenses = licRes.licenses || [];
       members = memRes.members || members;
       customers = custRes.customers || customers;
       emailTemplates = tplRes.templates || emailTemplates;
+      productLinesRegistry = plRes.productLines || productLinesRegistry;
       saveCachedMembers(members);
       lastSyncedAt = Date.now();
       updateSyncIndicator();
@@ -4639,6 +5211,10 @@
       const templatesPromise = api("GET", "/email-templates")
         .then((res) => { emailTemplates = res.templates || []; })
         .catch(() => {});
+      // v1.8.0 — product-line registry. Seeded on first GET if empty.
+      const productLinesPromise = api("GET", "/product-lines")
+        .then((res) => { productLinesRegistry = res.productLines || []; render(); })
+        .catch(() => {});
       const settingsPromise = api("GET", "/settings")
         .then((res) => { if (res && res.settings) userSettings = { ...userSettings, ...res.settings }; })
         .catch(() => {});
@@ -4653,7 +5229,7 @@
       if (bi) bi.classList.add("gone");
       render();
       // Don't await secondaries if still in flight; they just refresh state in background.
-      void membersPromise; void customersPromise; void templatesPromise; void settingsPromise;
+      void membersPromise; void customersPromise; void templatesPromise; void settingsPromise; void productLinesPromise;
       // v1.7.39 — start the live poll once initial paint is done.
       startLivePoll();
       // v1.7.39 — wire Ctrl+K palette and global shortcuts.

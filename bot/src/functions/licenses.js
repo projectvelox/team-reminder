@@ -580,3 +580,80 @@ app.http('licensesBulk', {
     return json(200, { updated, notFound });
   },
 });
+
+// POST /api/licenses/normalize-product-lines (v1.8.0)
+//
+// Body: { mapping: { "<old value>": "<new value>", ... }, dryRun?: boolean }
+// Walks every non-deleted license; for any row whose productLine matches a key
+// in the mapping, sets productLine to the mapped value. Records a
+// `productLineNormalized` event on the row (with the old + new) so the change
+// is auditable in the Activity sidebar. `dryRun: true` returns the preview
+// without mutating anything — used by the admin dialog to show "N rows will
+// change" before the user confirms.
+app.http('licensesNormalizeProductLines', {
+  methods: ['POST', 'OPTIONS'],
+  authLevel: 'anonymous',
+  route: 'licenses/normalize-product-lines',
+  handler: async (request) => {
+    if (request.method === 'OPTIONS') return { status: 204, headers: corsHeaders() };
+    let user;
+    try { user = await authed(request); } catch (err) { return json(err.status || 401, { error: err.message }); }
+    await registerCaller(user);
+
+    const body = await request.json().catch(() => ({}));
+    const mapping = body.mapping && typeof body.mapping === 'object' ? body.mapping : null;
+    const dryRun = !!body.dryRun;
+    if (!mapping || Object.keys(mapping).length === 0) {
+      return json(400, { error: 'mapping object is required' });
+    }
+    // Normalize the keys for case-insensitive lookup; preserve user-provided
+    // target values verbatim so casing in the registry stays exact.
+    const normMap = {};
+    for (const [from, to] of Object.entries(mapping)) {
+      const fromKey = String(from || '').trim().toLowerCase();
+      const toVal = String(to || '').trim();
+      if (!fromKey || !toVal) continue;
+      normMap[fromKey] = toVal;
+    }
+
+    const licenses = await store.listLicenses();
+    const now = new Date().toISOString();
+    const preview = []; // [{id, customer, from, to}]
+    for (const lic of licenses) {
+      const cur = String(lic.productLine || '').trim();
+      const target = normMap[cur.toLowerCase()];
+      if (!target || target === cur) continue;
+      preview.push({ id: lic.id, customer: lic.customer, from: cur, to: target });
+    }
+
+    if (dryRun) {
+      return json(200, { dryRun: true, count: preview.length, preview });
+    }
+
+    const updated = [];
+    for (const change of preview) {
+      const lic = await store.getLicense(change.id);
+      if (!lic) continue;
+      const events = Array.isArray(lic.events) ? lic.events.slice() : [];
+      events.push({
+        at: now,
+        kind: 'productLineNormalized',
+        actorOid: user.oid,
+        actorName: user.name || null,
+        from: change.from,
+        to: change.to,
+      });
+      const merged = {
+        ...lic,
+        productLine: change.to,
+        events,
+        lastEditedAt: now,
+        lastEditedByOid: user.oid,
+        lastEditedByName: user.name || null,
+      };
+      await store.upsertLicense(merged);
+      updated.push({ id: change.id, from: change.from, to: change.to });
+    }
+    return json(200, { dryRun: false, count: updated.length, updated });
+  },
+});

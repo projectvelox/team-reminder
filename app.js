@@ -164,7 +164,7 @@
   // even after multiple cache-bust bumps). Because the JS file is itself
   // cache-busted via `?v=` on every release, setting the label here means
   // a stale HTML cache no longer lies to users about the build they're on.
-  const TAB_VERSION = "v1.5.8";
+  const TAB_VERSION = "v1.6.0";
   document.addEventListener("DOMContentLoaded", () => {
     const lbl = document.getElementById("versionLabel");
     if (lbl) lbl.textContent = TAB_VERSION;
@@ -1023,6 +1023,12 @@
         reminderRoot.appendChild(buildEmptyHero());
       } else if (open.length === 0 && !noFiltersActive) {
         reminderRoot.appendChild(buildEmptyState("No open reminders match these filters."));
+      } else if (currentView === "lines") {
+        // v1.6.0 — Lines view always splits Today / Later at the top level,
+        // overriding the group toggle (which is hidden in Lines view).
+        // Rolled-over items (dueAt < today, auto-advanced by the rollover
+        // job) still land in TODAY since their dueAt is now today.
+        renderTodayLater(open);
       } else if (settings.groupBy === "tag") {
         renderByTag(open);
       } else if (settings.groupBy === "client") {
@@ -1624,6 +1630,45 @@
     browseAll.addEventListener("click", () => openDialog(templatesDialog, buildTemplateGrid));
     card.append(h2, p, examples, browseAll);
     return card;
+  }
+
+  // v1.6.0 — Today / Later split. Replaces the old TODAY (timed) / ANYTIME
+  // TODAY (no-time) two-section layout in Lines view. TODAY now holds every
+  // open item dueAt <= today (including rolled-over items); LATER holds
+  // everything dueAt > today. Each section orders priority → timed → anytime.
+  function renderTodayLater(items) {
+    const today = todayPh();
+    const todayItems = [];
+    const laterItems = [];
+    for (const r of items) {
+      const due = r.dueAt || r.createdDate || today;
+      if (due <= today) todayItems.push(r);
+      else laterItems.push(r);
+    }
+    function orderForSection(arr) {
+      const high = arr.filter((r) => r.priority === "high");
+      const timed = arr.filter((r) => r.priority !== "high" && r.time)
+        .sort((a, b) => a.time.localeCompare(b.time));
+      const anytime = arr.filter((r) => r.priority !== "high" && !r.time);
+      return [...sortByOrderThenTime(high), ...timed, ...sortByOrderThenTime(anytime)];
+    }
+    reminderRoot.appendChild(buildSection("Today", orderForSection(todayItems), {
+      showWhen: true,
+      emptyText: todayItems.length ? null : "Nothing for today. Add something above.",
+      meta: todayDateString,
+      draggable: true,
+    }));
+    // Later section is hidden when empty so users with only today-items don't
+    // get a vestigial empty box. When populated, items show with their dueAt
+    // date so it's obvious which day they're queued for.
+    if (laterItems.length) {
+      reminderRoot.appendChild(buildSection("Later", orderForSection(laterItems), {
+        showWhen: true,
+        emptyText: null,
+        meta: `${laterItems.length} upcoming`,
+        draggable: true,
+      }));
+    }
   }
 
   function renderByTime(items) {
@@ -2736,6 +2781,9 @@
     for (const btn of viewSwitch.querySelectorAll("button.view-btn")) {
       btn.setAttribute("aria-pressed", String(btn.dataset.view === currentView));
     }
+    // v1.6.0 — Group toggle is hidden in Lines view because the Today/Later
+    // split owns the top-level structure there. Reappears in Grid/Day/Week.
+    if (groupToggle) groupToggle.hidden = (currentView === "lines");
   }
 
   // ---------- bulk select ----------

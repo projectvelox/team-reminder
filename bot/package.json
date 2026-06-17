@@ -5,9 +5,9 @@
   "main": "src/index.js",
   "scripts": {
     "start": "func start",
-    "test": "node --test test/store-helpers.test.js test/license-validation.test.js",
+    "test": "node --test test/store-helpers.test.js test/license-validation.test.js test/product-lines.test.js",
     "typecheck": "tsc -p jsconfig.json",
-    "lint": "node -c src/index.js && node -c src/lib/store.js && node -c src/lib/auth.js && node -c src/lib/bot.js && node -c src/lib/cards.js"
+    "lint": "node -c src/index.js && node -c src/lib/store.js && node -c src/lib/auth.js && node -c src/lib/bot.js && node -c src/lib/cards.js && node -c src/functions/productLines.js && node -c src/functions/licenses.js"
   },
   "dependencies": {
     "@azure/data-tables": "^13.3.0",

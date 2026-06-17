@@ -718,6 +718,99 @@ async function deleteEmailTemplate(productLine) {
   }
 }
 
+// ---------- product lines registry (tenant-shared, v1.8.0) ----------
+//
+// Strict controlled vocab for License.productLine. Free-text product line is
+// gone; the Edit dialog renders a <select> sourced from this registry. The
+// canonical seed below ships on first deploy if the partition is empty;
+// after that, admins can rename / add / delete via /api/product-lines.
+//
+// Legacy values (rows with productLine not in the registry) are tolerated
+// at read time and rendered with a "(legacy)" badge in the dialog so they
+// can be edited without forcing a normalize first.
+
+const PRODUCT_LINE_PARTITION = '_productLines';
+const CANONICAL_PRODUCT_LINES = [
+  'M365',
+  'Business Central',
+  'Finance and Operation',
+  'PHILTAX',
+  'CRM',
+  'Security',
+];
+
+function productLineId(name) {
+  // RK stays stable across renames? No — we key by the canonical name so a
+  // rename means delete+create. Simpler than tracking a separate id.
+  return `p:${String(name || '').trim().slice(0, 100)}`;
+}
+
+function entityToProductLine(e) {
+  return {
+    name: e.rowKey.slice(2),
+    sortOrder: typeof e.sortOrder === 'number' ? e.sortOrder : 100,
+    createdAt: e.createdAt || null,
+    createdByOid: e.createdByOid || null,
+    createdByName: e.createdByName || null,
+  };
+}
+
+async function listProductLines() {
+  await ensureTable();
+  const iter = getClient().listEntities({
+    queryOptions: { filter: `PartitionKey eq '${PRODUCT_LINE_PARTITION}'` },
+  });
+  const out = [];
+  for await (const e of iter) out.push(entityToProductLine(e));
+  out.sort((a, b) => (a.sortOrder - b.sortOrder) || a.name.localeCompare(b.name));
+  return out;
+}
+
+async function upsertProductLine(pl) {
+  await ensureTable();
+  const name = String(pl.name || '').trim().slice(0, 100);
+  if (!name) throw new Error('product line name required');
+  await getClient().upsertEntity({
+    partitionKey: PRODUCT_LINE_PARTITION,
+    rowKey: productLineId(name),
+    sortOrder: typeof pl.sortOrder === 'number' ? pl.sortOrder : 100,
+    createdAt: pl.createdAt || new Date().toISOString(),
+    createdByOid: pl.createdByOid || null,
+    createdByName: pl.createdByName || null,
+  }, 'Replace');
+  return { name, sortOrder: pl.sortOrder ?? 100 };
+}
+
+async function deleteProductLine(name) {
+  await ensureTable();
+  try {
+    await getClient().deleteEntity(PRODUCT_LINE_PARTITION, productLineId(name));
+    return true;
+  } catch (err) {
+    if (err.statusCode === 404) return false;
+    throw err;
+  }
+}
+
+async function ensureProductLinesSeeded(actor) {
+  const existing = await listProductLines();
+  if (existing.length > 0) return existing;
+  const now = new Date().toISOString();
+  const seeded = [];
+  for (let i = 0; i < CANONICAL_PRODUCT_LINES.length; i++) {
+    const name = CANONICAL_PRODUCT_LINES[i];
+    await upsertProductLine({
+      name,
+      sortOrder: i,
+      createdAt: now,
+      createdByOid: (actor && actor.oid) || null,
+      createdByName: (actor && actor.name) || 'system seed',
+    });
+    seeded.push({ name, sortOrder: i });
+  }
+  return seeded;
+}
+
 module.exports = {
   DEFAULT_SETTINGS,
   LICENSE_STATUSES,
@@ -751,4 +844,9 @@ module.exports = {
   listEmailTemplates,
   upsertEmailTemplate,
   deleteEmailTemplate,
+  CANONICAL_PRODUCT_LINES,
+  listProductLines,
+  upsertProductLine,
+  deleteProductLine,
+  ensureProductLinesSeeded,
 };

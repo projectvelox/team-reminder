@@ -11,6 +11,7 @@ require('./functions/licenses');
 require('./functions/members');
 require('./functions/customers');
 require('./functions/emailTemplates');
+require('./functions/productLines');
 require('./functions/userSearch');
 require('./functions/digestPreview');
 require('./functions/meExport');

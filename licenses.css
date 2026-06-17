@@ -2495,3 +2495,157 @@ body:is([data-theme="dark"], [data-theme="contrast"]) .customer-hover-card {
   background: var(--color-danger-fg, #b71c1c);
   color: #fff;
 }
+
+/* ---------- v1.8.0 Quarter view (3 months stacked vertically) ---------- */
+.lic-quarter-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5, 20px);
+}
+.lic-quarter-month {
+  border: 1px solid var(--border, #e4e4e4);
+  border-radius: var(--radius-lg, 10px);
+  padding: var(--space-3, 12px);
+  background: var(--card-bg, #fff);
+}
+.lic-quarter-month-title {
+  margin: 0 0 var(--space-2, 8px);
+  font-size: var(--text-md, 14px);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted, #6a6a6a);
+}
+body:is([data-theme="dark"], [data-theme="contrast"]) .lic-quarter-month {
+  background: #2b2b30;
+  border-color: #3d3d42;
+}
+
+/* ---------- v1.8.0 Product line legacy badge + select option ---------- */
+/* Legacy values (not in the registry) get a dashed border + muted tint so
+   they're spotted in the table at a glance. The Edit dialog adds them as
+   an extra <option> labelled "(legacy)" so the row stays editable. */
+.product-tag.product-tag-legacy {
+  border-style: dashed;
+  opacity: 0.75;
+}
+.product-option-legacy { font-style: italic; color: var(--muted, #6a6a6a); }
+
+/* ---------- v1.8.0 Product Lines admin dialog ---------- */
+.pl-list {
+  list-style: none;
+  padding: 0;
+  margin: var(--space-3, 12px) 0;
+  max-height: 320px;
+  overflow-y: auto;
+  border: 1px solid var(--border, #e4e4e4);
+  border-radius: var(--radius-md, 8px);
+}
+.pl-item {
+  display: grid;
+  grid-template-columns: 1fr auto auto auto;
+  gap: var(--space-2, 8px);
+  align-items: center;
+  padding: var(--space-2, 8px) var(--space-3, 12px);
+  border-bottom: 1px solid var(--border, #f0f0f0);
+}
+.pl-item:last-child { border-bottom: 0; }
+.pl-name-input {
+  width: 100%;
+  padding: 4px 8px;
+  border: 1px solid var(--border, #d1d1d1);
+  border-radius: var(--radius-sm, 4px);
+  font: inherit;
+  background: var(--card-bg, #fff);
+  color: var(--text, #1c1c1e);
+}
+.pl-usage {
+  font-size: var(--text-xs, 11px);
+  color: var(--muted, #6a6a6a);
+  white-space: nowrap;
+}
+
+.pl-add-row {
+  display: flex;
+  gap: var(--space-2, 8px);
+  margin: var(--space-2, 8px) 0 var(--space-4, 16px);
+}
+.pl-add-row input {
+  flex: 1;
+  padding: 6px 10px;
+  border: 1px solid var(--border, #d1d1d1);
+  border-radius: var(--radius-sm, 4px);
+  font: inherit;
+  background: var(--card-bg, #fff);
+  color: var(--text, #1c1c1e);
+}
+
+.pl-section-title {
+  margin: var(--space-4, 16px) 0 var(--space-2, 8px);
+  font-size: var(--text-md, 14px);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted, #6a6a6a);
+}
+.pl-legacy-list {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 var(--space-3, 12px);
+  max-height: 240px;
+  overflow-y: auto;
+  border: 1px solid var(--border, #e4e4e4);
+  border-radius: var(--radius-md, 8px);
+}
+.pl-legacy-row {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  gap: var(--space-2, 8px);
+  align-items: center;
+  padding: var(--space-2, 8px) var(--space-3, 12px);
+  border-bottom: 1px solid var(--border, #f0f0f0);
+}
+.pl-legacy-row:last-child { border-bottom: 0; }
+.pl-legacy-from {
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: var(--text-base, 13px);
+}
+.pl-legacy-arrow {
+  color: var(--muted, #6a6a6a);
+  font-size: var(--text-md, 14px);
+}
+.pl-legacy-to {
+  padding: 4px 8px;
+  border: 1px solid var(--border, #d1d1d1);
+  border-radius: var(--radius-sm, 4px);
+  font: inherit;
+  background: var(--card-bg, #fff);
+  color: var(--text, #1c1c1e);
+}
+.lic-empty-inline {
+  margin: 0 0 var(--space-3, 12px);
+  padding: var(--space-3, 12px);
+  font-style: italic;
+  color: var(--muted, #6a6a6a);
+  background: var(--surface-2, rgba(0,0,0,0.03));
+  border-radius: var(--radius-md, 8px);
+}
+.pl-preview-summary {
+  margin-left: var(--space-3, 12px);
+  font-weight: 600;
+  color: var(--text, #1c1c1e);
+}
+
+body:is([data-theme="dark"], [data-theme="contrast"]) .pl-list,
+body:is([data-theme="dark"], [data-theme="contrast"]) .pl-legacy-list,
+body:is([data-theme="dark"], [data-theme="contrast"]) .lic-empty-inline {
+  background: #2b2b30;
+  border-color: #3d3d42;
+}
+body:is([data-theme="dark"], [data-theme="contrast"]) .pl-name-input,
+body:is([data-theme="dark"], [data-theme="contrast"]) .pl-add-row input,
+body:is([data-theme="dark"], [data-theme="contrast"]) .pl-legacy-to {
+  background: #1f1f23;
+  border-color: #3d3d42;
+  color: #f0f0f2;
+}

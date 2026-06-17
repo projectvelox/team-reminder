@@ -21,10 +21,10 @@
   <link rel="preconnect" href="https://func-day-reminders-17023.azurewebsites.net" crossorigin />
   <link rel="dns-prefetch" href="https://func-day-reminders-17023.azurewebsites.net" />
   <link rel="preconnect" href="https://res.cdn.office.net" crossorigin />
-  <link rel="preload" as="script" href="licenses.js?v=1.7.51" />
-  <link rel="preload" as="style" href="licenses.css?v=1.7.51" />
-  <link rel="stylesheet" href="styles.css?v=1.7.51" />
-  <link rel="stylesheet" href="licenses.css?v=1.7.51" />
+  <link rel="preload" as="script" href="licenses.js?v=1.8.0" />
+  <link rel="preload" as="style" href="licenses.css?v=1.8.0" />
+  <link rel="stylesheet" href="styles.css?v=1.8.0" />
+  <link rel="stylesheet" href="licenses.css?v=1.8.0" />
   <script src="https://res.cdn.office.net/teams-js/2.24.0/js/MicrosoftTeams.min.js"
           integrity="sha384-79NK4sbfVpgLoDFqyfj18/S1Uj8jhLBeRGvKO1Cqw5634RznExQ90myY/qV/0gsN"
           crossorigin="anonymous"></script>
@@ -40,6 +40,7 @@
       <div id="viewSwitch" class="view-switch" role="group" aria-label="View">
         <button type="button" data-view="table" class="view-btn" aria-pressed="true">Table</button>
         <button type="button" data-view="calendar" class="view-btn" aria-pressed="false">Calendar</button>
+        <button type="button" data-view="quarter" class="view-btn" aria-pressed="false" title="3-month stacked view">Quarter</button>
       </div>
       <div id="groupSwitch" class="view-switch" role="group" aria-label="Group by">
         <button type="button" data-group="none" class="view-btn" aria-pressed="true" title="No grouping">None</button>
@@ -100,6 +101,7 @@
         <button type="button" class="filter-pill" data-quick="all" aria-pressed="true">All</button>
         <button type="button" class="filter-pill" data-quick="mine" aria-pressed="false" title="Licenses you own">Mine</button>
         <button type="button" class="filter-pill" data-quick="month" aria-pressed="false" title="Expiring this calendar month">This month</button>
+        <button type="button" class="filter-pill" data-quick="quarter" aria-pressed="false" title="Expiring this calendar quarter (Q1=Jan-Mar, Q2=Apr-Jun, Q3=Jul-Sep, Q4=Oct-Dec)">This quarter</button>
         <button type="button" class="filter-pill" data-quick="overdue" aria-pressed="false" title="Expired and not renewed">Overdue</button>
         <button type="button" class="filter-pill" data-quick="attention" aria-pressed="false" title="Stuck in a status >7 days or close to expiry with no status set">&#9888;&#65039; Needs attention</button>
 
@@ -109,6 +111,13 @@
           <span class="filter-dropdown-label">Month</span>
           <select id="monthFilter" class="filter-dropdown" aria-label="Filter by expiry month">
             <option value="">Any month</option>
+          </select>
+        </label>
+
+        <label class="filter-dropdown-wrap">
+          <span class="filter-dropdown-label">Quarter</span>
+          <select id="quarterFilter" class="filter-dropdown" aria-label="Filter by expiry quarter">
+            <option value="">Any quarter</option>
           </select>
         </label>
 
@@ -173,13 +182,16 @@
         <div class="lic-table-wrap">
         <table id="licTable" class="lic-table" hidden>
           <thead>
+            <!-- v1.8.0 — Product line moved to first column. Helps the
+                 controlled-vocab landing first so the eye lands on
+                 categorisation, then customer detail. -->
             <tr>
+              <th class="sortable col-productline" data-sort="productLine">Product line</th>
               <th class="sortable col-customer" data-sort="customer">Customer</th>
               <th class="sortable col-licensetype" data-sort="licenseType">License type</th>
               <th class="sortable col-users" data-sort="userCount">Users</th>
               <th class="sortable col-expires" data-sort="expiryDate" aria-sort="ascending">Expires</th>
               <th class="sortable col-owner" data-sort="ownerName">Owner</th>
-              <th class="sortable col-productline" data-sort="productLine">Product line</th>
               <th class="sortable col-status" data-sort="status">Status</th>
               <th class="col-actions"></th>
             </tr>
@@ -221,6 +233,26 @@
           <div class="lic-cal-header">Sun</div>
           <div id="calBody" class="lic-cal-body" role="grid"></div>
         </div>
+      </section>
+
+      <!-- v1.8.0 — Quarter view. 3 months stacked vertically (one calendar
+           grid per month), so the user can scan a whole quarter without
+           losing the per-day pill detail. Each month sub-grid uses the same
+           pill-density toggle as Calendar view. -->
+      <section id="quarterView" hidden>
+        <div class="lic-cal-nav">
+          <button type="button" class="btn ghost" id="qPrev" title="Previous quarter">&lsaquo;</button>
+          <button type="button" class="btn ghost" id="qToday">This quarter</button>
+          <button type="button" class="btn ghost" id="qNext" title="Next quarter">&rsaquo;</button>
+          <h2 class="lic-cal-title" id="qTitle"></h2>
+          <select id="qYearJump" class="filter-dropdown" aria-label="Jump to quarter"></select>
+          <span class="lic-cal-nav-spacer"></span>
+          <div id="qDensity" class="view-switch" role="group" aria-label="Quarter density">
+            <button type="button" data-density="comfortable" class="view-btn" aria-pressed="true" title="Comfortable spacing">▦</button>
+            <button type="button" data-density="compact" class="view-btn" aria-pressed="false" title="Compact spacing">▪</button>
+          </div>
+        </div>
+        <div id="qBody" class="lic-quarter-body" role="region" aria-live="polite"></div>
       </section>
     </main>
 
@@ -366,10 +398,17 @@
         <div id="licOwner" class="ppicker-container"></div>
       </div>
 
+      <!-- v1.8.0 — Product line is now a controlled vocab. Free-text input
+           replaced by a <select> sourced from /api/product-lines. If the
+           current row holds a value not in the registry, JS injects it as
+           an extra option marked "(legacy)" so the row can still be saved
+           without forcing a normalize first. -->
       <label class="lic-field">
-        <span class="lic-label">Product line (optional)</span>
-        <input id="licProductLine" type="text" list="productLineList" maxlength="100" placeholder="e.g. M365, BC, BREP" />
-        <datalist id="productLineList"></datalist>
+        <span class="lic-label">Product line</span>
+        <select id="licProductLine" aria-describedby="licProductLineHint">
+          <option value="">(none)</option>
+        </select>
+        <span class="lic-hint" id="licProductLineHint">Pick from the list. To add or rename entries, open <a href="#" id="licProductLineManageLink">Settings → Product lines</a>.</span>
       </label>
 
       <div class="lic-row">
@@ -538,6 +577,37 @@
     </div>
     <div class="lic-dialog-actions">
       <button type="button" class="btn ghost" id="templatesCloseBtn">Close</button>
+    </div>
+  </dialog>
+
+  <!-- v1.8.0 Product Lines admin dialog -->
+  <dialog id="productLinesDialog" class="lic-dialog">
+    <h2>Product lines</h2>
+    <p class="lic-hint">
+      Controlled vocabulary used by every license's <strong>Product line</strong> field. Add, rename, or remove entries here. <em>Normalize legacy</em> below scans every license and rewrites any value that matches a mapping you provide (e.g. <code>ERP - BC → Business Central</code>).
+    </p>
+    <ul id="plList" class="pl-list" aria-label="Product lines"></ul>
+    <div class="pl-add-row">
+      <input id="plAddInput" type="text" maxlength="100" placeholder="New product line name" aria-label="New product line" />
+      <button type="button" id="plAddBtn" class="btn ghost">+ Add</button>
+    </div>
+
+    <h3 class="pl-section-title">Normalize legacy values</h3>
+    <p class="lic-hint">
+      For each legacy product-line value still on a license row, type the canonical name it should be renamed to. Leave blank to skip. Match is case-insensitive on the old value; the new value is written verbatim.
+    </p>
+    <div id="plLegacyContainer">
+      <p class="lic-empty-inline" id="plLegacyEmpty">No legacy values detected — every license already uses a registry value.</p>
+      <ul id="plLegacyList" class="pl-legacy-list" hidden></ul>
+    </div>
+    <div class="lic-dialog-actions">
+      <button type="button" id="plNormalizePreviewBtn" class="btn ghost">Preview changes</button>
+      <button type="button" id="plNormalizeApplyBtn" class="btn primary" disabled>Apply</button>
+      <span id="plPreviewSummary" class="lic-hint pl-preview-summary" hidden></span>
+    </div>
+
+    <div class="lic-dialog-actions">
+      <button type="button" class="btn ghost" id="plCloseBtn">Close</button>
     </div>
   </dialog>
 
@@ -720,7 +790,7 @@
     </section>
 
     <div class="lic-dialog-actions">
-      <span class="lic-version" id="licVersionLabel" title="Licenses tab build version">v1.7.51</span>
+      <span class="lic-version" id="licVersionLabel" title="Licenses tab build version">v1.8.0</span>
       <button type="button" class="btn primary" id="licGuideCloseBtn">Close</button>
     </div>
   </dialog>
@@ -748,6 +818,15 @@
             <option value="dark">Dark</option>
             <option value="contrast">High contrast</option>
           </select>
+        </div>
+
+        <!-- v1.8.0 — Product Lines admin opens a dedicated dialog. Placed
+             in General settings because it's vocab management, not a per-user
+             notification preference. -->
+        <div class="lic-field">
+          <span class="lic-label">Product lines</span>
+          <p class="lic-hint" style="margin: 0 0 6px;">Manage the controlled vocabulary used by every license's Product line field. Add or rename entries, and normalize any legacy values.</p>
+          <button type="button" class="btn ghost" id="openProductLinesBtn">Open product lines…</button>
         </div>
       </div>
 
@@ -919,6 +998,6 @@
 
   <div id="toast" class="toast" hidden></div>
 
-  <script src="licenses.js?v=1.7.51" defer></script>
+  <script src="licenses.js?v=1.8.0" defer></script>
 </body>
 </html>
