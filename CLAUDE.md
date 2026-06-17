@@ -21,6 +21,8 @@ func-day-reminders-17023.azurewebsites.net  ──►  Azure Function App (Node 
   /api/members        ── auto-registering Owner picker source (v1.7)
   /api/customers      ── CRUD (tenant-shared customer registry, v1.7.9)
   /api/email-templates── per-product-line renewal email templates (v1.7.9)
+  /api/product-lines  ── tenant-shared controlled vocab for License.productLine (v1.8.0)
+  /api/licenses/normalize-product-lines ── bulk-rename productLine values (v1.8.0)
   /api/users/search   ── Graph-backed people search (v1.7.14, User.Read.All app)
   /api/users/{oid}/photo── Graph photo proxy with in-process 60s cache (v1.7.14)
   scheduler           ── Timer trigger every minute (in Asia/Manila wall-clock)
@@ -36,6 +38,7 @@ func-day-reminders-17023.azurewebsites.net  ──►  Azure Function App (Node 
                                                 PK = `_members`,       RK = `m:<oid>`
                                                 PK = `_customers`,     RK = `c:<id>` (v1.7.9)
                                                 PK = `_emailTemplates`,RK = `t:<productLine>` (v1.7.9)
+                                                PK = `_productLines`,  RK = `p:<name>` (v1.8.0)
 ```
 
 All Azure resources live in `rg-day-reminders`, except the Bot Service which is `global`. Storage and App Insights are in `southeastasia`, the Function App is in `eastasia` (Linux Consumption in `southeastasia` was stuck in 503 at creation; we recreated in `eastasia`). A keep-warm Logic App (`la-day-reminders-keepwarm`, southeastasia) pings `/api/ping` every 5 min during PH work hours so the Function App's HTTP triggers don't cold-start.
@@ -61,6 +64,7 @@ Secrets, GUIDs, and connection strings live in the Claude memory file `project_d
 | `bot/src/functions/members.js` | Auto-registering Owner picker source (v1.7) |
 | `bot/src/functions/customers.js` | CRUD for /api/customers (v1.7.9) — annotation layer (contact emails, address, cross-license notes) |
 | `bot/src/functions/emailTemplates.js` | GET/PUT/DELETE for /api/email-templates (v1.7.9) — per-product-line renewal email templates |
+| `bot/src/functions/productLines.js` | GET/PUT/DELETE for /api/product-lines + bulk normalize endpoint inside licenses.js (v1.8.0) — controlled vocab for License.productLine |
 | `bot/src/functions/userSearch.js` | GET /api/users/search and /api/users/{oid}/photo (v1.7.14) — Graph-backed people picker source |
 | `bot/src/functions/settings.js` | GET/PUT /api/settings |
 | `bot/src/functions/scheduler.js` | Timer trigger — lead-time + EOD check-in |
@@ -71,7 +75,30 @@ Secrets, GUIDs, and connection strings live in the Claude memory file `project_d
 | `bot/src/lib/cards.js` | Adaptive Card templates |
 | `dist/` | Build output, gitignored |
 
-## What ships today (v1.7.x)
+## What ships today (v1.8.x)
+
+### v1.8.0 — product-line registry, quarter view, Reminders today/later split
+
+Two-tab release with a real data-model shift: License.productLine is now a controlled vocab (tenant-shared registry, admin-managed) instead of free text.
+
+**Licenses tab (cache-bust `v=1.8.0`)**
+- **Product line is the leading column** — `PRODUCT LINE / CUSTOMER / LICENSE TYPE / USERS / EXPIRES / OWNER / STATUS / actions`. The eye lands on categorisation first, then customer detail.
+- **Controlled vocab** seeded with `M365 / Business Central / Finance and Operation / PHILTAX / CRM / Security`. The Edit dialog's product line is now a `<select>`. Rows holding a value not in the registry are tolerated as an extra "(legacy)" option (italic, muted) so they stay editable; the table chip also gets a dashed border to flag them at a glance.
+- **Product Lines admin dialog** at *Settings → General → Open product lines…*. Add / rename / delete with a usage count per row. Includes a **Normalize legacy** panel that lists every distinct legacy value still on a license, with an auto-suggested target (heuristics: `BC → Business Central`, `F&O → Finance and Operation`, `PhilTax → PHILTAX`, etc.). **Preview** shows row count + first 10 changes; **Apply** writes the patch, logs a `productLineNormalized` event per row, re-fetches the table.
+- **Quarter view** — third view-switch option next to Table / Calendar. Renders the 3 months of the current quarter as stacked month grids (same pill density as Calendar; same Prev / Today / Next nav). The narrow-viewport stacked layout avoids crushing each month to ~330px wide in Teams's iframe.
+- **Quarter filter pill + `QUARTER` dropdown** next to `MONTH`. Picking a quarter clears the month filter (mutually exclusive). Active-filter chip, hash-sync, and saved-view snapshot all support it.
+
+**Reminders tab (cache-bust `v=1.6.0`)**
+- **Lines view: Today / Later split** at the top level. Replaces the old TODAY (timed only) / ANYTIME TODAY (no-time only) split that was confusing testers. TODAY now holds every open item dueAt ≤ today (rolled-over items land here too — rollover already advances `dueAt`). LATER holds dueAt > today (hidden when empty so single-day users don't see a vestigial box).
+- **Group toggle is hidden in Lines view** — the day-split owns the top-level structure there. Group reappears in Grid / Day / Week views and keeps its prior behavior (off / tag / client).
+- Inside each section: priority pinned first → timed sorted by time → anytime last.
+
+**Backend (Function App redeploy required)**
+- New endpoints: `GET/PUT /api/product-lines`, `DELETE /api/product-lines/{name}`, `POST /api/licenses/normalize-product-lines` (with `dryRun: true` for preview).
+- New storage partition: `_productLines` (RK `p:<name>`); `ensureProductLinesSeeded()` writes the canonical 6 on first GET if empty.
+- 8 new tests for the canonical seed shape + normalize mapping logic (case-insensitive FROM match, exact TO casing, dedupe). Suite is now 28/28.
+
+### Past releases (v1.7.x — kept for context)
 
 ### v1.7.50 — fix the 3 FAILs + 1 PARTIAL from v1.7.49 regression
 

@@ -8,7 +8,7 @@
   const API_BASE = "https://func-day-reminders-17023.azurewebsites.net/api";
   // v1.7.51 — version set in JS so a stale cached HTML still shows the
   // current build label (the JS itself is cache-busted via ?v=...).
-  const LIC_VERSION = "v1.7.51";
+  const LIC_VERSION = "v1.8.1";
   function paintVersionLabel() {
     const lbl = document.getElementById("licVersionLabel");
     if (lbl) lbl.textContent = LIC_VERSION;
@@ -1504,6 +1504,7 @@
     }
     function fill(id, set) {
       const dl = $(id);
+      if (!dl) return; // v1.8.0 — datalist may have been removed (e.g. productLineList)
       dl.innerHTML = "";
       Array.from(set).sort().forEach((v) => {
         const opt = document.createElement("option");
@@ -1513,7 +1514,11 @@
     }
     fill("customerList", customers);
     fill("licTypeList", licTypes);
-    fill("productLineList", productLines);
+    // v1.8.0 — productLineList datalist was removed when the Edit dialog
+    // input became a strict <select>. Leaving the helper-no-op behavior
+    // above in case other datalists get removed later. Reference to the
+    // productLines variable is preserved as a void to keep the lint clean.
+    void productLines;
   }
 
   function ensureLicOwnerPicker(initialOid, initialName) {
