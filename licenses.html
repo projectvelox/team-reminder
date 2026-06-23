@@ -13,18 +13,20 @@
        the SRI hash on the SDK <script>, this defeats a malicious CDN swap.
        'unsafe-inline' is required for style attributes the tab sets via JS;
        no inline <script> blocks exist. Connect-src covers the Function App
-       and Graph photo proxy. img-src allows owner avatars from our API. -->
-  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' https://res.cdn.office.net; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://func-day-reminders-17023.azurewebsites.net; connect-src 'self' https://func-day-reminders-17023.azurewebsites.net; frame-ancestors https://teams.microsoft.com https://*.teams.microsoft.com https://*.cloud.microsoft https://*.skype.com https://*.microsoft.com; form-action 'self'; base-uri 'self';" />
+       and Graph photo proxy. img-src allows owner avatars from our API.
+       v1.8.3 — added App Insights CDN (script-src) + ingestion + live-metrics
+       endpoints (connect-src) so the client SDK can post usage telemetry. -->
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' https://res.cdn.office.net https://js.monitor.azure.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://func-day-reminders-17023.azurewebsites.net; connect-src 'self' https://func-day-reminders-17023.azurewebsites.net https://*.in.applicationinsights.azure.com https://*.livediagnostics.monitor.azure.com; frame-ancestors https://teams.microsoft.com https://*.teams.microsoft.com https://*.cloud.microsoft https://*.skype.com https://*.microsoft.com; form-action 'self'; base-uri 'self';" />
   <title>Day Reminders &mdash; Licenses</title>
   <!-- Warm up the TCP + TLS handshake to the API and Teams CDN in parallel
        with HTML parse, shaving ~150-300ms off the first /api/licenses call. -->
   <link rel="preconnect" href="https://func-day-reminders-17023.azurewebsites.net" crossorigin />
   <link rel="dns-prefetch" href="https://func-day-reminders-17023.azurewebsites.net" />
   <link rel="preconnect" href="https://res.cdn.office.net" crossorigin />
-  <link rel="preload" as="script" href="licenses.js?v=1.8.2" />
-  <link rel="preload" as="style" href="licenses.css?v=1.8.2" />
-  <link rel="stylesheet" href="styles.css?v=1.8.2" />
-  <link rel="stylesheet" href="licenses.css?v=1.8.2" />
+  <link rel="preload" as="script" href="licenses.js?v=1.8.3" />
+  <link rel="preload" as="style" href="licenses.css?v=1.8.3" />
+  <link rel="stylesheet" href="styles.css?v=1.8.3" />
+  <link rel="stylesheet" href="licenses.css?v=1.8.3" />
   <script src="https://res.cdn.office.net/teams-js/2.24.0/js/MicrosoftTeams.min.js"
           integrity="sha384-79NK4sbfVpgLoDFqyfj18/S1Uj8jhLBeRGvKO1Cqw5634RznExQ90myY/qV/0gsN"
           crossorigin="anonymous"></script>
@@ -998,6 +1000,6 @@
 
   <div id="toast" class="toast" hidden></div>
 
-  <script src="licenses.js?v=1.8.2" defer></script>
+  <script src="licenses.js?v=1.8.3" defer></script>
 </body>
 </html>

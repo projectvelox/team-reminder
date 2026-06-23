@@ -164,11 +164,59 @@
   // even after multiple cache-bust bumps). Because the JS file is itself
   // cache-busted via `?v=` on every release, setting the label here means
   // a stale HTML cache no longer lies to users about the build they're on.
-  const TAB_VERSION = "v1.6.0";
+  const TAB_VERSION = "v1.6.1";
   document.addEventListener("DOMContentLoaded", () => {
     const lbl = document.getElementById("versionLabel");
     if (lbl) lbl.textContent = TAB_VERSION;
   });
+
+  // ---------- App Insights (v1.8.3) ----------
+  // Client-side telemetry sink. Powers the Usage blade (Users / Sessions /
+  // Funnels / Retention) in the App Insights resource. Connection string
+  // is fetched from /api/telemetry-config so it stays out of the public repo.
+  // Telemetry is best-effort: any failure here must NEVER break the tab.
+  let appInsights = null;
+  async function initAppInsights() {
+    try {
+      const resp = await fetch(`${API_BASE}/telemetry-config`);
+      if (!resp.ok) return;
+      const { connectionString } = await resp.json();
+      if (!connectionString) return;
+      await new Promise((resolve, reject) => {
+        const script = document.createElement("script");
+        script.src = "https://js.monitor.azure.com/scripts/b/ai.3.gbl.min.js";
+        script.async = true;
+        script.onload = resolve;
+        script.onerror = reject;
+        document.head.appendChild(script);
+      });
+      const NS = window.Microsoft && window.Microsoft.ApplicationInsights;
+      if (!NS) return;
+      appInsights = new NS.ApplicationInsights({
+        config: {
+          connectionString,
+          // The Function App already auto-logs every HTTP request via the
+          // server SDK; don't double-count by tracking fetch/XHR from the tab.
+          disableFetchTracking: true,
+          disableAjaxTracking: true,
+          enableAutoRouteTracking: false,
+          autoTrackPageVisitTime: true,
+        },
+      });
+      appInsights.loadAppInsights();
+      appInsights.trackPageView({ name: "reminders.tab", properties: { appVersion: APP_VERSION } });
+    } catch (_) { /* swallow */ }
+  }
+  function track(name, props) {
+    try { appInsights && appInsights.trackEvent({ name }, { appVersion: APP_VERSION, surface: "reminders", ...(props || {}) }); } catch (_) {}
+  }
+  function setTelemetryUser(oid, name) {
+    try {
+      if (!appInsights || !oid) return;
+      // 3rd arg = storeInCookie so subsequent sessions are stitched to the same user.
+      appInsights.setAuthenticatedUserContext(oid, oid, true);
+    } catch (_) {}
+  }
   // Idempotent fallback for the case where DOMContentLoaded already fired.
   if (document.readyState !== "loading") {
     const lbl = document.getElementById("versionLabel");
@@ -521,6 +569,7 @@
       const created = await api("POST", "/reminders", body);
       replaceById(tempId, created.reminder);
       render();
+      track("reminder.added", { source: "addForm", hasTime: !!time, hasClient: !!client, hasTags: tags.length > 0, hasDescription: !!description });
     } catch (err) {
       reminders = reminders.filter((r) => r.id !== tempId);
       render();
@@ -528,7 +577,7 @@
     }
   });
 
-  $("openSettings").addEventListener("click", () => openDialog(settingsDialog, openSettings));
+  $("openSettings").addEventListener("click", () => { track("settings.opened"); openDialog(settingsDialog, openSettings); });
   $("settingsCancel").addEventListener("click", () => settingsDialog.close());
   // v1.7.50 — reset one-time dismissed hints (drag-to-reschedule, etc.)
   $("resetHintsBtn").addEventListener("click", () => {
@@ -2551,6 +2600,7 @@
       if (entry && entry.toast) entry.toast.remove();
       try {
         await api("DELETE", `/reminders/${r.id}`);
+        track("reminder.deleted");
       } catch (err) {
         if (err.status !== 404) showError("Could not delete", err);
       }
@@ -2580,6 +2630,7 @@
     try {
       const updated = await api("PATCH", `/reminders/${r.id}`, { done: r.done });
       replaceLocal(updated.reminder);
+      track(r.done ? "reminder.completed" : "reminder.reopened");
     } catch (err) {
       r.done = prevDone;
       r.closedAt = prevClosedAt;
@@ -2640,6 +2691,7 @@
     try {
       const ids = openVisible.map((r) => r.id);
       await api("POST", "/reminders/bulk", { ids, patch: { done: true } });
+      track("reminder.bulkCompleted", { count: openVisible.length });
       announce(`${openVisible.length} reminders marked done`);
     } catch (err) {
       for (const snap of snapshot) {
@@ -2770,6 +2822,7 @@
     currentView = v;
     try { localStorage.setItem(LS_VIEW, v); } catch (_) {}
     announce(`View: ${v}`);
+    track("view.changed", { view: v });
     render();
   }
   function cycleView() {
@@ -3292,6 +3345,8 @@
       showError("Teams SDK failed to load", new Error("microsoftTeams missing"));
       return;
     }
+    // Kick off AI init in parallel — doesn't block boot if it fails.
+    const aiReady = initAppInsights();
     try {
       await microsoftTeams.app.initialize();
       const ctx = await microsoftTeams.app.getContext();
@@ -3304,6 +3359,12 @@
         const msg = (e && (e.message || e.errorCode || String(e))) || "unknown";
         throw new Error(`SSO failed: ${msg}`);
       }
+      // Attach the authenticated oid to all subsequent telemetry once both
+      // SSO + AI init are done. Either may finish first; await whichever lags.
+      aiReady.then(() => {
+        setTelemetryUser(ctx.user?.id, ctx.user?.userPrincipalName || ctx.user?.displayName);
+        track("tab.boot", { hasBot: !!hasBot });
+      });
 
       const [{ settings: s, hasBot: hb }, { reminders: rems }, { templates: userTpls }] = await Promise.all([
         api("GET", "/settings"),

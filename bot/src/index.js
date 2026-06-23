@@ -6,6 +6,7 @@ require('./functions/templates');
 require('./functions/graphNotifications');
 require('./functions/scheduler');
 require('./functions/telemetry');
+require('./functions/telemetryConfig');
 require('./functions/ping');
 require('./functions/licenses');
 require('./functions/members');

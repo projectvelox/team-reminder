@@ -69,6 +69,7 @@ Secrets, GUIDs, and connection strings live in the Claude memory file `project_d
 | `bot/src/functions/settings.js` | GET/PUT /api/settings |
 | `bot/src/functions/scheduler.js` | Timer trigger — lead-time + EOD check-in |
 | `bot/src/functions/ping.js` | Unauthenticated `GET /api/ping` returning `"ok"` — keep-warm target for the Logic App |
+| `bot/src/functions/telemetryConfig.js` | Unauthenticated `GET /api/telemetry-config` — returns the App Insights connection string for the client SDK (v1.8.3) |
 | `bot/src/lib/bot.js` | Bot adapter + `ReminderBot` activity handler + slash command parsing |
 | `bot/src/lib/store.js` | Azure Tables wrappers |
 | `bot/src/lib/auth.js` | Teams SSO JWT validation (jose + Entra JWKS) |
@@ -76,6 +77,29 @@ Secrets, GUIDs, and connection strings live in the Claude memory file `project_d
 | `dist/` | Build output, gitignored |
 
 ## What ships today (v1.8.x)
+
+### v1.8.3 — usage telemetry (App Insights client SDK)
+
+Tab + bot release. Wires the Application Insights JS SDK into both tabs so we can answer "who's using this, how often, and which features" from the AI **Usage** blade (Users / Sessions / Funnels / Retention) instead of just `requests` traces.
+
+**Backend**
+- New endpoint `GET /api/telemetry-config` ([bot/src/functions/telemetryConfig.js](bot/src/functions/telemetryConfig.js)). Anonymous; returns `{ connectionString }` read from the Function App setting `APPLICATIONINSIGHTS_CONNECTION_STRING` (already set — the server SDK uses the same env var). Connection strings are not secrets per Microsoft docs (write-only ingestion), but we keep it server-side so it never lands in the public repo.
+
+**Both tabs**
+- Helper at the top of [app.js](app.js) and [licenses.js](licenses.js): `initAppInsights()` fetches the config, lazy-loads `https://js.monitor.azure.com/scripts/b/ai.3.gbl.min.js`, instantiates `Microsoft.ApplicationInsights.ApplicationInsights` with `disableFetchTracking`/`disableAjaxTracking` (the server already auto-logs every HTTP request — don't double-count), and emits a `trackPageView`.
+- `setTelemetryUser(oid)` calls `setAuthenticatedUserContext(oid, oid, true)` after SSO so user-by-user attribution works in the Usage blade. The cookie flag stitches sessions across days.
+- `track(name, props)` wrapper used at every instrumented call site. Telemetry is best-effort — wrapped in try/catch so any AI failure cannot break the tab.
+- CSP updated on both [index.html](index.html) and [licenses.html](licenses.html): added `https://js.monitor.azure.com` to `script-src` and `https://*.in.applicationinsights.azure.com https://*.livediagnostics.monitor.azure.com` to `connect-src`.
+
+**Instrumented events**
+- Reminders: `tab.boot`, `reminder.added` (with `hasTime`/`hasClient`/`hasTags`/`hasDescription`), `reminder.completed`, `reminder.reopened`, `reminder.deleted`, `reminder.bulkCompleted` (count), `view.changed` (`view`), `settings.opened`.
+- Licenses: `tab.boot`, `license.added` (with `source: fullDialog`/`quickAdd` + `productLine`), `license.edited`, `license.renewed` (with `years` or `custom`), `license.deleted`, `view.changed` (`view: table`/`calendar`/`quarter`), `privacy.exportRequested`, `privacy.dataDeleted`.
+
+**Cost & dashboards**
+- Effectively free at our scale. AI gives 5 GB/month ingestion per Azure subscription; a 5–10 user internal tool with this event volume is well under 50 MB/month. 90-day retention is included.
+- The AI resource's built-in **Usage** blade now populates (Users, Sessions, Events, Funnels, Retention, Cohorts). **Workbooks** + Azure Dashboards can pin custom KQL queries (e.g. "top users by reminders created this month," "view-switch breakdown by tab").
+
+Cache-bust `v=1.6.1` on Reminders, `v=1.8.3` on Licenses. **Backend redeploy required** — new `/api/telemetry-config` endpoint.
 
 ### v1.8.0 — product-line registry, quarter view, Reminders today/later split
 

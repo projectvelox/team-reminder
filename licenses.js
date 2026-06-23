@@ -8,13 +8,57 @@
   const API_BASE = "https://func-day-reminders-17023.azurewebsites.net/api";
   // v1.7.51 — version set in JS so a stale cached HTML still shows the
   // current build label (the JS itself is cache-busted via ?v=...).
-  const LIC_VERSION = "v1.8.2";
+  const LIC_VERSION = "v1.8.3";
   function paintVersionLabel() {
     const lbl = document.getElementById("licVersionLabel");
     if (lbl) lbl.textContent = LIC_VERSION;
   }
   if (document.readyState !== "loading") paintVersionLabel();
   else document.addEventListener("DOMContentLoaded", paintVersionLabel);
+
+  // ---------- App Insights (v1.8.3) ----------
+  // Client-side telemetry sink — see app.js for full rationale. Powers the
+  // Usage blade (Users / Sessions / Funnels / Retention) for the Licenses tab.
+  // Telemetry is best-effort: any failure here must NEVER break the tab.
+  let appInsights = null;
+  async function initAppInsights() {
+    try {
+      const resp = await fetch(`${API_BASE}/telemetry-config`);
+      if (!resp.ok) return;
+      const { connectionString } = await resp.json();
+      if (!connectionString) return;
+      await new Promise((resolve, reject) => {
+        const script = document.createElement("script");
+        script.src = "https://js.monitor.azure.com/scripts/b/ai.3.gbl.min.js";
+        script.async = true;
+        script.onload = resolve;
+        script.onerror = reject;
+        document.head.appendChild(script);
+      });
+      const NS = window.Microsoft && window.Microsoft.ApplicationInsights;
+      if (!NS) return;
+      appInsights = new NS.ApplicationInsights({
+        config: {
+          connectionString,
+          disableFetchTracking: true,
+          disableAjaxTracking: true,
+          enableAutoRouteTracking: false,
+          autoTrackPageVisitTime: true,
+        },
+      });
+      appInsights.loadAppInsights();
+      appInsights.trackPageView({ name: "licenses.tab", properties: { appVersion: LIC_VERSION } });
+    } catch (_) { /* swallow */ }
+  }
+  function track(name, props) {
+    try { appInsights && appInsights.trackEvent({ name }, { appVersion: LIC_VERSION, surface: "licenses", ...(props || {}) }); } catch (_) {}
+  }
+  function setTelemetryUser(oid) {
+    try {
+      if (!appInsights || !oid) return;
+      appInsights.setAuthenticatedUserContext(oid, oid, true);
+    } catch (_) {}
+  }
   const DEFAULT_LEAD_DAYS = 14;
   const STATUSES = ["notStarted", "noticeSent", "awaitingCustomer", "customerConfirmed", "renewed"];
   const STATUS_LABEL = {
@@ -2551,10 +2595,12 @@
         const ifMatch = current && current.lastEditedAt ? current.lastEditedAt : null;
         const { license } = await api("PATCH", `/licenses/${editingId}`, payload, { ifMatch });
         licenses = licenses.map((l) => l.id === license.id ? license : l);
+        track("license.edited", { productLine: license.productLine || "" });
         toast("Saved");
       } else {
         const { license } = await api("POST", "/licenses", payload);
         licenses.push(license);
+        track("license.added", { source: "fullDialog", productLine: license.productLine || "" });
         toast("License added");
       }
       closeEditDialog();
@@ -2629,7 +2675,7 @@
     t.hidden = false;
     const timer = setTimeout(() => {
       // commit the delete
-      api("DELETE", `/licenses/${lic.id}`).then(() => refreshTrashBadge()).catch((err) => {
+      api("DELETE", `/licenses/${lic.id}`).then(() => { track("license.deleted"); refreshTrashBadge(); }).catch((err) => {
         // If server delete fails, restore.
         showError("Delete failed (restored locally)", err);
         licenses.push(lic);
@@ -3340,6 +3386,7 @@
       }
       renewTargetId = null;
       render();
+      track("license.renewed", { years: years || null, custom: !!customDate, productLine: license.productLine || "" });
       toast(`Renewed — new expiry ${fmtShortDate(license.expiryDate)}`);
     } catch (err) {
       if (handleConflict(err, "Renew")) return;
@@ -3638,6 +3685,7 @@
       b.addEventListener("click", () => {
         currentView = b.dataset.view;
         try { localStorage.setItem(LS_VIEW, currentView); } catch (_) {}
+        track("view.changed", { view: currentView });
         render();
       });
     });
@@ -3791,6 +3839,7 @@
         try {
           const { license } = await api("POST", "/licenses", payload);
           licenses = [...licenses, license];
+          track("license.added", { source: "quickAdd", productLine: license.productLine || "" });
           $("qaCustomer").value = "";
           $("qaLicenseType").value = "";
           $("qaUsers").value = "";
@@ -4706,6 +4755,7 @@
       a.click();
       document.body.removeChild(a);
       setTimeout(() => URL.revokeObjectURL(url), 100);
+      track("privacy.exportRequested");
       toast("Your data export was downloaded.");
     } catch (err) { showError("Export failed", err); }
     finally { btn.disabled = false; btn.textContent = original; }
@@ -4723,6 +4773,7 @@
     btn.textContent = "Deleting…";
     try {
       const res = await api("DELETE", "/me/data");
+      track("privacy.dataDeleted");
       toast(`Done — ${res.reminderCount || 0} reminder${res.reminderCount === 1 ? "" : "s"} deleted, ${res.licensesUnassigned || 0} license${res.licensesUnassigned === 1 ? "" : "s"} unassigned.`);
       // Hard reload after a tick so the tab refetches everything cleanly.
       setTimeout(() => location.reload(), 1500);
@@ -5216,6 +5267,8 @@
       showError("Teams SDK failed to load", new Error("microsoftTeams missing"));
       return;
     }
+    // Kick off AI init in parallel — doesn't block boot if it fails.
+    const aiReady = initAppInsights();
     try {
       await microsoftTeams.app.initialize();
       const ctx = await microsoftTeams.app.getContext();
@@ -5230,6 +5283,10 @@
       }
       me.oid = ctx.user?.id || null;
       me.name = ctx.user?.userPrincipalName || ctx.user?.displayName || null;
+      aiReady.then(() => {
+        setTelemetryUser(me.oid);
+        track("tab.boot");
+      });
 
       // Fast path: paint the UI with cached members while licenses fetch.
       const cached = loadCachedMembers();
