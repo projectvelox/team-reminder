@@ -164,7 +164,7 @@
   // even after multiple cache-bust bumps). Because the JS file is itself
   // cache-busted via `?v=` on every release, setting the label here means
   // a stale HTML cache no longer lies to users about the build they're on.
-  const TAB_VERSION = "v1.6.1";
+  const TAB_VERSION = "v1.6.2";
   document.addEventListener("DOMContentLoaded", () => {
     const lbl = document.getElementById("versionLabel");
     if (lbl) lbl.textContent = TAB_VERSION;
@@ -744,6 +744,12 @@
   });
 
   $("rowOptionsCancel").addEventListener("click", () => rowOptionsDialog.close());
+  $("rowOptionsDelete").addEventListener("click", () => {
+    const r = reminders.find((x) => x.id === editingReminderId);
+    if (!r) { rowOptionsDialog.close(); return; }
+    rowOptionsDialog.close();
+    removeReminder(r);
+  });
   const rowLeadPreset = $("rowLeadPreset");
   if (rowLeadPreset) {
     rowLeadPreset.addEventListener("change", (e) => {

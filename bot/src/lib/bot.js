@@ -14,72 +14,13 @@ const {
 
 const store = require('./store');
 const { menuCard } = require('./cards');
-
-function parseTimeToken(token) {
-  if (!token) return null;
-  const lower = token.toLowerCase();
-  // 12-hour with am/pm: 5pm, 5:30pm, 5p, 12:00am
-  let m = lower.match(/^(\d{1,2})(?::(\d{2}))?\s*(am?|pm?)$/);
-  if (m) {
-    let h = parseInt(m[1], 10);
-    const mm = m[2] ? parseInt(m[2], 10) : 0;
-    const isPm = m[3].startsWith('p');
-    if (h < 1 || h > 12 || mm < 0 || mm > 59) return null;
-    if (h === 12) h = isPm ? 12 : 0;
-    else if (isPm) h += 12;
-    return `${String(h).padStart(2, '0')}:${String(mm).padStart(2, '0')}`;
-  }
-  // 24-hour HH:MM
-  m = lower.match(/^(\d{1,2}):(\d{2})$/);
-  if (m) {
-    const h = parseInt(m[1], 10);
-    const mm = parseInt(m[2], 10);
-    if (h > 23 || mm > 59) return null;
-    return `${String(h).padStart(2, '0')}:${String(mm).padStart(2, '0')}`;
-  }
-  return null;
-}
+const { parseAddCommand } = require('./parseAddCommand');
 
 // Today's date in Asia/Manila wall-clock as YYYY-MM-DD. Used so /add and the
 // compose-extension agree with the scheduler on what "today" means.
 function phToday() {
   const ph = new Date(Date.now() + PH_OFFSET_MS);
   return `${ph.getUTCFullYear()}-${String(ph.getUTCMonth() + 1).padStart(2, '0')}-${String(ph.getUTCDate()).padStart(2, '0')}`;
-}
-
-// Parses a single token as a date. Returns YYYY-MM-DD or null.
-// Accepts: today, tomorrow/tmrw/tom, weekday names (next occurrence including today),
-// M/D or M-D (current year, next year if past), and full YYYY-MM-DD.
-function parseDateToken(token, today) {
-  if (!token) return null;
-  const lower = token.toLowerCase();
-  if (lower === 'today') return today;
-  if (lower === 'tomorrow' || lower === 'tmrw' || lower === 'tom') {
-    const d = new Date(today + 'T00:00:00Z');
-    d.setUTCDate(d.getUTCDate() + 1);
-    return d.toISOString().slice(0, 10);
-  }
-  const weekdays = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
-  const wdIdx = weekdays.findIndex((w) => lower === w || lower === w + 'day' || (w === 'thu' && lower === 'thur'));
-  if (wdIdx >= 0) {
-    const d = new Date(today + 'T00:00:00Z');
-    const delta = (wdIdx - d.getUTCDay() + 7) % 7;
-    d.setUTCDate(d.getUTCDate() + delta);
-    return d.toISOString().slice(0, 10);
-  }
-  let m = lower.match(/^(\d{1,2})[\/-](\d{1,2})$/);
-  if (m) {
-    const month = parseInt(m[1], 10);
-    const day = parseInt(m[2], 10);
-    if (month < 1 || month > 12 || day < 1 || day > 31) return null;
-    const year = parseInt(today.slice(0, 4), 10);
-    const cand = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-    if (cand >= today) return cand;
-    return `${year + 1}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-  }
-  m = lower.match(/^(\d{4})-(\d{2})-(\d{2})$/);
-  if (m) return lower;
-  return null;
 }
 
 // ---------- snooze time helpers ----------
@@ -150,35 +91,6 @@ function taskMessage(text) {
   };
 }
 
-function parseAddCommand(rest, today) {
-  const tokens = rest.trim().split(/\s+/).filter(Boolean);
-  if (tokens.length === 0) return null;
-  let i = 0;
-  let time = null;
-  let dueAt = null;
-  // First 2 tokens can be time and/or date in either order; rest is title + tags.
-  for (let n = 0; n < 2 && i < tokens.length; n++) {
-    if (!time) {
-      const t = parseTimeToken(tokens[i]);
-      if (t) { time = t; i++; continue; }
-    }
-    if (!dueAt && today) {
-      const d = parseDateToken(tokens[i], today);
-      if (d) { dueAt = d; i++; continue; }
-    }
-    break;
-  }
-  const tags = [];
-  const titleParts = [];
-  for (; i < tokens.length; i++) {
-    const t = tokens[i];
-    if (t.startsWith('#') && t.length > 1) tags.push(t.slice(1));
-    else titleParts.push(t);
-  }
-  const title = titleParts.join(' ').trim();
-  if (!title) return null;
-  return { title, time, dueAt, tags: tags.slice(0, 8) };
-}
 
 const auth = new ConfigurationBotFrameworkAuthentication({
   MicrosoftAppId: process.env.MicrosoftAppId,

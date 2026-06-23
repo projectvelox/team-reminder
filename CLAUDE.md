@@ -71,12 +71,29 @@ Secrets, GUIDs, and connection strings live in the Claude memory file `project_d
 | `bot/src/functions/ping.js` | Unauthenticated `GET /api/ping` returning `"ok"` — keep-warm target for the Logic App |
 | `bot/src/functions/telemetryConfig.js` | Unauthenticated `GET /api/telemetry-config` — returns the App Insights connection string for the client SDK (v1.8.3) |
 | `bot/src/lib/bot.js` | Bot adapter + `ReminderBot` activity handler + slash command parsing |
+| `bot/src/lib/parseAddCommand.js` | `parseAddCommand` + `parseTimeToken` + `parseDateToken` (extracted v1.8.4 for unit testing) |
 | `bot/src/lib/store.js` | Azure Tables wrappers |
 | `bot/src/lib/auth.js` | Teams SSO JWT validation (jose + Entra JWKS) |
 | `bot/src/lib/cards.js` | Adaptive Card templates |
 | `dist/` | Build output, gitignored |
 
 ## What ships today (v1.8.x)
+
+### v1.8.4 — delete button parity + bot tag-parsing fix
+
+Tab + bot release. Two bugs reported by a real user:
+
+**Reminders tab — delete button now in every view**
+- The Lines view had a `✕` button per row, but it was hidden on narrow viewports ([styles.css:807](styles.css#L807)) on the assumption the `⋯` row-options menu held a Delete action. It didn't — the row options dialog only had Mark done / Save as template / Cancel / Save. **Grid / Day / Week view users had no way to delete a reminder at all.**
+- Added a **Delete** button (red ghost styling — `.btn.ghost.danger`) at the far left of the row options dialog footer. Hooked to the existing `removeReminder()` flow so the 8s Undo toast still works. Works in every view.
+
+**Bot `#tag` parsing — extract tags before time/date detection**
+- `parseAddCommand` previously tokenized the message and tried to detect time/date in the first two tokens, THEN scanned the remainder for `#tag` patterns. If the user typed `/add #urgent 5pm Send report`, the leading `#urgent` consumed the time-detection slot, so `5pm` got swallowed into the title and `time` came out null.
+- Rewritten to extract all `#word` patterns from anywhere in the message FIRST (regex `(?:^|\s)#([A-Za-z0-9_-]{1,40})\b`), then run time/date detection on the cleaned text. Order no longer matters: `/add #urgent 5pm Send report` and `/add 5pm Send report #urgent` produce identical output.
+- Refactored into [bot/src/lib/parseAddCommand.js](bot/src/lib/parseAddCommand.js) (own module) so it's testable in isolation. Bot.js no longer instantiates Bot Framework deps just to expose a parser.
+- 15 new unit tests in [bot/test/parse-add-command.test.js](bot/test/parse-add-command.test.js) covering tag position permutations, dedupe, case-insensitivity, the 8-tag cap, lone `#`, and the regression case. Suite now 43/43.
+
+Cache-bust `v=1.6.2` on Reminders. **Backend redeploy required** — `parseAddCommand` moved files.
 
 ### v1.8.3 — usage telemetry (App Insights client SDK)
 

@@ -322,6 +322,8 @@ input:focus {
   font-weight: 600;
 }
 .btn.ghost { background: transparent; }
+.btn.ghost.danger { color: #c50f1f; border-color: rgba(197, 15, 31, 0.4); }
+.btn.ghost.danger:hover { background: rgba(197, 15, 31, 0.08); border-color: #c50f1f; }
 .btn.small { padding: 4px 10px; font-size: 12px; }
 .btn:hover { filter: brightness(0.97); }
 .btn:active { transform: translateY(1px); }

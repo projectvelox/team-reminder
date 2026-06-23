@@ -7,7 +7,7 @@
        v1.8.3 — added App Insights CDN (script-src) + ingestion + live-metrics endpoints (connect-src). -->
   <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' https://res.cdn.office.net https://js.monitor.azure.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://func-day-reminders-17023.azurewebsites.net; connect-src 'self' https://func-day-reminders-17023.azurewebsites.net https://*.in.applicationinsights.azure.com https://*.livediagnostics.monitor.azure.com; frame-ancestors https://teams.microsoft.com https://*.teams.microsoft.com https://*.cloud.microsoft https://*.skype.com https://*.microsoft.com; form-action 'self'; base-uri 'self';" />
   <title>Day Reminders</title>
-  <link rel="stylesheet" href="styles.css?v=1.6.1" />
+  <link rel="stylesheet" href="styles.css?v=1.6.2" />
   <script src="https://res.cdn.office.net/teams-js/2.24.0/js/MicrosoftTeams.min.js"
           integrity="sha384-79NK4sbfVpgLoDFqyfj18/S1Uj8jhLBeRGvKO1Cqw5634RznExQ90myY/qV/0gsN"
           crossorigin="anonymous"></script>
@@ -452,6 +452,7 @@
       </div>
 
       <div class="dialog-actions">
+        <button type="button" id="rowOptionsDelete" class="btn ghost danger" title="Delete this reminder (undo available for 8s)">Delete</button>
         <button type="button" id="rowOptionsDone" class="btn ghost row-done-toggle">Mark done</button>
         <button type="button" id="rowOptionsSaveTemplate" class="btn ghost" title="Save this reminder as a reusable template">Save as template</button>
         <button type="button" id="rowOptionsCancel" class="btn ghost">Cancel</button>
@@ -481,6 +482,6 @@
     <a class="link" href="https://github.com/projectvelox/team-reminder/issues" target="_blank" rel="noopener">Report an issue</a>
   </footer>
 
-  <script src="app.js?v=1.6.1"></script>
+  <script src="app.js?v=1.6.2"></script>
 </body>
 </html>
