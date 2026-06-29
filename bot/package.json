@@ -11,7 +11,7 @@
   },
   "dependencies": {
     "@azure/data-tables": "^13.3.0",
-    "@azure/functions": "^4.5.1",
+    "@azure/functions": "^4.16.1",
     "botbuilder": "^4.23.1",
     "jose": "^6.2.3"
   },
